@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Cutlyra</string>
+    <string name="title_activity_main">Cutlyra</string>
+    <string name="package_name">app.cutlyra.editor</string>
+    <string name="custom_url_scheme">app.cutlyra.editor</string>
+</resources>

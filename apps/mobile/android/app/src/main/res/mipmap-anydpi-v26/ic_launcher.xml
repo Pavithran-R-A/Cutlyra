@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cutlyra adaptive launcher icon (API 26+). The foreground is the brand
+     mark rasterized per-density (scripts/generate-brand-assets.py); the
+     background is the flat dark-navy tile from the canonical art. The
+     monochrome layer reuses the mark's alpha so themed/monochrome launchers
+     (Android 13+) tint a true Cutlyra silhouette. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+    <monochrome android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>

@@ -1,0 +1,266 @@
+﻿/* Home (project list) screen — app-shell chrome only. The editor itself is
+ * styled entirely by @cutlyra/mobile-ui's tokens.css/components.css; these
+ * rules lean on the same --cc-* tokens so home matches the editor theme. */
+
+/* The editor shell (.cc-editor-shell) sizes itself with height:100% — give
+ * it a real chain to inherit from. Without this the whole editor collapses
+ * to content height (verified in-browser: app squeezed into the top half). */
+html,
+body,
+#app {
+	height: 100%;
+	margin: 0;
+	/* This is a fixed full-screen app surface, not a document: never let
+	   the WebView page-scroll or rubber-band (on device, any layout
+	   overflow otherwise becomes a scrollable page — 2026-08-19). Screens
+	   that need scrolling own it internally (.kc-home__grid,
+	   .kc-crash__detail). */
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+#app {
+	height: 100dvh;
+}
+body {
+	background: #000;
+	color: #f5f5f5;
+	font-family:
+		-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	-webkit-text-size-adjust: 100%;
+}
+
+.kc-crash {
+	height: 100dvh;
+	box-sizing: border-box;
+	overflow-y: auto;
+	background: #000;
+	color: #ff9c9c;
+	padding: calc(env(safe-area-inset-top, 0px) + 24px) 16px 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	align-items: flex-start;
+}
+
+.kc-crash__title {
+	font-size: 17px;
+	font-weight: 700;
+	margin: 0;
+}
+
+.kc-crash__detail {
+	white-space: pre-wrap;
+	word-break: break-word;
+	font: 11px/1.5 ui-monospace, monospace;
+	margin: 0;
+	max-height: 60dvh;
+	overflow-y: auto;
+}
+
+.kc-home {
+	height: 100vh;
+	height: 100dvh;
+	/* border-box, or the safe-area padding grows the box past the viewport
+	   and the whole page scrolls (same class of bug as .cc-editor-shell —
+	   found on device 2026-08-19). The project list scrolls internally. */
+	box-sizing: border-box;
+	overflow: hidden;
+	background: var(--cc-bg, #0b0b0b);
+	color: var(--cc-text-primary, #f5f5f5);
+	display: flex;
+	flex-direction: column;
+	padding: calc(env(safe-area-inset-top, 0px) + 16px)
+		calc(env(safe-area-inset-right, 0px) + 16px)
+		calc(env(safe-area-inset-bottom, 0px) + 16px)
+		calc(env(safe-area-inset-left, 0px) + 16px);
+	gap: 16px;
+	font-family: var(--cc-font-family, system-ui, sans-serif);
+}
+
+.kc-home__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.kc-home__header h1 {
+	font-size: 20px;
+	font-weight: 700;
+	margin: 0;
+}
+
+.kc-home__new {
+	font-family: inherit;
+	background: var(--cc-accent, #00cae0);
+	color: #000;
+	border: none;
+	border-radius: 8px;
+	padding: 10px 16px;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.kc-home__new:disabled {
+	opacity: 0.5;
+}
+
+.kc-home__error {
+	color: var(--cc-danger, #ff5c5c);
+	font-size: 13px;
+	margin: 0;
+}
+
+.kc-home__empty {
+	opacity: 0.6;
+	font-size: 14px;
+	text-align: center;
+	margin-top: 40vh;
+	transform: translateY(-50%);
+}
+
+/* Two-up thumbnail grid (2026-09-07). The screen is fixed-height; a long
+   project list scrolls here, not the page. `align-content: start` keeps a
+   single row of cards at the top instead of stretching it to fill. */
+.kc-home__grid {
+	list-style: none;
+	margin: 0;
+	padding: 0 0 8px;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px 12px;
+	align-content: start;
+	overflow-y: auto;
+	min-height: 0;
+}
+
+.kc-home__card {
+	position: relative;
+	min-width: 0;
+}
+
+/* The whole card is the open tap. `touch-action: manipulation` drops the
+   double-tap-to-zoom delay WebKit adds to a tap on a button. */
+.kc-home__card-open {
+	font-family: inherit;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	background: none;
+	border: none;
+	padding: 0;
+	color: inherit;
+	text-align: left;
+	touch-action: manipulation;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.kc-home__card-open:disabled {
+	opacity: 0.5;
+}
+
+.kc-home__card-open:active .kc-home__thumb-frame {
+	transform: scale(0.98);
+}
+
+/* 3:4 thumbnail frame. Project thumbnails render at canvas size — mostly
+   9:16 on mobile — so `cover` trims a sliver top/bottom rather than
+   letterboxing; a landscape project gets centre-cropped, like CapCut. */
+.kc-home__thumb-frame {
+	position: relative;
+	display: block;
+	width: 100%;
+	aspect-ratio: 3 / 4;
+	border-radius: var(--cc-radius-card, 12px);
+	overflow: hidden;
+	background: var(--cc-surface, #1a1a1a);
+	transition: transform 120ms ease;
+}
+
+.kc-home__thumb {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.kc-home__thumb--empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--cc-text-secondary, #8b8a90);
+	background: var(--cc-surface-raised, #262626);
+}
+
+/* CapCut's duration pill: bottom-left of the thumbnail. */
+.kc-home__duration {
+	position: absolute;
+	left: 8px;
+	bottom: 8px;
+	padding: 2px 6px;
+	border-radius: var(--cc-radius-chip, 8px);
+	background: rgb(0 0 0 / 60%);
+	color: #fff;
+	font-size: 11px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.4;
+	pointer-events: none;
+}
+
+.kc-home__meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	padding: 0 2px;
+}
+
+.kc-home__name {
+	font-size: 14px;
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.kc-home__date {
+	font-size: 12px;
+	opacity: 0.55;
+}
+
+/* "⋯" chip over the thumbnail's top-right corner — the delete affordance
+   (sibling of the open button, see ProjectCard). 32px hit target on a
+   28px visual. */
+.kc-home__more {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	width: 32px;
+	height: 32px;
+	border: none;
+	border-radius: var(--cc-radius-pill, 999px);
+	background: rgb(0 0 0 / 55%);
+	color: #fff;
+	font-size: 18px;
+	font-weight: 700;
+	line-height: 1;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	touch-action: manipulation;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.kc-home__more:disabled {
+	opacity: 0.5;
+}
+
+.kc-home__header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}

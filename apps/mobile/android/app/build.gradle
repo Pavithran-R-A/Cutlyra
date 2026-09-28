@@ -1,0 +1,233 @@
+apply plugin: 'com.android.application'
+// Cutlyra M4: Kotlin toolchain for NativeBridgePlugin's M4 additions.
+apply plugin: 'org.jetbrains.kotlin.android'
+
+// Cutlyra M12/M13 — direct-distribution release signing (plan M13
+// operative section: "signed APK (own keystore, held in CI secrets...)
+// attached to GitHub Releases"). No secret material lives in this repo
+// or this file: the keystore itself and its passwords come from four
+// environment variables that only exist inside the CI job that runs
+// `.github/workflows/release.yml` (populated from repo/environment
+// secrets — see docs/RELEASING.md for the one-time setup a human does
+// once, outside of any agent session, with `keytool`).
+//
+// If those env vars are absent (every local dev build, and any CI run
+// that isn't the release workflow), `signingConfigs.release` is simply
+// never created and the `release` build type falls back to Android's
+// default unsigned release output — `assembleRelease` still succeeds,
+// it just doesn't produce an installable-without-resigning APK. This is
+// deliberate: it keeps `./gradlew assembleRelease` safe to run from any
+// machine (including this worktree) without ever needing the secrets.
+def releaseKeystorePath = System.getenv("CUTLYRA_RELEASE_KEYSTORE")
+def releaseKeystoreFile = releaseKeystorePath ? file(releaseKeystorePath) : null
+def hasReleaseSigning = releaseKeystoreFile != null && releaseKeystoreFile.exists()
+
+android {
+    namespace = "app.cutlyra.editor"
+    compileSdk = rootProject.ext.compileSdkVersion
+    // Pinned to the version the captions build is verified against (and the
+    // AGP 8.13 default); makes local builds independent of which NDKs the
+    // machine happens to have.
+    ndkVersion "27.2.12479018"
+    defaultConfig {
+        applicationId "app.cutlyra.editor"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // On-device captions: libcutlyra_whisper.so (whisper.cpp + the JNI
+        // glue in src/main/cpp). arm64-v8a is the production-phone ABI for
+        // 64-bit Android devices from the minSdk baseline onward (and
+        // satisfies Play's 64-bit requirement); x86_64 covers Android
+        // emulators, ChromeOS x86_64, and other compatible x86_64
+        // environments. armeabi-v7a/x86 are NOT shipped or tested, so some
+        // older 32-bit ARM devices are unsupported. The library
+        // is skipped entirely (see src/main/cpp/CMakeLists.txt) when
+        // scripts/fetch-whisper-cpp.sh has not been run, so this never breaks
+        // a plain `assembleDebug`.
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static"
+            }
+        }
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile releaseKeystoreFile
+                storePassword System.getenv("CUTLYRA_RELEASE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("CUTLYRA_RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("CUTLYRA_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+    compileOptions {
+        // Matches capacitor-android's own compileOptions (javac target 21) —
+        // Kotlin's jvmTarget must match or compileDebugKotlin fails with
+        // "Inconsistent JVM-target compatibility".
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    kotlinOptions {
+        jvmTarget = "21"
+    }
+}
+
+// ===================== Stage 9: release payload slimming =====================
+// The M1 spike's diagnostics payload must never ship in a RELEASE APK:
+//   - `assets/public/spike.html` + hashed `assets/public/assets/spike-*.js/css`
+//     (built by the vite `spike.html` entry) + `assets/public/spike-assets/`
+//     (committed test videos copied from apps/mobile/public/spike-assets/ via
+//     `vite build` + `cap sync`), and
+//   - `assets/spike/clip-{a,b}.mp4` (SpikeDiagnosticsPlugin fixtures — moved
+//     to src/debug/assets/spike/, a debug source set, so release never sees
+//     them at the source level at all).
+// The only runtime consumer of any of this is spike.html, which since Stage 8
+// is reachable solely through explicit internal intents (the exported
+// cutlyra-spike:// BROWSABLE deep link was removed) — zero production
+// references (verified: src/autotest.tsx and the product editor never touch
+// it). DEBUG builds keep the whole payload untouched for development/QA.
+//
+// Why the prune targets src/main/assets/public (the gitignored `cap sync`
+// OUTPUT copy — never a tracked source) BEFORE mergeReleaseAssets, and why
+// NOT the merge/compress intermediates: verified empirically in this repo,
+// AGP's compressReleaseAssets (a) silently KEEPS stale '<path>.jar' outputs
+// for inputs that vanish upstream (they leak straight into packageRelease)
+// and (b) hard-FAILS (FileNotFound) on a later incremental run when its
+// previously recorded output .jar was deleted while the input is gone too.
+// Pruning the merge OUTPUT therefore can never be made both correct and
+// incrementally safe. Pruning the merge INPUT (the generated sync copy)
+// means spike never enters merge -> compress -> package at all, which is
+// robust on every incremental build, local or CI. The canonical debug flow
+// (scripts/build-android-debug.sh, mobile-ci.yml, Android Studio) always
+// runs `bun run build && cap sync` first, which regenerates the sync copy
+// and restores the payload for debug; a bare `./gradlew assembleDebug` on a
+// tree whose last build was release-only simply ships without the throwaway
+// diagnostics until the next sync (benign, self-healing — see
+// docs/RELEASING.md). No tracked source is ever mutated.
+// NOTE: not configuration-cache-compatible (project captured in doLast);
+// this project does not enable the configuration cache.
+def spikePrunePatterns = [
+    'spike.html',                  // spike harness page (vite entry spike.html)
+    'assets/spike-*.js',           // hashed vite chunk of the spike entry
+    'assets/spike-*.css',          // hashed vite css of the spike entry
+    'spike-assets/**',             // committed spike test videos (proxy/full.mp4)
+]
+
+def pruneSpikeAssetsForRelease = tasks.register('pruneSpikeAssetsForRelease') {
+    group = 'build'
+    description = 'Removes the spike/diagnostics web payload from the generated cap-sync asset copy before release packaging (debug builds keep it).'
+    doLast {
+        // The generated `cap sync` copy of apps/mobile/www: gitignored,
+        // regenerable, safe to mutate. The source of truth (www/) and the
+        // tracked fixtures (apps/mobile/public/spike-assets/) are untouched.
+        def syncCopy = project.file('src/main/assets/public')
+        if (!syncCopy.exists()) {
+            // Nothing synced yet — nothing to prune; the asset merge fails on
+            // its own if the web dir is genuinely absent.
+            println('pruneSpikeAssetsForRelease: no synced asset copy present — nothing to prune')
+            return
+        }
+        def toRemove = []
+        project.fileTree(syncCopy).matching { it.include(spikePrunePatterns) }.each { toRemove << it }
+        toRemove.each { it.delete() }
+        // The emptied payload directory (everything under it is spike material
+        // by construction).
+        def spikeAssetsDir = new File(syncCopy, 'spike-assets')
+        if (spikeAssetsDir.exists()) {
+            spikeAssetsDir.deleteDir()
+        }
+        println("pruneSpikeAssetsForRelease: removed ${toRemove.size()} spike/diagnostics file(s) from the generated asset copy (${syncCopy})")
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        // Ordering: prune BEFORE the release asset merge reads the sync copy.
+        // Registered against AGP's lazily-created task by name so it never
+        // touches another task's realization context.
+        tasks.configureEach { t ->
+            if (t.name == "merge${variant.name.capitalize()}Assets") {
+                t.dependsOn pruneSpikeAssetsForRelease
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.activity:activity:$androidxActivityVersion"
+    implementation project(':capacitor-android')
+    // Cutlyra M4/M9 (corpus 08 §8): Media3 Transformer drives the native
+    // short-GOP preview-proxy transcode on import AND the M9 EDL export.
+    // media3-effect brings `Presentation` (downscale-to-height) and the
+    // custom cross-fade compositor. No media3-exoplayer dependency —
+    // metadata probing uses the standard SDK's MediaMetadataRetriever/
+    // MediaExtractor, not ExoPlayer.
+    //
+    // Version lives in variables.gradle ($media3Version, currently 1.11.0).
+    // Merge note (M1 spike + M4/M9 tracks pinned this independently and
+    // agreed on 1.11.0): verified directly against androidx/media's
+    // RELEASENOTES.md on 2026-08-17 that no cross-clip video
+    // transition/crossfade support has landed upstream — plan risk-register
+    // item #4 ("Media3 has no cross-clip transitions... as of Media3 1.10")
+    // still holds at 1.11.0, which is exactly why M9's cross-fade is the
+    // hand-written `CrossfadeCompositorSettings`/`TransitionAlphaMath` pair
+    // rather than a stock Transformer feature. The M1 spike's
+    // SpikeDiagnosticsPlugin (throwaway) shares these same three artifacts
+    // for its sequential-export test.
+    implementation "androidx.media3:media3-transformer:$media3Version"
+    implementation "androidx.media3:media3-common:$media3Version"
+    implementation "androidx.media3:media3-effect:$media3Version"
+    testImplementation "junit:junit:$junitVersion"
+    // Cutlyra M9 — see variables.gradle's orgJsonVersion doc comment.
+    testImplementation "org.json:json:$orgJsonVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

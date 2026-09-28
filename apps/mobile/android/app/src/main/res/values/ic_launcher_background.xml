@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cutlyra brand tile: the dark graphite/navy base of the canonical
+         mark (assets/brand/source-logo.png). -->
+    <color name="ic_launcher_background">#0B172C</color>
+</resources>
