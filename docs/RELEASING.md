@@ -1,5 +1,10 @@
 # Releasing Cutlyra
 
+> **Distribution decision updated 2026-09-29:** Google Play is now a planned
+> Android release channel. This file still documents the direct APK/iOS release
+> workflow; Play's source of truth is [PLAY_STORE_RELEASE.md](PLAY_STORE_RELEASE.md).
+> Older "no Play Store" wording below is historical context, not current policy.
+>
 Cutlyra ships **direct-distribution only** — no App Store, no Play Store
 (plan `~/.claude/plans/opencut-mobile-port.md` §8.0 item 5, ratified
 2026-08-17; see `docs/DECISIONS.md`). Every release is a GitHub Release

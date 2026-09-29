@@ -36,8 +36,9 @@ Cutlyra is a touch-first mobile editor for Android, running fully on-device:
   (brightness/contrast/saturation), aspect-ratio canvas control, clip
   speed, transform/opacity keyframes, undo/redo, and hardware-accelerated
   MP4 export — all local.
-- **Direct distribution.** Cutlyra is distributed as installable APKs
-  (GitHub Releases + sideload guides), not through an app store.
+- **Android distribution.** Direct signed APK releases remain supported, and
+  Google Play preparation is tracked in `docs/PLAY_STORE_RELEASE.md`.
+  Play uses an AAB + Play App Signing; sideload guides remain available.
 
 ## Current status (v0.1.0)
 

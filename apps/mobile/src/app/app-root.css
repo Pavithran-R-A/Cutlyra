@@ -264,3 +264,44 @@ body {
 	align-items: center;
 	gap: 8px;
 }
+
+
+/* Play policy: privacy is reachable from the normal project screen and stays readable offline. */
+.kc-home__footer {
+	margin-top: auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	color: var(--cc-text-secondary, #8b8a90);
+	font-size: 11px;
+	flex: 0 0 auto;
+}
+.kc-home__legal-link,
+.kc-privacy__back {
+	font: inherit;
+	color: var(--cc-text-secondary, #8b8a90);
+	background: none;
+	border: none;
+	padding: 6px;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.kc-privacy {
+	height: 100dvh;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	background: var(--cc-bg, #0b0b0b);
+	color: var(--cc-text-primary, #f5f5f5);
+	font-family: var(--cc-font-family, system-ui, sans-serif);
+	padding: calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-right, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 12px) calc(env(safe-area-inset-left, 0px) + 16px);
+}
+.kc-privacy__header { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.kc-privacy__header h1 { margin: 0; font-size: 20px; }
+.kc-privacy__back { font-size: 24px; text-decoration: none; min-width: 40px; min-height: 40px; }
+.kc-privacy__body { overflow-y: auto; overscroll-behavior: contain; padding: 8px 2px 24px; font-size: 14px; line-height: 1.55; }
+.kc-privacy__body h2 { margin: 22px 0 6px; font-size: 16px; }
+.kc-privacy__body p { margin: 8px 0; }
+.kc-privacy__updated { opacity: 0.6; font-size: 12px; margin-top: 24px !important; }
