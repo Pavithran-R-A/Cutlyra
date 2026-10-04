@@ -27,6 +27,9 @@ DEST="$MOBILE_DIR/android/app/src/main/cpp/whisper.cpp"
 # `whisper_full_get_token_data`'s `t_dtw` field, all of which are
 # comparatively recent additions).
 WHISPER_TAG="v1.9.2"
+# Immutable commit behind v1.9.2. The tag is retained for readability, while
+# this SHA prevents a moved/retagged ref from silently changing release input.
+WHISPER_COMMIT="306c88f4d1286aec1bf96e544632897886af5501"
 WHISPER_REPO="https://github.com/ggml-org/whisper.cpp.git"
 
 if [ "${1:-}" = "--force" ]; then
@@ -42,6 +45,15 @@ echo "==> Cloning whisper.cpp $WHISPER_TAG"
 rm -rf "$DEST"
 mkdir -p "$(dirname "$DEST")"
 git clone --depth 1 --branch "$WHISPER_TAG" "$WHISPER_REPO" "$DEST"
+actual_commit="$(git -C "$DEST" rev-parse HEAD)"
+if [ "$actual_commit" != "$WHISPER_COMMIT" ]; then
+	echo "ERROR: whisper.cpp $WHISPER_TAG resolved to unexpected commit" >&2
+	echo "  expected: $WHISPER_COMMIT" >&2
+	echo "  actual:   $actual_commit" >&2
+	rm -rf "$DEST"
+	exit 1
+fi
+echo "    commit OK ($actual_commit)"
 
 # The clone's own .git is dead weight (and would confuse the outer repo's
 # status); the pinned tag above is the provenance record.
