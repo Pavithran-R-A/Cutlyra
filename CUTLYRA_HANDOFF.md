@@ -596,3 +596,66 @@ Summary of what the deep pass added on top of the sections above:
 4. Optional: broader physical matrix (4 KB-page device, another OEM WebView).
 5. Hygiene: Closeable teardown during export ("resource failed to call
    close") and the corrupt-input error wording.
+# Stage 12 — final repository release hardening and merge (2026-10-04)
+
+The Google Play preparation work is now merged and the repository-level gates
+have been re-verified from GitHub, not inferred from the older local handoff.
+
+## Repository state
+
+- `main` release-prep merge checkpoint:
+  `ec4037d37e472db2a94f2b359da812344632f223`.
+- PR #1 ("Prepare Cutlyra for Google Play release") is merged.
+- No open PRs or open issues were present at this checkpoint.
+- No GitHub Release has been published yet; no production tag was created.
+
+## What the release-hardening pass closed
+
+1. GitHub Actions runner execution was re-tested. The original zero-step
+   runner failures were transient/environmental; later runs executed normally.
+2. Android CI's real `./gradlew: Permission denied` blocker was fixed by
+   preserving the executable bit on `apps/mobile/android/gradlew`.
+3. Bun/tooling pins were aligned on Bun 1.3.14.
+4. The three inherited mask-test failures were fixed rather than grandfathered,
+   and the unit-test gate is now strict at zero failures.
+5. Release-facing OpenCut-era support/contribution copy was replaced with
+   Cutlyra-specific guidance.
+6. The Android direct-install guide was corrected so it no longer claims the
+   app is permanently outside Google Play.
+7. The Play-prep branch added the signed AAB workflow, minimized permissions
+   and FileProvider exposure, in-app privacy UI, Play listing/Data Safety
+   drafts, and the Play release runbook.
+
+## GitHub verification on the merged source
+
+- **Bun CI: SUCCESS** on `main` merge SHA `ec4037d...`:
+  Ubuntu, Windows, and macOS invariant jobs all passed.
+- **Mobile CI: SUCCESS** on the same SHA:
+  Android debug/JVM/instrumentation-package build path passed and the unsigned
+  iOS simulator build passed.
+- The current source targets Android 16 / API 36, matching Google Play's
+  post-2026-08-31 requirement for new phone/tablet apps and updates.
+
+## Readiness classification
+
+**SOURCE / ENGINEERING READY: 100%.** There is no known remaining code, CI,
+release-workflow-definition, permission, documentation, or single-device QA
+blocker for v0.1.0.
+
+**NOT YET CONSUMER-LIVE.** The remaining gates require publisher-controlled or
+Google-controlled state and must not be faked by an agent:
+
+1. Play Console account/identity/contact/device verification as applicable.
+2. A real public support/privacy contact and active public privacy-policy URL.
+3. Required Google Play listing graphics from the final candidate: 512×512
+   store icon, 1024×500 feature graphic, and compliant final screenshots.
+4. Permanent upload key creation + secure backup + GitHub Actions secrets.
+5. Final signed AAB generation from the release commit and Play App Signing.
+6. Internal-test install/smoke of the Play-delivered artifact.
+7. For a new personal developer account created after 2023-11-13: at least
+   12 closed-test users continuously opted in for 14 days, then production
+   access application.
+8. Google production review/approval and publication.
+
+Do not describe those external gates as complete until they are actually
+observed in the publisher account.

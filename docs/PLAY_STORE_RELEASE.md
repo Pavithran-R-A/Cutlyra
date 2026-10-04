@@ -1,6 +1,6 @@
 # Cutlyra — Google Play release runbook
 
-**Status 2026-09-29: SOURCE PREP COMPLETE; HUMAN ACCOUNT/SIGNING INPUTS REMAIN.**
+**Status 2026-10-04: SOURCE + CI READY; HUMAN PLAY ACCOUNT/SIGNING/PUBLISHER INPUTS REMAIN.**
 
 This is the source of truth for Cutlyra's Android Google Play release and
 supersedes older notes that said "no Play Store release". Direct APK
@@ -23,16 +23,21 @@ distribution may continue separately.
 - Privacy policy text is reachable from the normal Projects screen
 - Historical QA records a signed AAB rehearsal, 16 KB ZIP/ELF alignment,
   emulator testing, and physical Android 16 qualification; the final Play
-  candidate must still be rebuilt from its final commit
+  candidate must still be rebuilt from its final signed commit
+- Release-prep source was merged to `main` at `ec4037d37e472db2a94f2b359da812344632f223`.
+  On that exact merge SHA, **Bun CI passed on Ubuntu, Windows, and macOS** and
+  **Mobile CI passed both Android and iOS simulator jobs**.
 
 ## Play requirements reflected in this branch
 
 As of this runbook, new phone/tablet apps submitted after 2026-08-31 must
 target Android 16 / API 36 or higher. Cutlyra does.
 
-New personal developer accounts created after 2023-11-13 require a closed test
-with at least 12 testers continuously opted in for at least 14 days before
-production-access application.
+Google's current rule for **personal developer accounts created after
+2023-11-13** is a closed test with at least 12 testers continuously opted in
+for at least 14 days before applying for production access. Older personal
+accounts and organization accounts may have different account-level gates;
+Play Console is authoritative for the publisher account actually used.
 
 Every Play app requires a public privacy-policy URL in Play Console and privacy
 policy text or a link inside the app.
@@ -108,6 +113,15 @@ play/share result; force-stop/reopen persistence.
 
 Record device, Android version, tested features, failures, feedback and fixes.
 
+## Source-readiness verdict
+
+The repository is **100% source-ready for the v0.1.0 release process** at the
+current verified merge: product code, release-prep changes, cross-platform CI,
+permissions/privacy hardening, Play AAB workflow, store copy, and testing
+runbooks are in place. The remaining items below are not missing engineering
+work; they require the publisher's identity, signing material, Play Console,
+real testers, or Google's approval.
+
 ## Human-only sequence
 
 1. Create/verify Play Console account and pay registration fee.
@@ -115,13 +129,14 @@ Record device, Android version, tested features, failures, feedback and fixes.
 3. Create app `app.cutlyra.editor`.
 4. Supply the real developer/support/privacy contact email.
 5. Publish the privacy policy at a public URL.
-6. Create/back up the upload key and configure GitHub secrets.
-7. Run the Play AAB workflow; retain AAB + checksum.
-8. Enroll in Play App Signing and upload to Internal testing.
-9. Smoke-test the Play-delivered build on a real phone.
-10. Start Closed testing; keep >=12 testers continuously opted in >=14 days.
-11. Apply for production access with recorded test evidence.
-12. Submit production release and monitor Android Vitals/reviews.
+6. Prepare the required Play icon, feature graphic, and final-candidate screenshots per `PLAY_STORE_LISTING.md`.
+7. Create/back up the upload key and configure GitHub secrets.
+8. Run the Play AAB workflow; retain AAB + checksum.
+9. Enroll in Play App Signing and upload to Internal testing.
+10. Smoke-test the Play-delivered build on a real phone.
+11. If the publisher account is subject to the new-personal-account rule, start Closed testing and keep >=12 testers continuously opted in >=14 days.
+12. Apply for production access with recorded test evidence when Play Console requires it.
+13. Submit production release and monitor Android Vitals/reviews.
 
 ## Release gate
 
@@ -132,10 +147,11 @@ Record device, Android version, tested features, failures, feedback and fixes.
 - [x] FileProvider minimized
 - [x] privacy policy text available in-app
 - [x] store/Data Safety drafts prepared
-- [ ] final GitHub CI gates execute green
+- [x] final GitHub CI gates execute green on merged release-prep source
 - [ ] real Play upload key configured
 - [ ] final AAB rebuilt/checksummed
 - [ ] public privacy URL + real contact live
+- [ ] required Play icon + feature graphic + final-candidate screenshots prepared
 - [ ] Play account/identity/device verification complete
 - [ ] Internal test Play build smoke-tested
 - [ ] closed-test requirement complete

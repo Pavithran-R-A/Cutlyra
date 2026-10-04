@@ -183,7 +183,12 @@ asset + repin the guide" ritual used elsewhere — see plan M13 item 5.
 
 ## 3. Status of this workflow
 
-**The GitHub Actions workflow itself has not had a real run yet** — no
+**Current repository CI is green.** On merged release-prep SHA
+`ec4037d37e472db2a94f2b359da812344632f223`, Bun CI passed its Ubuntu,
+Windows, and macOS invariant matrix and Mobile CI passed both Android debug
+and iOS simulator jobs.
+
+**The tag-triggered release workflow itself has not had a real publish run yet** — no
 tag has been pushed. What *has* been verified directly, locally, in
 this session, against the real Android toolchain (SDK platform 36 /
 build-tools 36.0.0, JDK):
@@ -229,26 +234,24 @@ logcat errors. Evidence retained (gitignored):
 
 ---
 
-## 4. Final pre-physical-QA procedure (the whole remaining human path)
+## 4. Final release-owner procedure
 
-Everything automatable before a real phone exists is done. What
-remains, in order:
+Physical-device qualification is already complete: Stage 11 in
+`CUTLYRA_HANDOFF.md` records the full iQOO I2221 Android 16 pass, including
+release-mode export, persistence, offline operation, and the real-device bugs
+found and fixed during qualification. The remaining path is publisher-owned:
 
-1. **Physical-device QA.** Install a debug (or rehearsal-style locally
-   signed) build on the target phone and re-run the qualification the
-   emulator cannot give: real codec/GPU behavior, thermals, OEM WebView
-   stacks (`docs/EMULATOR-QA.md` records what emulator QA did cover).
-2. **Generate the permanent Cutlyra signing key** — §1a, on your own
+1. **Generate the permanent Cutlyra signing/upload key** — §1a, on your own
    machine, alias `cutlyra`.
-3. **Back it up securely** (password manager for the passwords, plus a
+2. **Back it up securely** (password manager for the passwords, plus a
    private backup of the `.keystore` file itself).
-4. **Configure the four GitHub repo secrets** — §1c.
-5. **Optional:** run one final local signed build with the real key
-   (§1d's script with the four `CUTLYRA_RELEASE_*` env vars set) and
-   install it on the phone from step 1 before tagging.
-6. **Create `v0.1.0`** — §2 steps 1–2 (version bump commit, tag, push).
-7. **Let the release workflow build/sign/verify** — §2 step 3.
-8. **Verify the published artifacts:** `SHA256SUMS.txt` must match your
+3. **Configure the four GitHub repo secrets** — §1c.
+4. **Recommended:** run one final local signed build with the permanent key
+   (§1d's script with the four `CUTLYRA_RELEASE_*` env vars set) and install
+   it on the qualified phone before tagging.
+5. **Create `v0.1.0`** — §2 steps 1–2 (version bump commit, tag, push).
+6. **Let the release workflow build/sign/verify** — §2 step 3.
+7. **Verify the published artifacts:** `SHA256SUMS.txt` must match your
    downloads, and the APK's certificate must be *yours*:
 
    ```sh
