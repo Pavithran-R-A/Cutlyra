@@ -107,6 +107,11 @@ jobs:
               print(f"16 KB ELF OK: {lib} {aligns}")
           PY
           unzip -l "$AAB" | grep -q "base/manifest/AndroidManifest.xml"
+          unzip -l "$AAB" | grep -q "base/assets/public/legal/CUTLYRA-LICENSE.txt"
+          unzip -l "$AAB" | grep -q "base/assets/public/legal/CUTLYRA-NOTICE.txt"
+          unzip -l "$AAB" | grep -q "base/assets/public/legal/THIRD_PARTY_NOTICES.md"
+          unzip -l "$AAB" | grep -q "base/assets/public/legal/SOUNDTOUCHJS-LICENSE.txt"
+          unzip -l "$AAB" | grep -q "base/assets/public/legal/WHISPERCPP-LICENSE.txt"
           unzip -l "$AAB" | grep -q "base/assets/models/ggml-tiny.en.bin"
           unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libcutlyra_whisper.so"
           unzip -l "$AAB" | grep -q "base/lib/x86_64/libcutlyra_whisper.so"
