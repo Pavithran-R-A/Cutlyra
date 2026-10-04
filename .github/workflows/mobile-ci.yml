@@ -7,11 +7,10 @@ name: Mobile CI
 # builds verified locally in the M3 session, run on EVERY push/PR to `main`
 # so debug builds never silently rot.
 #
-# The signed-release half of that exit criterion (real Android release
-# keystore signing + an unsigned iOS device .ipa for direct distribution,
-# plan §8.0 item 5: no App Store / Play Store release) now lives in
-# .github/workflows/release.yml, gated behind a `v*.*.*` tag push rather
-# than every push — see docs/RELEASING.md. This workflow's iOS build
+# Signed direct-distribution artifacts live in .github/workflows/release.yml,
+# gated behind a `v*.*.*` tag push. Google Play AAB generation is handled
+# separately by .github/workflows/play-bundle.yml — see docs/RELEASING.md
+# and docs/PLAY_STORE_RELEASE.md. This workflow's iOS build
 # intentionally still targets the Simulator, not a device: local signing
 # is flaky from agent sessions, and there is deliberately no CI-held Apple
 # signing identity anywhere in this project (release.yml's iOS artifact is
@@ -142,9 +141,9 @@ jobs:
         # emulator needed. The rest of M4/M9's native pipeline
         # (MediaProbe/ThumbnailStripGenerator/MediaImporter/MediaPickerIntents;
         # EdlToComposition/Media3Exporter's golden-frame harness) is
-        # instrumentation-only (app/src/androidTest) and is NOT run here —
-        # ubuntu-latest runners have no Android emulator; see the M4/M9
-        # handoffs for why that verification is still open.
+        # instrumentation-only (app/src/androidTest). The dedicated
+        # android-instrumentation job below runs those tests on an API 35
+        # emulator after this build job is green.
         run: ./gradlew testDebugUnitTest --console=plain
         working-directory: apps/mobile/android
 
@@ -165,9 +164,8 @@ jobs:
       - name: gradlew :app:assembleDebugAndroidTest
         # Cutlyra M9: compiles + packages the instrumentation tests
         # (including ExportGoldenFrameInstrumentedTest.kt) against the real
-        # Android SDK/Media3 API surface on every push — catches a signature
-        # regression immediately even though the tests themselves still need
-        # a device/emulator to actually run (see the M9 handoff).
+        # Android SDK/Media3 API surface on every push — catches compile-time
+        # regressions before the dedicated emulator job executes the suite.
         #
         # Scoped to `:app:` deliberately, NOT the bare `assembleDebugAndroidTest`
         # (which also builds every OTHER subproject's androidTest variant):
