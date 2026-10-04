@@ -280,7 +280,8 @@ function LegalNoticesScreen({ onBack }: { onBack: () => void }) {
 				<p>
 					Cutlyra is open-source software and includes third-party open-source
 					components. The license and notice texts below are bundled inside this
-					copy of the app so they remain available offline.
+					copy of the app so they remain available offline. Source code for
+					Cutlyra is published at github.com/Pavithran-R-A/Cutlyra.
 				</p>
 				<pre
 					style={{
