@@ -109,13 +109,19 @@ age-group and IARC questions truthfully from the final feature/listing set.
 
 ## Privacy-policy blocker owned by the publisher
 
-The app now contains privacy text. The web source at
-`apps/web/src/app/privacy/page.tsx` has also been rewritten for Cutlyra.
+The app now contains privacy text. For public hosting, the repository also
+contains a standalone, dependency-free policy at
+`apps/web/public/privacy-policy.html`. Use that static page (or an equivalent
+verbatim deployment) for the Play Console privacy-policy field so the public
+document cannot inherit unrelated web-app branding, scripts, analytics, or
+runtime dependencies.
 
 Before Play submission, the publisher must make that page available at an
-active public non-PDF URL and supply the real developer/support/privacy contact
-email used by the Play listing. The privacy text intentionally points to that
-Play developer-contact email instead of inventing an address.
+active, public, non-geofenced, non-PDF URL and supply the real
+developer/support/privacy contact email used by the Play listing. The policy
+also exposes the Cutlyra project issue tracker as an inquiry mechanism; the
+verified Play contact email remains the preferred user-facing contact once the
+listing exists.
 
 ## Closed-test plan
 
@@ -141,7 +147,7 @@ remain separate from engineering readiness.
 2. Complete identity/contact/device verification.
 3. Create app `app.cutlyra.editor`.
 4. Supply the real developer/support/privacy contact email.
-5. Publish the privacy policy at a public URL.
+5. Publish `apps/web/public/privacy-policy.html` (or equivalent) at an active public URL and verify it in a signed-out browser.
 6. Prepare the required Play icon, feature graphic, and final-candidate screenshots per `PLAY_STORE_LISTING.md`.
 7. Create/back up the upload key and configure GitHub secrets.
 8. Run the Play AAB workflow; retain AAB + checksum.
