@@ -194,7 +194,9 @@ jobs:
           test -s "$AAB"
           test -s "$SYMBOLS"
 
-          zipalign -P 16 -c 4 "$APK"
+          ZIPALIGN="$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign"
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -P 16 -c 4 "$APK"
           unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
           unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
