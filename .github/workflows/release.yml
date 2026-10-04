@@ -262,6 +262,7 @@ jobs:
             --notes "Direct-distribution build. Google Play releases use the separate Play AAB workflow and Play App Signing.
 
           - **Android:** signed APK. Sideload install — see \`docs/guides/android-sideload.md\`.
-          - **iOS:** unsigned \`.ipa\`. Install via AltStore/SideStore (free Apple ID, 7-day re-sign), or build from source via Xcode — see \`docs/guides/ios-xcode-build.md\`.
+          - **Native symbols:** included separately for crash/native-stack symbolication.
+          - **iOS:** not a v0.1.0 shipping target; no iOS binary is published.
 
           \`SHA256SUMS.txt\` is included for artifact verification."
