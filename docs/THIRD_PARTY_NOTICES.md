@@ -56,13 +56,18 @@ explicitly rather than leaving them to scroll by inside the collapsed
   `legal/SOUNDTOUCHJS-LGPL-2.1.txt` and copied into every mobile bundle.
   Upstream v0.3.0 is pinned for notice provenance to commit
   `36b161bb7d69d801b6a81674ad0fc0c42082729f`. Cutlyra's corresponding
-  application source/build files are public in this repository; release
-  packaging must preserve the license + source/rebuild availability required
-  by that version of LGPL.
+  application source/build files are tracked in this repository, but the
+  repository is private during release hardening. Before distributing a
+  binary to end users, the publisher must satisfy LGPL-2.1's applicable
+  source/relink availability requirements (for example by making the needed
+  source/build materials publicly available) or remove/replace this bundled
+  dependency. Shipping is blocked until that choice is resolved and verified.
 - **`@img/sharp-libvips-darwin-arm64@1.2.4`** (LGPL-3.0-or-later) — a
-  platform-specific native binary for Next.js's optional build-time image
-  processing (`sharp`). Same posture: unmodified, dynamically loaded,
-  needs a real look at M13 packaging time, not asserted-safe here.
+  platform-specific optional binary used by the inherited Next.js web
+  toolchain. It is not an Android runtime dependency merely because it is
+  present in the monorepo lockfile; Android release packaging must continue
+  to prove what actually ships instead of treating the whole lockfile as the
+  APK runtime closure.
 
 The generated inventory below covers the **npm/Bun (JS/TS) tree**. The Rust
 workspace is a separate ecosystem, but the release gate now computes the
