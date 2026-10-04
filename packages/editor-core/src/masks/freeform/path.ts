@@ -566,6 +566,27 @@ export function insertPointIntoFreeformSegment({
 		y: endPoint.y + endPoint.inY,
 	};
 	const p3 = { x: endPoint.x, y: endPoint.y };
+
+	if (
+		startPoint.outX === 0 &&
+		startPoint.outY === 0 &&
+		endPoint.inX === 0 &&
+		endPoint.inY === 0
+	) {
+		const splitPoint = lerpPoint({ a: p0, b: p3, t: clampedT });
+		const nextPoints = [...points];
+		nextPoints.splice(indices.endIndex, 0, {
+			id: pointId,
+			x: splitPoint.x,
+			y: splitPoint.y,
+			inX: 0,
+			inY: 0,
+			outX: 0,
+			outY: 0,
+		});
+		return nextPoints;
+	}
+
 	const p01 = lerpPoint({ a: p0, b: p1, t: clampedT });
 	const p12 = lerpPoint({ a: p1, b: p2, t: clampedT });
 	const p23 = lerpPoint({ a: p2, b: p3, t: clampedT });

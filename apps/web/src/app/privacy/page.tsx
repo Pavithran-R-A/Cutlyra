@@ -1,208 +1,43 @@
 import type { Metadata } from "next";
 import { BasePage } from "@/app/base-page";
-import {
-	Accordion,
-	AccordionContent,
-	AccordionItem,
-	AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Separator } from "@/components/ui/separator";
-import { SOCIAL_LINKS } from "@/site/social";
 
 export const metadata: Metadata = {
-	title: "Privacy Policy - OpenCut",
-	description:
-		"Learn how OpenCut handles your data and privacy. Our commitment to protecting your information while you edit videos.",
-	openGraph: {
-		title: "Privacy Policy - OpenCut",
-		description:
-			"Learn how OpenCut handles your data and privacy. Our commitment to protecting your information while you edit videos.",
-		type: "website",
-	},
+	title: "Privacy Policy - Cutlyra",
+	description: "How Cutlyra accesses and protects media and project data while editing entirely on-device.",
 };
 
 export default function PrivacyPage() {
 	return (
-		<BasePage
-			title="Privacy policy"
-			description="Learn how we handle your data and privacy. Contact us if you have any questions."
-		>
-			<Accordion type="single" collapsible className="w-full">
-				<AccordionItem
-					value="quick-summary"
-					className="rounded-2xl border px-5"
-				>
-					<AccordionTrigger className="no-underline!">
-						Quick summary
-					</AccordionTrigger>
-					<AccordionContent>
-						<h3 className="mb-3 text-lg font-medium">
-							Your content never leaves your device.
-						</h3>
-						<ol className="list-decimal space-y-2 pl-6">
-							<li>
-								Basic editing happens locally in your browser - we never see
-								your files
-							</li>
-							<li>
-								AI features like auto captions run locally in your browser
-								too - nothing is uploaded
-							</li>
-							<li>
-								OpenCut does not currently require an account or login
-							</li>
-							<li>Project data stays on your device, not our servers</li>
-							<li>
-								We do not run any analytics, telemetry, or tracking scripts
-							</li>
-							<li>You can clear local data from your browser at any time</li>
-							<li>
-								We don&apos;t sell or share your data with anyone (we don&apos;t
-								even have it)
-							</li>
-						</ol>
-						<p className="mt-4">
-							Questions? Email us at{" "}
-							<a
-								href="mailto:oss@opencut.app"
-								className="text-primary hover:underline"
-							>
-								oss@opencut.app
-							</a>
-						</p>
-					</AccordionContent>
-				</AccordionItem>
-			</Accordion>
-
+		<BasePage title="Cutlyra privacy policy" description="Cutlyra is an offline-first video editor. Your editing media and project data stay on your device.">
 			<section className="flex flex-col gap-3">
-				<h2 className="text-2xl font-semibold">How We Handle Your Content</h2>
-				<p>
-					<strong>
-						All editing and processing happens locally on your device.
-					</strong>{" "}
-					We never upload, store, or have access to your video or audio files.
-					Your content remains completely private and under your control.
-					AI-powered features like auto captions also run in your browser using
-					on-device models - no content ever leaves your device.
-				</p>
+				<h2 className="text-2xl font-semibold">Data Cutlyra accesses</h2>
+				<p>When you choose media, Cutlyra accesses only the photos, videos, or audio files you select through Android&apos;s system pickers. Selected media is copied into Cutlyra&apos;s app-private storage so editing, previews, captions, and export can work locally.</p>
+				<p>If you choose camera capture, Cutlyra requests camera access for that user-initiated capture. Camera media is processed locally. Cutlyra does not request broad photo-library access and does not request microphone access in the current Android release.</p>
 			</section>
-
 			<section className="flex flex-col gap-3">
-				<h2 className="text-2xl font-semibold">Accounts & Authentication</h2>
-				<p>
-					OpenCut does not currently offer user accounts, login, or Google
-					sign-in.
-				</p>
-				<p>
-					Because there is no account system today, we do not collect account
-					emails, profile information, or OAuth identity data.
-				</p>
-				<p>
-					Your projects are never stored on our servers. All project data,
-					including names, thumbnails, and creation dates, is stored locally
-					in your browser using IndexedDB.
-				</p>
+				<h2 className="text-2xl font-semibold">Collection and sharing</h2>
+				<p>Cutlyra does not transmit your projects, media, captions, usage activity, identifiers, contacts, location, or other personal data off your device. It contains no advertising SDK, analytics SDK, telemetry service, account system, or cloud sync.</p>
+				<p>Cutlyra does not sell or share user data.</p>
 			</section>
-
 			<section className="flex flex-col gap-3">
-				<h2 className="text-2xl font-semibold">Analytics</h2>
-				<p>
-					We do not run any analytics, telemetry, or tracking scripts. Nothing
-					about your visit or your use of the editor is sent anywhere.
-				</p>
+				<h2 className="text-2xl font-semibold">Storage, retention, and deletion</h2>
+				<p>Projects and imported working media remain in local app storage until you delete the project or remove the app/data from Android settings. Android cloud backup is disabled for Cutlyra. Exported videos remain wherever you choose to save them and are under your control.</p>
 			</section>
-
 			<section className="flex flex-col gap-3">
-				<h2 className="text-2xl font-semibold">Local Storage & Cookies</h2>
-				<p>We use browser local storage and IndexedDB to:</p>
-				<ul className="list-disc space-y-2 pl-6">
-					<li>Save your projects locally on your device</li>
-					<li>Remember your editor preferences and settings</li>
-					<li>Store app state needed for the editor to work between sessions</li>
-				</ul>
-				<p>
-					All data stays on your device and can be cleared at any time through
-					your browser settings.
-				</p>
+				<h2 className="text-2xl font-semibold">Accounts</h2>
+				<p>Cutlyra does not provide user accounts or sign-in, so the Cutlyra developer does not hold server-side account data and there is no cloud account to delete.</p>
 			</section>
-
 			<section className="flex flex-col gap-3">
-				<h2 className="text-2xl font-semibold">Third-Party Services</h2>
-				<p>
-					Cutlyra does not integrate with any third-party analytics, CMS, or
-					sound-search service. The editor runs fully offline.
-				</p>
+				<h2 className="text-2xl font-semibold">Third-party components</h2>
+				<p>Cutlyra uses open-source libraries for its app shell, editing, media processing, and on-device captions. They are used locally by the app; Cutlyra does not integrate advertising, analytics, or tracking services.</p>
 			</section>
-
 			<section className="flex flex-col gap-3">
-				<h2 className="text-2xl font-semibold">Your Rights</h2>
-				<p>You have complete control over your data:</p>
-				<ul className="list-disc space-y-2 pl-6">
-					<li>No account is required to use OpenCut today</li>
-					<li>Clear local storage to remove all saved projects</li>
-					<li>Contact us with any privacy concerns</li>
-				</ul>
+				<h2 className="text-2xl font-semibold">Privacy inquiries</h2>
+				<p>The developer contact email published in Cutlyra&apos;s Google Play listing is the privacy contact and inquiry mechanism for this app.</p>
 			</section>
-
-			<section className="flex flex-col gap-3">
-				<h2 className="text-2xl font-semibold">Open Source Transparency</h2>
-				<p>
-					OpenCut is completely open source. You can review our code, see
-					exactly how we handle data, and even self-host the application if you
-					prefer.
-				</p>
-				<p>
-					View our source code on{" "}
-					<a
-						href={SOCIAL_LINKS.github}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-primary hover:underline"
-					>
-						GitHub
-					</a>
-					.
-				</p>
-			</section>
-
-			<section className="flex flex-col gap-3">
-				<h2 className="text-2xl font-semibold">Contact Us</h2>
-				<p>Questions about this privacy policy or how we handle your data?</p>
-				<p>
-					Open an issue on our{" "}
-					<a
-						href={`${SOCIAL_LINKS.github}/issues`}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-primary hover:underline"
-					>
-						GitHub repository
-					</a>
-					, email us at{" "}
-					<a
-						href="mailto:oss@opencut.app"
-						className="text-primary hover:underline"
-					>
-						oss@opencut.app
-					</a>
-					, or reach out on{" "}
-					<a
-						href={SOCIAL_LINKS.x}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-primary hover:underline"
-					>
-						X (Twitter)
-					</a>
-					.
-				</p>
-			</section>
-
 			<Separator />
-
-			<p className="text-muted-foreground text-sm">
-				Last updated: March 15, 2026
-			</p>
+			<p className="text-muted-foreground text-sm">Last updated: September 29, 2026</p>
 		</BasePage>
 	);
 }

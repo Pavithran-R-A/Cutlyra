@@ -79,7 +79,7 @@ class CrashBoundary extends Component<
 	}
 }
 
-type Screen = { name: "home" } | { name: "editor" };
+type Screen = { name: "home" } | { name: "editor" } | { name: "privacy" };
 
 function App() {
 	const [screen, setScreen] = useState<Screen>({ name: "home" });
@@ -100,10 +100,25 @@ function App() {
 		);
 	}
 
-	return <HomeScreen onOpenEditor={() => setScreen({ name: "editor" })} />;
+	if (screen.name === "privacy") {
+		return <PrivacyScreen onBack={() => setScreen({ name: "home" })} />;
+	}
+
+	return (
+		<HomeScreen
+			onOpenEditor={() => setScreen({ name: "editor" })}
+			onOpenPrivacy={() => setScreen({ name: "privacy" })}
+		/>
+	);
 }
 
-function HomeScreen({ onOpenEditor }: { onOpenEditor: () => void }) {
+function HomeScreen({
+	onOpenEditor,
+	onOpenPrivacy,
+}: {
+	onOpenEditor: () => void;
+	onOpenPrivacy: () => void;
+}) {
 	const editor = useEditor();
 	// CRITICAL finding #2 of the 2026-08-18 test sweep ("saved projects never
 	// appear"): this originally read `editor.project.getSavedProjects()`
@@ -185,7 +200,42 @@ function HomeScreen({ onOpenEditor }: { onOpenEditor: () => void }) {
 					))}
 				</ul>
 			)}
+			<footer className="kc-home__footer">
+				<button type="button" className="kc-home__legal-link" onClick={onOpenPrivacy}>
+					Privacy
+				</button>
+				<span aria-hidden="true">•</span>
+				<span>Offline · no account · no ads</span>
+			</footer>
 		</div>
+	);
+}
+
+function PrivacyScreen({ onBack }: { onBack: () => void }) {
+	return (
+		<main className="kc-privacy" data-cutlyra-theme="cutlyra-dark">
+			<header className="kc-privacy__header">
+				<button type="button" className="kc-privacy__back" onClick={onBack} aria-label="Back to projects">←</button>
+				<h1>Privacy policy</h1>
+			</header>
+			<div className="kc-privacy__body">
+				<p><strong>Cutlyra is an offline-first video editor.</strong> Your editing media and project data are processed on your device and are not sent to the Cutlyra developer or to advertising, analytics, or cloud services.</p>
+				<h2>Data Cutlyra accesses</h2>
+				<p>When you choose media, Cutlyra accesses only the photos, videos, or audio files you select through Android's system pickers. Selected media is copied into Cutlyra's app-private storage so editing, previews, captions, and export can work locally.</p>
+				<p>If you choose camera capture, Cutlyra requests camera access for that user-initiated capture. Camera media is processed locally. Cutlyra does not request broad photo-library access and does not request microphone access.</p>
+				<h2>Collection and sharing</h2>
+				<p>Cutlyra does not transmit your projects, media, captions, usage activity, identifiers, contacts, location, or other personal data off your device. It contains no advertising SDK, analytics SDK, telemetry service, account system, or cloud sync. No user data is sold or shared.</p>
+				<h2>Storage, retention, and deletion</h2>
+				<p>Projects and imported working media remain in local app storage until you delete the project or remove the app/data from Android settings. Android cloud backup is disabled for Cutlyra. Exported videos remain wherever you choose to save them and are under your control.</p>
+				<h2>Accounts</h2>
+				<p>Cutlyra does not provide user accounts or sign-in, so it does not hold server-side account data and there is no cloud account to delete.</p>
+				<h2>Third-party components</h2>
+				<p>Cutlyra uses open-source libraries for its app shell, editing, media processing, and on-device captions. They are used locally by the app; Cutlyra does not integrate advertising, analytics, or tracking services.</p>
+				<h2>Privacy inquiries</h2>
+				<p>The developer contact email published in Cutlyra's Google Play listing is the privacy contact and inquiry mechanism for this app.</p>
+				<p className="kc-privacy__updated">Last updated: 29 September 2026</p>
+			</div>
+		</main>
 	);
 }
 

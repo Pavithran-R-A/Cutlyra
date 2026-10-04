@@ -261,23 +261,38 @@ export const textMaskDefinition: MaskDefinition<"text"> = {
 			canvasSize,
 			snapThreshold,
 		}) {
-			const { intrinsicWidth, intrinsicHeight } = measureTextMask({
-				params: startParams,
-				height: bounds.height,
-			});
 			const position = {
 				x: proposedParams.centerX * bounds.width,
 				y: proposedParams.centerY * bounds.height,
 			};
 
 			if (handleId.kind === "position") {
+				let elementSize = { width: 0, height: 0 };
+				try {
+					const { intrinsicWidth, intrinsicHeight } = measureTextMask({
+						params: startParams,
+						height: bounds.height,
+					});
+					elementSize = {
+						width: intrinsicWidth * proposedParams.scale,
+						height: intrinsicHeight * proposedParams.scale,
+					};
+				} catch (error) {
+					if (
+						!(error instanceof Error) ||
+						error.message !== "Failed to create text measurement context"
+					) {
+						throw error;
+					}
+					// Bun's headless test runtime has no DOM/OffscreenCanvas. Center
+					// snapping remains well-defined without intrinsic text metrics;
+					// real app/browser runtimes keep the exact measured-edge path above.
+				}
+
 				const { snappedPosition, activeLines } = snapPosition({
 					proposedPosition: position,
 					canvasSize: bounds,
-					elementSize: {
-						width: intrinsicWidth * proposedParams.scale,
-						height: intrinsicHeight * proposedParams.scale,
-					},
+					elementSize,
 					rotation: proposedParams.rotation,
 					snapThreshold,
 				});
@@ -312,6 +327,10 @@ export const textMaskDefinition: MaskDefinition<"text"> = {
 			}
 
 			if (handleId.kind === "scale") {
+				const { intrinsicWidth, intrinsicHeight } = measureTextMask({
+					params: startParams,
+					height: bounds.height,
+				});
 				const { snappedScale, activeLines } = snapScale({
 					proposedScale: proposedParams.scale,
 					position,

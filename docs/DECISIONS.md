@@ -1,5 +1,11 @@
 # Decisions
 
+> **2026-09-29 distribution override:** Cutlyra is now being prepared for
+> Google Play. Older decisions below saying "no Play Store" or "direct
+> distribution only" are superseded for Android. Direct APK distribution may
+> continue alongside Play. See `docs/PLAY_STORE_RELEASE.md`.
+>
+
 > **Rebrand note (2026-09-14).** The project was renamed **Cutlyra**
 > (Android application ID `app.cutlyra.editor`). Decisions below that
 > refer to "Cutlyra" are historical records from before the rename; the
