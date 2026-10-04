@@ -6,11 +6,12 @@
  * install` and not yet pruned by a fresh one) and emits a license summary
  * as a Markdown fragment.
  *
- * This covers the npm/Bun (JS/TS) dependency tree only. Rust crates
- * (rust/crates/*, rust/wasm) are a separate ecosystem with their own
- * license metadata (`cargo metadata` / Cargo.lock); auditing that tree
- * needs `cargo` on PATH and is tracked as a follow-up rather than done
- * here (see the note this script prints at the end, and docs/DECISIONS.md).
+ * This script covers the npm/Bun (JS/TS) dependency tree only. The Rust
+ * ecosystem is audited separately by scripts/audit-wasm-licenses.mjs, which
+ * traverses the external dependency closure reachable from the shipped
+ * opencut-wasm package and fails CI closed on missing/review-required license
+ * metadata. Keep the two audits separate: a monorepo-wide Cargo inventory
+ * would incorrectly mix desktop-only crates into the Android runtime posture.
  *
  * Usage:
  *   bun scripts/generate-third-party-notices.mjs > /tmp/npm-notices.md
