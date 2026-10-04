@@ -294,7 +294,7 @@ if [ "$TEST_PASS" -ge "$BASELINE_TEST_PASS_MIN" ] && [ "$TEST_FAIL" -le "$BASELI
 	pass "$TEST_PASS pass / $TEST_FAIL fail — within baseline ($BASELINE_TEST_PASS_MIN+ pass, $BASELINE_TEST_FAIL_MAX max fail)"
 else
 	fail "$TEST_PASS pass / $TEST_FAIL fail — outside baseline ($BASELINE_TEST_PASS_MIN+ pass, $BASELINE_TEST_FAIL_MAX max fail)"
-	printf '%s\n' "$TEST_OUT" | tail -n 60
+	printf '%s\n' "$TEST_OUT"
 fi
 
 # ---------------------------------------------------------------------------
