@@ -5,10 +5,11 @@
 > workflow; Play's source of truth is [PLAY_STORE_RELEASE.md](PLAY_STORE_RELEASE.md).
 > Older "no Play Store" wording below is historical context, not current policy.
 >
-Cutlyra ships **direct-distribution only** — no App Store, no Play Store
-(plan `~/.claude/plans/opencut-mobile-port.md` §8.0 item 5, ratified
-2026-08-17; see `docs/DECISIONS.md`). Every release is a GitHub Release
-attached to a `v*.*.*` tag, built by
+Cutlyra's Android release plan supports **Google Play plus optional direct
+APK distribution**. The older no-store decision is retained only as historical
+context in `docs/DECISIONS.md`; the current Play source of truth is
+[PLAY_STORE_RELEASE.md](PLAY_STORE_RELEASE.md). Direct releases are GitHub
+Releases attached to a `v*.*.*` tag and built by
 [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
 - **Android:** a signed release APK, installable directly (sideload).

@@ -1,27 +1,19 @@
-# Getting Help
+# Getting help with Cutlyra
 
-Thanks for using OpenCut! If you need help, here are your options:
+Cutlyra is an offline-first mobile video editor. For reproducible app problems,
+use the repository's **Bug report** issue form and include the Cutlyra version,
+Android version, device model, and exact steps that trigger the problem.
 
-## Documentation
+For feature ideas, use the **Feature request** issue form. Please search existing
+issues first so the same request is not split across multiple threads.
 
-- Check our [README](../README.md) for basic setup instructions
-- Review the [Contributing Guidelines](CONTRIBUTING.md) for development setup
+## Security issues
 
-## Issues
+Do **not** file a public issue for a suspected vulnerability. Follow
+[SECURITY.md](../SECURITY.md) and use a private GitHub Security Advisory.
 
-- **Bug reports**: Use the bug report template
-- **Feature requests**: Use the feature request template
-- **Questions**: Use GitHub Discussions for general questions
+## Release/support contact
 
-## Community
-
-- Join our discussions on GitHub
-- Follow the [Code of Conduct](CODE_OF_CONDUCT.md)
-
-## Response Times
-
-- Issues are typically triaged within 2-3 business days
-- Feature requests may take longer to evaluate
-- Security issues are handled with priority
-
-We appreciate your patience and contributions to making OpenCut better!
+The public support and privacy contact for the Google Play release is the
+verified developer contact published in the Play listing. That address is a
+release-owner input and is deliberately not invented or hard-coded here.

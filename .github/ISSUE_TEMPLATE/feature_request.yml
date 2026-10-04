@@ -1,11 +1,11 @@
 name: Feature request
-description: Suggest an idea for OpenCut
+description: Suggest an idea for Cutlyra
 title: "[FEATURE] "
 labels: enhancement
 body:
   - type: markdown
     attributes:
-      value: Please make sure that no duplicated issues has already been delivered.
+      value: Please search existing issues first so duplicate requests stay in one place.
   - type: textarea
     id: problem
     attributes:
