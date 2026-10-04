@@ -1,14 +1,14 @@
 name: Release (signed direct-distribution artifacts)
 
-# Cutlyra M12/M13 — plan M13's OPERATIVE section (ratified 2026-08-17: no
-# app-store release on either platform). On a `v*.*.*` tag push, this
+# Cutlyra direct-distribution release workflow. Google Play is a separate
+# Android release channel handled by play-bundle.yml. On a `v*.*.*` tag push, this
 # workflow:
 #   1. Re-runs the exact same invariants gate bun-ci.yml runs on every
 #      push to main (via `workflow_call` — see that file), so a release
 #      can never ship on top of a red build. Nothing here duplicates that
 #      job's steps.
 #   2. Builds a SIGNED Android release APK. The signing keystore is
-#      supplied entirely via repo secrets (ANDROID_KEYSTORE_BASE64 +
+#      supplied entirely via repo secrets (ANDROID_RELEASE_KEYSTORE_BASE64 +
 #      three password/alias secrets) — see docs/RELEASING.md for the
 #      one-time setup a human does locally with `keytool` and
 #      `gh secret set`. This workflow generates no secret material.
@@ -111,21 +111,21 @@ jobs:
 
       - name: Decode release keystore
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 repo secret is not set — see docs/RELEASING.md for one-time keystore setup." >&2
+          if [ -z "${ANDROID_RELEASE_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::ANDROID_RELEASE_KEYSTORE_BASE64 repo secret is not set — see docs/RELEASING.md for one-time keystore setup." >&2
             exit 1
           fi
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          echo "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
 
       - name: gradlew assembleRelease (signed)
         env:
           CUTLYRA_RELEASE_KEYSTORE: ${{ runner.temp }}/release.keystore
-          CUTLYRA_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          CUTLYRA_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          CUTLYRA_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          CUTLYRA_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          CUTLYRA_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          CUTLYRA_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --console=plain
         working-directory: apps/mobile/android
 
@@ -233,7 +233,7 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             release-artifacts/* \
             --title "Cutlyra ${{ github.ref_name }}" \
-            --notes "Direct-distribution build — no app store release (plan M13, ratified 2026-08-17).
+            --notes "Direct-distribution build. Google Play releases use the separate Play AAB workflow and Play App Signing.
 
           - **Android:** signed APK. Sideload install — see \`docs/guides/android-sideload.md\`.
           - **iOS:** unsigned \`.ipa\`. Install via AltStore/SideStore (free Apple ID, 7-day re-sign), or build from source via Xcode — see \`docs/guides/ios-xcode-build.md\`.
