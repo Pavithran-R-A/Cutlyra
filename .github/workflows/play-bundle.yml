@@ -37,6 +37,12 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: "platforms;android-36 build-tools;36.0.0 platform-tools ndk;27.2.12479018 cmake;3.22.1"
+      - name: Fetch and verify Android caption build inputs
+        run: |
+          bash scripts/fetch-whisper-cpp.sh
+          bash scripts/download-whisper-model.sh tiny.en --platform android
+        working-directory: apps/mobile
+
       - name: Build mobile web payload
         run: bun run build
         working-directory: apps/mobile
@@ -69,6 +75,9 @@ jobs:
           unzip -t "$AAB" >/dev/null
           jarsigner -verify "$AAB" >/dev/null
           unzip -l "$AAB" | grep -q "base/manifest/AndroidManifest.xml"
+          unzip -l "$AAB" | grep -q "base/assets/models/ggml-tiny.en.bin"
+          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libcutlyra_whisper.so"
+          unzip -l "$AAB" | grep -q "base/lib/x86_64/libcutlyra_whisper.so"
           if unzip -l "$AAB" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
             echo "::error::Internal spike assets leaked into Play bundle." >&2
             exit 1
