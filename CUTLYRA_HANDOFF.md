@@ -659,3 +659,104 @@ Google-controlled state and must not be faked by an agent:
 
 Do not describe those external gates as complete until they are actually
 observed in the publisher account.
+
+# Stage 13 — GitHub + Play final hardening (2026-10-04)
+
+This stage supersedes Stage 12's "SOURCE / ENGINEERING READY: 100%" statement.
+A second-device POCO M4 Pro 5G campaign against authoritative `main`
+(`44849e958bdcd3b08821fcb2bb37ad7e7356f985`) exposed release-guard defects
+that had not been visible in host CI. Product release remains **NO-GO** until
+this stage's corrected gates pass on the final merged candidate.
+
+## POCO findings that triggered this stage
+
+- The instrumentation APK finally executed on Android 13/MIUI 14: **8 tests
+  ran, 5 failed**.
+- Four failures were one harness defect: `R.raw.test_clip` is packaged in
+  the instrumentation APK, but the tests opened that test-package resource id
+  through the target app's `Resources`. The integer id collided with an
+  unrelated ~388-byte target resource instead of the 32,663-byte MP4 fixture,
+  cascading into probe/thumbnail/import/export failures.
+- The fifth failure was a stale architecture assertion: the cross-fade fixture
+  now correctly produces three sequences — base video, transition overlay,
+  and the Stage-11-separated main-track audio sequence — not two.
+- These are test/release-guard defects, not evidence that a real user export
+  is broken. They still block release because the native export guard was not
+  providing trustworthy regression signal.
+
+## Hardening branch / PR
+
+- Branch: `release/github-play-hardening`
+- PR: #3, **Harden final GitHub and Play release gates**
+- Base: `main@44849e958bdcd3b08821fcb2bb37ad7e7356f985`
+- Do not merge until the latest PR-head CI is green, including the emulator
+  instrumentation job.
+
+## What this stage changes
+
+1. **Instrumentation correctness**
+   - test resources are opened through
+     `InstrumentationRegistry.getInstrumentation().context`;
+   - the composition-shape assertion now expects the intentional third audio
+     sequence;
+   - the stale Capacitor template instrumentation test is removed.
+2. **Connected tests become a real CI gate**
+   - Mobile CI runs the instrumentation suite on a pinned API-35 x86_64
+     emulator runner instead of merely assembling the test APK.
+3. **Offline captions are guaranteed in release artifacts**
+   - whisper.cpp v1.9.2 is additionally pinned to immutable commit
+     `306c88f4d1286aec1bf96e544632897886af5501`;
+   - the tiny.en model is fetched at build time and its pinned SHA-256 is
+     verified with a portable, fail-closed checker;
+   - Android CI, GitHub release, and Play AAB workflows fetch the native/model
+     inputs and assert that the model + arm64/x86_64 native libraries are
+     physically present in the resulting artifacts.
+4. **Release artifact fail-closed checks**
+   - signed APK/AAB identity/container checks;
+   - pinned model digest;
+   - no internal spike payload;
+   - native debug symbols;
+   - 16 KB ZIP/ELF alignment checks for packaged native libraries.
+5. **Signing separation**
+   - direct GitHub APK uses `ANDROID_RELEASE_*` secrets;
+   - Play upload uses distinct `PLAY_UPLOAD_*` secrets;
+   - the Play app-signing-key strategy is decided separately so upload-key
+     rotation never becomes the app identity.
+6. **v0.1 release surface honesty**
+   - unsupported filter/effect/reverse controls are not exposed;
+   - only export-supported transition semantics are exposed;
+   - nonfunctional caption language choices and future-only helper chips are
+     removed from the Android v0.1 surface;
+   - public feature/listing copy is aligned with what native export actually
+     supports.
+7. **Legal / Play preparation**
+   - Cutlyra-specific terms replace inherited OpenCut terms;
+   - standalone static privacy + terms pages live under `apps/web/public/`
+     for dependency-free public hosting;
+   - Play listing/runbook points at the standalone privacy policy.
+8. **GitHub v0.1 distribution is Android-only**
+   - iOS remains compile-checked but is not a physically qualified v0.1
+     shipping target, so no unsigned iOS binary is published as if it were one.
+
+## Remaining release gates
+
+Engineering may be called ready only after ALL of these are observed:
+
+1. latest PR #3 Bun CI green on Ubuntu, Windows, macOS;
+2. latest PR #3 Mobile CI green, including Android JVM/build, iOS compile,
+   and **executed** Android instrumentation with zero failures;
+3. PR #3 merged without tree drift; post-merge main CI green;
+4. Freebuff syncs/clones that exact merged main SHA and the POCO reruns:
+   instrumentation, permissions, import corpus, editing/playback, real-speech
+   captions, all export cases, offline/lifecycle/stress/logcat, and a
+   release-mode physical workflow;
+5. zero unresolved P0/P1 findings.
+
+Only after those engineering gates: create/back up real signing/upload keys,
+configure secrets, build final APK/AAB, run Play Internal testing/pre-launch
+report, complete the applicable closed-test/production-access requirements,
+and submit.
+
+No permanent signing identity, release tag, GitHub Release, or Play submission
+was created during this stage.
+
