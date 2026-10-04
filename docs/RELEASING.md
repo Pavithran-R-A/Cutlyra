@@ -61,17 +61,21 @@ itself the same way.
 base64 -i cutlyra-release.keystore | tr -d '\n' > cutlyra-release.keystore.b64
 ```
 
-### 1c. Add four repo secrets
+### 1c. Add four repo secrets for direct GitHub APK releases
 
 Using the [`gh` CLI](https://cli.github.com/) (or the GitHub web UI
 under **Settings → Secrets and variables → Actions**):
 
 ```sh
-gh secret set ANDROID_KEYSTORE_BASE64   --repo <your-org>/cutlyra < cutlyra-release.keystore.b64
-gh secret set ANDROID_KEYSTORE_PASSWORD --repo <your-org>/cutlyra   # paste when prompted
-gh secret set ANDROID_KEY_ALIAS         --repo <your-org>/cutlyra   # "cutlyra", if you used the command above
-gh secret set ANDROID_KEY_PASSWORD      --repo <your-org>/cutlyra   # paste when prompted
+gh secret set ANDROID_RELEASE_KEYSTORE_BASE64   --repo <your-org>/cutlyra < cutlyra-release.keystore.b64
+gh secret set ANDROID_RELEASE_KEYSTORE_PASSWORD --repo <your-org>/cutlyra   # paste when prompted
+gh secret set ANDROID_RELEASE_KEY_ALIAS         --repo <your-org>/cutlyra   # "cutlyra", if you used the command above
+gh secret set ANDROID_RELEASE_KEY_PASSWORD      --repo <your-org>/cutlyra   # paste when prompted
 ```
+
+These `ANDROID_RELEASE_*` secrets are for the GitHub/direct-distribution
+APK signing identity only. Google Play's AAB upload uses a separate upload
+key and separate `PLAY_UPLOAD_*` secrets; see `PLAY_STORE_RELEASE.md`.
 
 Then **delete the local `.keystore.b64` file** (keep only the raw
 `.keystore` file, backed up privately — the base64 copy has no purpose
@@ -81,10 +85,10 @@ once it's in the secret store):
 rm cutlyra-release.keystore.b64
 ```
 
-### 1d. What the workflow does with these
+### 1e. What the workflow does with these
 
 `.github/workflows/release.yml`'s `android-release` job decodes
-`ANDROID_KEYSTORE_BASE64` back to a file at runtime, points four
+`ANDROID_RELEASE_KEYSTORE_BASE64` back to a file at runtime, points four
 environment variables at it
 `CUTLYRA_RELEASE_KEYSTORE{,_PASSWORD}` / `CUTLYRA_RELEASE_KEY_{ALIAS,PASSWORD}`),
 and runs `./gradlew assembleRelease`.
@@ -102,13 +106,26 @@ directly, running both variants of this exact build locally)
 was applied, vs. `.../app-release-unsigned.apk` when it wasn't. The
 build script above reports whichever one it actually finds.
 
+### 1d. Decide Play/direct signing compatibility before first Play rollout
+
+Android updates are tied to the app-signing certificate. If you want a user
+who installed Cutlyra from GitHub to be able to update that same installation
+from Google Play (or vice versa), configure Play App Signing to use a copy of
+the **same app-signing key** as the direct APK channel before the first open
+testing/production rollout. Keep the **Play upload key separate**; it only
+authorizes AAB uploads and is resettable.
+
+If cross-channel update compatibility is not required, Google may generate the
+Play app-signing key. In that case GitHub-direct APKs and Play-delivered APKs
+will have different signing identities and cannot update one another in place.
+
 No iOS secret setup is needed. There is deliberately no CI-held Apple
 signing identity for this project (see the "iOS — the honest cost of
 no-store" note in plan M13, and `docs/guides/ios-xcode-build.md`).
 
 ---
 
-## 1e. Release payload: the spike diagnostics exclusion (Stage 9)
+## 1f. Release payload: the spike diagnostics exclusion (Stage 9)
 
 The M1 spike's throwaway diagnostics payload (spike.html + its hashed
 JS/CSS chunk + the committed `public/spike-assets/*.mp4` test videos, plus
@@ -241,13 +258,16 @@ Physical-device qualification is already complete: Stage 11 in
 release-mode export, persistence, offline operation, and the real-device bugs
 found and fixed during qualification. The remaining path is publisher-owned:
 
-1. **Generate the permanent Cutlyra signing/upload key** — §1a, on your own
-   machine, alias `cutlyra`.
+1. **Generate the permanent Cutlyra direct app-signing key** — §1a, on your
+   own machine, alias `cutlyra`. Decide the Play/direct signing compatibility
+   strategy in §1d before the first Play rollout.
 2. **Back it up securely** (password manager for the passwords, plus a
    private backup of the `.keystore` file itself).
-3. **Configure the four GitHub repo secrets** — §1c.
+3. **Configure the four `ANDROID_RELEASE_*` GitHub repo secrets** — §1c.
+   Configure Play's separate `PLAY_UPLOAD_*` secrets only after generating
+   the Play upload key per `PLAY_STORE_RELEASE.md`.
 4. **Recommended:** run one final local signed build with the permanent key
-   (§1d's script with the four `CUTLYRA_RELEASE_*` env vars set) and install
+   (§1e's script with the four `CUTLYRA_RELEASE_*` env vars set) and install
    it on the qualified phone before tagging.
 5. **Create `v0.1.0`** — §2 steps 1–2 (version bump commit, tag, push).
 6. **Let the release workflow build/sign/verify** — §2 step 3.
