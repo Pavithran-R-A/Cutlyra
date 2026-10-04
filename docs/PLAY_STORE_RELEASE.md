@@ -128,7 +128,7 @@ listing exists.
 Invite at least 15 people to preserve margin above Google's 12-tester floor.
 Have each tester exercise: first launch; project create/open/delete; photo,
 video and audio import; optional camera capture; timeline playback/scrub;
-trim/split/delete/undo/redo; text/captions; normal effects/keyframes; export;
+trim/split/delete/undo/redo; text/captions; keyframes/cross-fade; export;
 play/share result; force-stop/reopen persistence.
 
 Record device, Android version, tested features, failures, feedback and fixes.
