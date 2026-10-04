@@ -129,13 +129,14 @@ real testers, or Google's approval.
 3. Create app `app.cutlyra.editor`.
 4. Supply the real developer/support/privacy contact email.
 5. Publish the privacy policy at a public URL.
-6. Create/back up the upload key and configure GitHub secrets.
-7. Run the Play AAB workflow; retain AAB + checksum.
-8. Enroll in Play App Signing and upload to Internal testing.
-9. Smoke-test the Play-delivered build on a real phone.
-10. Start Closed testing; keep >=12 testers continuously opted in >=14 days.
-11. Apply for production access with recorded test evidence.
-12. Submit production release and monitor Android Vitals/reviews.
+6. Prepare the required Play icon, feature graphic, and final-candidate screenshots per `PLAY_STORE_LISTING.md`.
+7. Create/back up the upload key and configure GitHub secrets.
+8. Run the Play AAB workflow; retain AAB + checksum.
+9. Enroll in Play App Signing and upload to Internal testing.
+10. Smoke-test the Play-delivered build on a real phone.
+11. If the publisher account is subject to the new-personal-account rule, start Closed testing and keep >=12 testers continuously opted in >=14 days.
+12. Apply for production access with recorded test evidence when Play Console requires it.
+13. Submit production release and monitor Android Vitals/reviews.
 
 ## Release gate
 
@@ -150,6 +151,7 @@ real testers, or Google's approval.
 - [ ] real Play upload key configured
 - [ ] final AAB rebuilt/checksummed
 - [ ] public privacy URL + real contact live
+- [ ] required Play icon + feature graphic + final-candidate screenshots prepared
 - [ ] Play account/identity/device verification complete
 - [ ] Internal test Play build smoke-tested
 - [ ] closed-test requirement complete
