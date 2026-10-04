@@ -68,10 +68,10 @@ Using the [`gh` CLI](https://cli.github.com/) (or the GitHub web UI
 under **Settings → Secrets and variables → Actions**):
 
 ```sh
-gh secret set ANDROID_RELEASE_KEYSTORE_BASE64   --repo <your-org>/cutlyra < cutlyra-release.keystore.b64
-gh secret set ANDROID_RELEASE_KEYSTORE_PASSWORD --repo <your-org>/cutlyra   # paste when prompted
-gh secret set ANDROID_RELEASE_KEY_ALIAS         --repo <your-org>/cutlyra   # "cutlyra", if you used the command above
-gh secret set ANDROID_RELEASE_KEY_PASSWORD      --repo <your-org>/cutlyra   # paste when prompted
+gh secret set ANDROID_RELEASE_KEYSTORE_BASE64   --repo Pavithran-R-A/Cutlyra < cutlyra-release.keystore.b64
+gh secret set ANDROID_RELEASE_KEYSTORE_PASSWORD --repo Pavithran-R-A/Cutlyra   # paste when prompted
+gh secret set ANDROID_RELEASE_KEY_ALIAS         --repo Pavithran-R-A/Cutlyra   # "cutlyra", if you used the command above
+gh secret set ANDROID_RELEASE_KEY_PASSWORD      --repo Pavithran-R-A/Cutlyra   # paste when prompted
 ```
 
 These `ANDROID_RELEASE_*` secrets are for the GitHub/direct-distribution
@@ -273,7 +273,7 @@ found and fixed during qualification. The remaining path is publisher-owned:
    downloads, and the APK's certificate must be *yours*:
 
    ```sh
-   apksigner verify --print-certs cutlyra-v0.1.0.apk
+   apksigner verify --print-certs cutlyra-v0.1.0-android.apk
    # or, to print the fingerprint straight from the keystore:
    keytool -list -v -keystore cutlyra-release.keystore -alias cutlyra | grep SHA256
    ```
