@@ -647,13 +647,15 @@ Google-controlled state and must not be faked by an agent:
 
 1. Play Console account/identity/contact/device verification as applicable.
 2. A real public support/privacy contact and active public privacy-policy URL.
-3. Permanent upload key creation + secure backup + GitHub Actions secrets.
-4. Final signed AAB generation from the release commit and Play App Signing.
-5. Internal-test install/smoke of the Play-delivered artifact.
-6. For a new personal developer account created after 2023-11-13: at least
+3. Required Google Play listing graphics from the final candidate: 512×512
+   store icon, 1024×500 feature graphic, and compliant final screenshots.
+4. Permanent upload key creation + secure backup + GitHub Actions secrets.
+5. Final signed AAB generation from the release commit and Play App Signing.
+6. Internal-test install/smoke of the Play-delivered artifact.
+7. For a new personal developer account created after 2023-11-13: at least
    12 closed-test users continuously opted in for 14 days, then production
    access application.
-7. Google production review/approval and publication.
+8. Google production review/approval and publication.
 
 Do not describe those external gates as complete until they are actually
 observed in the publisher account.
