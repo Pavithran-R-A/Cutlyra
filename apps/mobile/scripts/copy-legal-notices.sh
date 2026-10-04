@@ -15,19 +15,15 @@ cp "$REPO_ROOT/LICENSE" "$OUT/CUTLYRA-LICENSE.txt"
 cp "$REPO_ROOT/NOTICE" "$OUT/CUTLYRA-NOTICE.txt"
 cp "$REPO_ROOT/docs/THIRD_PARTY_NOTICES.md" "$OUT/THIRD_PARTY_NOTICES.md"
 
-# soundtouchjs is a runtime dependency used by the mobile editor's
-# pitch-preserving preview path. Its package declares LGPL-2.1, so preserve
-# the package's own license text inside every binary distribution rather than
-# relying on a network link.
-SOUNDTOUCH_LICENSE=""
-for candidate in   "$REPO_ROOT/node_modules/soundtouchjs/LICENSE"   "$REPO_ROOT/node_modules/soundtouchjs/LICENSE.md"   "$REPO_ROOT/node_modules/soundtouchjs/LICENSE.txt"; do
-  if [ -s "$candidate" ]; then
-    SOUNDTOUCH_LICENSE="$candidate"
-    break
-  fi
-done
-if [ -z "$SOUNDTOUCH_LICENSE" ]; then
-  echo "ERROR: soundtouchjs license file not found after dependency install." >&2
+# soundtouchjs 0.3.0 is a runtime dependency used by the mobile editor's
+# pitch-preserving preview path. Bun's isolated install layout does not
+# guarantee a root node_modules/soundtouchjs/LICENSE path, so the exact
+# upstream v0.3.0 LGPL-2.1 text is tracked in legal/ and copied from there.
+# Provenance: cutterbl/SoundTouchJS v0.3.0 commit
+# 36b161bb7d69d801b6a81674ad0fc0c42082729f.
+SOUNDTOUCH_LICENSE="$REPO_ROOT/legal/SOUNDTOUCHJS-LGPL-2.1.txt"
+if [ ! -s "$SOUNDTOUCH_LICENSE" ]; then
+  echo "ERROR: tracked SoundTouchJS LGPL-2.1 license is missing." >&2
   exit 1
 fi
 cp "$SOUNDTOUCH_LICENSE" "$OUT/SOUNDTOUCHJS-LICENSE.txt"
