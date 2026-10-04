@@ -56,12 +56,12 @@ explicitly rather than leaving them to scroll by inside the collapsed
   `legal/SOUNDTOUCHJS-LGPL-2.1.txt` and copied into every mobile bundle.
   Upstream v0.3.0 is pinned for notice provenance to commit
   `36b161bb7d69d801b6a81674ad0fc0c42082729f`. Cutlyra's corresponding
-  application source/build files are tracked in this repository, but the
-  repository is private during release hardening. Before distributing a
-  binary to end users, the publisher must satisfy LGPL-2.1's applicable
-  source/relink availability requirements (for example by making the needed
-  source/build materials publicly available) or remove/replace this bundled
-  dependency. Shipping is blocked until that choice is resolved and verified.
+  application source/build files are tracked in this now-public repository.
+  Release distribution must keep the exact Cutlyra tag/source archive and the
+  upstream SoundTouchJS v0.3.0 source available alongside the binary release,
+  and must preserve the LGPL-2.1 license/relink rights applicable to that
+  dependency. The release checklist verifies the bundled license text; source
+  availability is tied to the immutable public release tag.
 - **`@img/sharp-libvips-darwin-arm64@1.2.4`** (LGPL-3.0-or-later) — a
   platform-specific optional binary used by the inherited Next.js web
   toolchain. It is not an Android runtime dependency merely because it is
