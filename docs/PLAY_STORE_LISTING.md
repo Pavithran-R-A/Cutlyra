@@ -54,17 +54,37 @@ successfully.
 - Support email: HUMAN INPUT — real verified contact required
 - Website: optional; use the public Cutlyra site once deployed
 
-## Screenshot plan
+## Required Play graphics
 
-Recapture from the final Play candidate:
+Google Play currently requires these assets for a phone/tablet store listing:
+
+- **Store icon:** 512×512 PNG, max 1024 KB. Cutlyra's canonical source is
+  `assets/brand/icon-only.png` (1024×1024); export a 512×512 store copy from
+  that source rather than using a launcher-density raster.
+- **Feature graphic:** 1024×500 JPEG or 24-bit PNG with no alpha. This is a
+  store-marketing asset and must be created from Cutlyra's own brand/UI; do not
+  reuse inherited OpenCut art.
+- **Screenshots:** at least 2 are required. For strong Play recommendation
+  eligibility, prepare at least 4 phone screenshots at 1080px or higher in
+  9:16 portrait or 16:9 landscape. Screenshots must show the actual submitted
+  app experience.
+
+The older QA captures under `docs/screenshots/` are evidence/reference only.
+The final store screenshots should be recaptured from the final Play-delivered
+candidate so UI, permissions, version, and behavior match what reviewers/users
+receive.
+
+## Final screenshot plan
+
+Capture from the final Play candidate:
 1. Projects home — "Your edits stay on your device"
 2. Timeline/editor — "Touch-first timeline editing"
 3. Text/captions — "Create captions on-device"
 4. Effects/keyframes — "Fine control without cloud processing"
 5. Export/result — "Export locally with no watermark"
 
-Existing QA screenshots in `docs/screenshots/` can seed the listing, but final
-screenshots should match the submitted build exactly.
+Keep any added tagline subordinate to the actual UI and avoid rankings,
+testimonials, price claims, or download/install calls to action.
 
 ## Release notes
 
