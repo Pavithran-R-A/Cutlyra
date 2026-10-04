@@ -58,7 +58,7 @@ import {
 	setClipKeyframeEasing,
 	type DeadSpaceCutOutcome,
 } from "../../editor/actions";
-import { Scissors, ScissorsLineDashed, Trash2, CopyPlus, SlidersHorizontal, Spline, Type, VolumeX, WandSparkles, ImagePlus } from "lucide-react";
+import { Scissors, ScissorsLineDashed, Trash2, CopyPlus, SlidersHorizontal, Spline, Type } from "lucide-react";
 import { CC_ICON_STROKE } from "../../tokens";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
@@ -482,48 +482,7 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 						onAddAudio={() => setActiveSheet("audio")}
 						onQuickAddAudio={() => setActiveSheet("audio")}
 						onQuickAddText={() => setActiveSheet("text")}
-						leadingChips={
-							<>
-							{/* CapCut's main-track helper chips (capture 2026-08-18).
-							    Mute-clip-audio and AI-clipper/Cover need per-clip audio
-							    state and features outside v1 — parity chrome, tracked in
-							    docs/STATUS.md. Real DISABLED buttons (not fake-wired
-							    spans) so they visibly read as unavailable instead of
-							    silently doing nothing on tap. */}
-							<button
-								type="button"
-								className="cc-timeline__helper-chip cc-timeline__helper-chip--disabled"
-								disabled
-								aria-label="Mute clip audio — not available in this version"
-							>
-								<VolumeX size={18} strokeWidth={CC_ICON_STROKE} />
-								<span>
-									Mute clip
-									<br />
-									audio
-								</span>
-							</button>
-							<button
-								type="button"
-								className="cc-timeline__helper-chip cc-timeline__helper-chip--card cc-timeline__helper-chip--disabled"
-								disabled
-								aria-label="AI clipper — coming in a later version"
-							>
-								<span className="cc-timeline__helper-badge">New</span>
-								<WandSparkles size={18} strokeWidth={CC_ICON_STROKE} />
-								<span>AI clipper</span>
-							</button>
-							<button
-								type="button"
-								className="cc-timeline__helper-chip cc-timeline__helper-chip--card cc-timeline__helper-chip--disabled"
-								disabled
-								aria-label="Cover — coming in a later version"
-							>
-								<ImagePlus size={18} strokeWidth={CC_ICON_STROKE} />
-								<span>Cover</span>
-							</button>
-							</>
-						}
+
 					/>
 				</div>
 			)}
