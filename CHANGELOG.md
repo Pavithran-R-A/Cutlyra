@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet. v0.1.0 release-candidate engineering is in progress; see below.
 
-## [0.1.0] — RELEASE CANDIDATE (source ready; single-device physical qualification done 2026-09-25)
+## [0.1.0] — RELEASE CANDIDATE (Stage 13 qualification in progress; not yet released)
 
 The first Cutlyra release: a free, open-source, local-first Android mobile
 video editor. No account, no subscription, no ads, no watermark, no cloud —
