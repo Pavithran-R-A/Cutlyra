@@ -50,7 +50,7 @@ successfully.
 - Account creation: No
 - Primary purpose: Video editing / creative tool
 - Target audience: General audience; not specifically designed for children
-- Privacy policy: use the public Cutlyra privacy URL
+- Privacy policy: use the deployed standalone Cutlyra policy (`apps/web/public/privacy-policy.html`)
 - Support email: HUMAN INPUT — real verified contact required
 - Website: optional; use the public Cutlyra site once deployed
 
