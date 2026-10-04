@@ -133,5 +133,5 @@ Cutlyra's editing engine is derived from
 Cutlyra is an independent project, unaffiliated with OpenCut or
 CapCut/ByteDance.
 
-[Unreleased]: https://github.com/cutlyra/cutlyra/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/cutlyra/cutlyra/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Pavithran-R-A/Cutlyra/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Pavithran-R-A/Cutlyra/releases/tag/v0.1.0
