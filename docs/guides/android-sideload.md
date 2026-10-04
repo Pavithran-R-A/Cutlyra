@@ -1,119 +1,82 @@
-# Install Cutlyra on Android (sideload)
+# Install Cutlyra on Android (direct APK)
 
-**Status: DRAFT.** This is the repo-hosted source for the Android
-install guide referenced in `docs/RELEASING.md`. It is **not published anywhere yet** — Cutlyra's
-publik listing does not exist yet. Screenshots below are placeholders;
-the primary toolbar / timeline / export sheet described in "What you'll
-see" don't exist in the app yet (that's plan milestones M6–M9, not yet
-built as of this draft) — this guide documents the *intended* v1
-install flow so distribution tooling isn't blocked on UI work landing
-first. Re-verify every step against a real release APK before
-publishing.
+> **Pre-release guide.** Google Play is the planned primary Android release
+> channel. This page documents the optional direct-APK path for users who
+> intentionally choose to sideload an official Cutlyra release.
 
-Cutlyra has **no Play Store listing** — this is a deliberate choice
-(plan M13, ratified 2026-08-17), not a temporary state. Installing it
-means downloading the APK directly from GitHub Releases and allowing
-your phone to install it. This is exactly how F-Droid apps, most
-emulators, and countless legitimate open-source Android apps are
-installed — "sideloading" sounds scarier than it is.
+## Requirements
 
-## Before you start
+- Android 10 (API 29) or newer on a supported 64-bit device.
+- Enough free storage for Cutlyra, imported media, proxies, and exports.
+- No Cutlyra account or sign-in is required.
 
-- An Android phone or tablet, Android 10 (API 29) or newer.
-- About 200MB of free storage for the app itself, plus room for your
-  video projects.
-- No Google account, no sign-in, no network connection required after
-  the download — Cutlyra is fully offline once installed.
+Cutlyra's editing, captions, playback, and export pipeline is designed to work
+locally on the device. The app does not request broad media-library access:
+visual media uses Android's system Photo Picker and audio uses the system
+document picker.
 
-## Step 1 — Download the APK
+## 1. Get an official APK
 
-1. On your phone, open a browser and go to Cutlyra's GitHub Releases
-   page: `github.com/Blueturboguy07/Cutlyra/releases`.
-2. Find the latest release (top of the list, tagged like `v0.1.0`).
-3. Under **Assets**, tap the file ending in `-android.apk` (for
-   example `Cutlyra-v0.1.0-android.apk`).
-4. Your phone downloads it to the **Downloads** folder/app.
+Only install an APK that the Cutlyra maintainer has published as an official
+release artifact. The canonical repository is:
 
-*(Optional but recommended: also tap `SHA256SUMS.txt` in the same
-release and compare the hash against the APK you downloaded, using any
-checksum app — this confirms the file wasn't corrupted or tampered
-with in transit. Every release is built and signed by the project's own
-GitHub Actions workflow — see `docs/RELEASING.md`.)*
+`Pavithran-R-A/Cutlyra`
 
-## Step 2 — Allow this one install
+Do not install APKs re-uploaded by third-party download sites. If a release
+includes `SHA256SUMS.txt`, verify the APK checksum before installing it.
 
-Android blocks installs from outside the Play Store by default. You'll
-turn this on **once, for this one file** — not as a permanent
-device-wide setting.
+If the repository has no published release yet, there is no official direct
+APK to install; use the Google Play testing/release channel when it becomes
+available instead of downloading an unofficial build.
 
-1. Open your **Downloads** app and tap the APK you just downloaded.
-2. Android shows a prompt: *"For your security, your phone is not
-   allowed to install unknown apps from this source."*
-3. Tap **Settings** on that prompt.
-4. Toggle **Allow from this source** on for your Files/Downloads app.
-5. Go back — the install prompt reappears.
+## 2. Allow installation from the source you used
 
-(Exact wording varies slightly by Android version and phone
-manufacturer — Samsung, Pixel, and others each skin this dialog a
-little differently. The underlying setting is always **Settings →
-Apps → [the app you opened the APK with] → Install unknown apps**.)
+Android normally blocks APK installation from browsers/file managers until
+you explicitly allow that source.
 
-## Step 3 — Install
+1. Open the downloaded official APK.
+2. If Android blocks the install, open the offered **Settings** page.
+3. Enable **Allow from this source** only for the browser or file manager you
+   used.
+4. Return to the installer.
+
+The exact wording varies by Android/OEM. You can turn this permission off again
+after installation.
+
+## 3. Install and launch
 
 1. Tap **Install**.
-2. Android may show a Play Protect scan ("this app isn't Play
-   Protect certified") — this is expected for any app outside the
-   Store, including Cutlyra. Tap **Install anyway** if prompted.
-3. Wait for the install to finish, then tap **Open**.
+2. Wait for Android's package verification to finish.
+3. Tap **Open**.
+4. Complete Cutlyra's first-run screen and create or open a project.
 
-## Step 4 — First launch
+Cutlyra uses system pickers when you choose media, so selecting a file grants
+access to the item you picked rather than to your entire library.
 
-The first screen you see is Cutlyra's native first-run screen (not a
-web page — it loads before anything else does), explaining:
+## 4. Verify the app identity
 
-- Cutlyra needs access to your **Photos & Videos** to import clips
-  onto the timeline.
-- Everything — editing, effects, export — runs **locally on your
-  phone**. Cutlyra never uploads your media anywhere.
+For a release APK, verify that:
 
-Tap **Get Started**. You'll pick videos from your library the same way
-any Android photo picker works — Cutlyra never sees your whole photo
-library, only what you explicitly choose (Android's Photo Picker,
-plan M4).
+- package name is `app.cutlyra.editor`;
+- the version matches the release you intended to install;
+- the signing certificate matches the fingerprint published with the official
+  Cutlyra release.
 
-## Updating later
+Do not proceed if Android reports an unexpected package/signing conflict or if
+the checksum/certificate does not match the release record.
 
-Cutlyra doesn't auto-update (there's no store to push updates through).
-When a new release comes out, repeat Steps 1–3 with the new APK —
-Android will offer to **update** rather than install a second copy, as
-long as it's signed with the same release key (which it always will
-be, from this project's own release pipeline — see
-`docs/RELEASING.md`).
+## Updating a sideloaded copy
 
-## Uninstalling
+Android will install an update in place only when the package name and signing
+identity match the installed app. Keep the permanent Cutlyra release key
+unchanged across releases; otherwise Android treats the new APK as a different
+signing identity and an in-place update is impossible.
 
-Same as any app: long-press the icon → **Uninstall**, or **Settings →
-Apps → Cutlyra → Uninstall**. No account to delete, no cloud data to
-clean up — there isn't any.
+## Privacy
 
-## Troubleshooting
+Cutlyra has no account, advertising, analytics, telemetry, or cloud-sync
+requirement in the v0.1 release model. Imported media and projects stay in
+app-private/on-device storage unless you explicitly export or share an output.
 
-- **"App not installed" error.** Usually means a previous Cutlyra
-  install was signed with a different key (e.g., you had a debug build
-  installed from a source build). Uninstall the old one first, then
-  install the release APK.
-- **Play Protect keeps blocking it.** Play Protect's warning for
-  unknown-source apps is informational, not a real detection — you can
-  proceed. If you'd rather verify independently, check the APK's SHA-256
-  against `SHA256SUMS.txt` in the release (Step 1).
-- **"Photo access" doesn't show any videos.** Make sure you selected
-  videos (not just photos) in the system picker sheet — tap the picker
-  again and switch its filter/tab if your launcher's picker defaults to
-  photos.
-
----
-
-*Cutlyra is an independent, community-built project. It is not
-affiliated with, endorsed by, or sponsored by Google, Android, OpenCut,
-OpenCut-app, or any other company or product. See `docs/DECISIONS.md`
-for the full attribution posture.*
+For the current release process, signing, Play distribution, and verification
+steps, see `docs/RELEASING.md` and `docs/PLAY_STORE_RELEASE.md`.
