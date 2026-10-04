@@ -25,10 +25,9 @@ import java.io.File
  * `PackageManager`) that a JVM unit test's stub `android.jar` throws
  * `RuntimeException` on — these genuinely require a device or emulator.
  *
- * STATUS: this suite is exercised on physical-device release qualification;
- * keep it runnable from a standalone instrumentation APK as well as Gradle (the two local AVDs' system images
- * are missing on disk — see the M4 handoff for the exact `df`/`avdmanager`
- * evidence). Run via:
+ * STATUS: this suite is exercised during physical-device release
+ * qualification. Keep it runnable from a standalone instrumentation APK as
+ * well as through Gradle. Run via:
  *
  *   cd apps/mobile/android && ./gradlew connectedDebugAndroidTest
  *
