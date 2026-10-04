@@ -194,6 +194,11 @@ jobs:
                   raise SystemExit(f"16 KB ELF alignment failed for {lib}: {aligns}")
               print(f"16 KB ELF OK: {lib} {aligns}")
           PY
+          unzip -l "$APK" | grep -q "assets/public/legal/CUTLYRA-LICENSE.txt"
+          unzip -l "$APK" | grep -q "assets/public/legal/CUTLYRA-NOTICE.txt"
+          unzip -l "$APK" | grep -q "assets/public/legal/THIRD_PARTY_NOTICES.md"
+          unzip -l "$APK" | grep -q "assets/public/legal/SOUNDTOUCHJS-LICENSE.txt"
+          unzip -l "$APK" | grep -q "assets/public/legal/WHISPERCPP-LICENSE.txt"
           unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
           unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
