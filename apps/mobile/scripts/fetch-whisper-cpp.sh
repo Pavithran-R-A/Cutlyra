@@ -20,6 +20,7 @@ set -euo pipefail
 
 MOBILE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$MOBILE_DIR/android/app/src/main/cpp/whisper.cpp"
+STAMP="$DEST/.cutlyra-whisper-commit"
 
 # Pinned tag. Bumping this is a deliberate act: the JNI glue in
 # cutlyra_whisper_jni.cpp is written against this version's whisper.h
@@ -37,8 +38,13 @@ if [ "${1:-}" = "--force" ]; then
 fi
 
 if [ -f "$DEST/include/whisper.h" ]; then
-	echo "==> whisper.cpp already present at $DEST (use --force to re-fetch)"
-	exit 0
+	if [ -f "$STAMP" ] && [ "$(tr -d '\r\n' < "$STAMP")" = "$WHISPER_COMMIT" ]; then
+		echo "==> whisper.cpp already present at pinned commit $WHISPER_COMMIT"
+		exit 0
+	fi
+	echo "ERROR: whisper.cpp already exists but has no matching Cutlyra provenance stamp." >&2
+	echo "Run '$0 --force' to replace it with the pinned release input." >&2
+	exit 1
 fi
 
 echo "==> Cloning whisper.cpp $WHISPER_TAG"
@@ -55,8 +61,12 @@ if [ "$actual_commit" != "$WHISPER_COMMIT" ]; then
 fi
 echo "    commit OK ($actual_commit)"
 
+# Persist provenance before removing .git so future local/reused worktrees can
+# verify that the untracked source tree is still the exact release input.
+printf '%s\n' "$actual_commit" > "$STAMP"
+
 # The clone's own .git is dead weight (and would confuse the outer repo's
-# status); the pinned tag above is the provenance record.
+# status); the pinned commit + stamp above are the provenance record.
 rm -rf "$DEST/.git"
 
 # The addon.node example ships a *.spec.js that the outer repo's `bun test`
