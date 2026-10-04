@@ -7,7 +7,7 @@
 **Suggested category:** Video Players & Editors
 
 **Short description:**  
-Offline video editor with captions, effects, keyframes and no watermark.
+Offline video editor with captions, keyframes and no watermark.
 
 ## Full description
 
@@ -23,7 +23,7 @@ What you can do:
 - Capture media from the camera when you choose
 - Trim, split, delete, duplicate, undo, and redo timeline edits
 - Add text and on-device captions
-- Work with transitions, effects, transforms, keyframes, and audio controls
+- Work with cross-fade transitions, transforms, keyframes, and audio controls
 - Preview edits and export video locally
 - Keep projects and media on-device
 
@@ -80,7 +80,7 @@ Capture from the final Play candidate:
 1. Projects home — "Your edits stay on your device"
 2. Timeline/editor — "Touch-first timeline editing"
 3. Text/captions — "Create captions on-device"
-4. Effects/keyframes — "Fine control without cloud processing"
+4. Transforms/keyframes — "Fine control without cloud processing"
 5. Export/result — "Export locally with no watermark"
 
 Keep any added tagline subordinate to the actual UI and avoid rankings,
@@ -92,6 +92,6 @@ Cutlyra 0.1.0 — first Android release
 
 - Offline-first mobile video editing
 - Local project storage and media import
-- Touch timeline editing, captions, effects and keyframes
+- Touch timeline editing, captions, transforms and keyframes
 - On-device video export
 - No account, ads, telemetry or watermark
