@@ -320,7 +320,7 @@ function PrivacyScreen({ onBack }: { onBack: () => void }) {
 				<h2>Third-party components</h2>
 				<p>Cutlyra uses open-source libraries for its app shell, editing, media processing, and on-device captions. They are used locally by the app; Cutlyra does not integrate advertising, analytics, or tracking services.</p>
 				<h2>Privacy inquiries</h2>
-				<p>Use the verified developer/support email on Cutlyra's Google Play listing or the Cutlyra issue tracker at github.com/Pavithran-R-A/Cutlyra/issues for privacy inquiries.</p>
+				<p>Use the verified developer/support email on Cutlyra's official Google Play listing for privacy inquiries.</p>
 				<p className="kc-privacy__updated">Last updated: 4 October 2026</p>
 			</div>
 		</main>
