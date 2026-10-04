@@ -1,20 +1,14 @@
 name: Mobile CI
 
-# Cutlyra M3 — plan M3 exit criterion: "CI produces a signed APK and an
-# installable iOS build (ad-hoc or unsigned .ipa) from a clean checkout."
-# This workflow covers the unsigned/debug half of that (iOS simulator build
-# with CODE_SIGNING_ALLOWED=NO, Android debug APK via gradle) — the same two
-# builds verified locally in the M3 session, run on EVERY push/PR to `main`
-# so debug builds never silently rot.
+# Cutlyra mobile health + Android release-smoke CI.
+# Android builds/tests are release-relevant for v0.1.0. The iOS job is only
+# a source/compile-health check: it builds for the Simulator with
+# CODE_SIGNING_ALLOWED=NO and does NOT produce a distributed iOS binary.
 #
-# Signed direct-distribution artifacts live in .github/workflows/release.yml,
-# gated behind a `v*.*.*` tag push. Google Play AAB generation is handled
-# separately by .github/workflows/play-bundle.yml — see docs/RELEASING.md
-# and docs/PLAY_STORE_RELEASE.md. This workflow's iOS build
-# intentionally still targets the Simulator, not a device: local signing
-# is flaky from agent sessions, and there is deliberately no CI-held Apple
-# signing identity anywhere in this project (release.yml's iOS artifact is
-# unsigned by design — see that workflow's header comment for why).
+# Signed direct-distribution Android artifacts live in
+# .github/workflows/release.yml behind a `v*.*.*` tag push. Google Play AAB
+# generation is handled separately by .github/workflows/play-bundle.yml —
+# see docs/RELEASING.md and docs/PLAY_STORE_RELEASE.md.
 
 concurrency:
   group: mobile-ci-${{ github.ref }}
