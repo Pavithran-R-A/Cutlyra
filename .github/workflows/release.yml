@@ -172,6 +172,28 @@ jobs:
           ZIPALIGN="$SDK_ROOT/build-tools/36.0.0/zipalign"
           test -x "$ZIPALIGN"
           "$ZIPALIGN" -P 16 -c 4 "$APK"
+          # Google Play requires native code to support 16 KB page-size devices.
+          # Verify every packaged ELF LOAD segment is aligned to at least 0x4000.
+          READELF="$ANDROID_SDK_ROOT/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          test -x "$READELF"
+          rm -rf "$RUNNER_TEMP/cutlyra-elf-apk"
+          mkdir -p "$RUNNER_TEMP/cutlyra-elf-apk"
+          unzip -q "$APK" 'lib/*/*.so' -d "$RUNNER_TEMP/cutlyra-elf-apk"
+          READELF="$READELF" ELF_ROOT="$RUNNER_TEMP/cutlyra-elf-apk" python3 - <<'PY'
+          import os, pathlib, subprocess, sys
+          readelf = os.environ["READELF"]
+          root = pathlib.Path(os.environ["ELF_ROOT"])
+          libs = list(root.rglob("*.so"))
+          if not libs:
+              raise SystemExit("no native libraries found in APK")
+          for lib in libs:
+              out = subprocess.check_output([readelf, "-lW", str(lib)], text=True)
+              aligns = [int(line.split()[-1], 16) for line in out.splitlines()
+                        if line.lstrip().startswith("LOAD ")]
+              if not aligns or min(aligns) < 0x4000:
+                  raise SystemExit(f"16 KB ELF alignment failed for {lib}: {aligns}")
+              print(f"16 KB ELF OK: {lib} {aligns}")
+          PY
           unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
           unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
