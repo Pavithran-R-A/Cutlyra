@@ -27,9 +27,19 @@ const cargo = spawnSync(
     "--filter-platform",
     "wasm32-unknown-unknown",
   ],
-  { cwd: repoRoot, encoding: "utf8" },
+  {
+    cwd: repoRoot,
+    encoding: "utf8",
+    // cargo metadata for this workspace is several megabytes even though we
+    // later traverse only the opencut-wasm closure. Node/Bun spawnSync's
+    // default output buffer is too small and reports status=null/ENOBUFS.
+    maxBuffer: 64 * 1024 * 1024,
+  },
 );
 
+if (cargo.error) {
+  throw cargo.error;
+}
 if (cargo.status !== 0) {
   process.stderr.write(cargo.stdout || "");
   process.stderr.write(cargo.stderr || "");
