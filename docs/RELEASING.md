@@ -1,7 +1,7 @@
 # Releasing Cutlyra
 
 > **Distribution decision updated 2026-09-29:** Google Play is now a planned
-> Android release channel. This file still documents the direct APK/iOS release
+> Android release channel. This file documents the direct Android APK release
 > workflow; Play's source of truth is [PLAY_STORE_RELEASE.md](PLAY_STORE_RELEASE.md).
 > Older "no Play Store" wording below is historical context, not current policy.
 >
@@ -12,10 +12,11 @@ context in `docs/DECISIONS.md`; the current Play source of truth is
 Releases attached to a `v*.*.*` tag and built by
 [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
-- **Android:** a signed release APK, installable directly (sideload).
-- **iOS:** an unsigned `.ipa` — there is no CI-held Apple signing
-  identity and no store review. See `docs/guides/ios-xcode-build.md` for
-  the two ways a real iPhone actually gets this app installed.
+- **Android:** a signed release APK, installable directly (sideload), plus
+  native debug symbols and checksums.
+- **iOS:** source/simulator health is maintained, but iOS is not a validated
+  v0.1.0 shipping target and no iOS binary is published in the GitHub release.
+  The source-build guide remains development documentation only.
 
 This document covers (1) the one-time Android keystore setup a human
 does locally, outside of any agent session, and (2) how to cut a
@@ -182,10 +183,10 @@ Once the keystore secrets exist:
      (`.github/workflows/bun-ci.yml`, called via `workflow_call`), on
      all three OSes. The rest of the workflow does not start until this
      is green.
-   - `android-release` and `ios-release` run in parallel, each building
-     its artifact.
-   - `publish-release` downloads both, writes a `SHA256SUMS.txt`, and
-     creates a GitHub Release on the tag with all three files attached.
+   - `android-release` builds, signs, and verifies the Android APK and
+     generates native debug symbols.
+   - `publish-release` downloads the Android artifacts, writes a
+     `SHA256SUMS.txt`, and creates the GitHub Release.
 4. Once the release is live, update the two install guides in
    `docs/guides/` if the flow changed.
 
@@ -220,15 +221,12 @@ build-tools 36.0.0, JDK):
   under a different filename (`app-release-unsigned.apk` — see §2's
   note above; `apksigner verify` correctly reports no signature on it).
 
-What has **not** been run in this session: the GitHub Actions workflow
-itself (job graph, the `workflow_call` gate, artifact hand-off between
-`android-release`/`ios-release` and `publish-release`, `gh release
-create`), and the iOS unsigned-`.ipa` packaging step (needs a real
-device-SDK Xcode build, not exercised this session — see the M12
-handoff for what was and wasn't run there). Verify the full workflow
-end to end against a real tag (a `v0.0.0-test`-style tag against a
-disposable release is a reasonable first check) before relying on it
-for a real release.
+What has **not** yet been run is the tag-triggered GitHub Actions workflow
+as a whole (release provenance gate, secret-backed signing, artifact hand-off,
+and `gh release create`). Do not create a throwaway semver tag on production
+history merely to exercise publishing; the workflow now fails closed on
+version/tag provenance, and the real v0.1.0 tag should be created only after
+the final physical candidate passes.
 
 **Stage 10 update (2026-09-24, signed-release rehearsal):** the full
 signing path was re-qualified end to end with a disposable rehearsal
