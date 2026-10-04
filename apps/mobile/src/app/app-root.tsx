@@ -229,11 +229,13 @@ function PrivacyScreen({ onBack }: { onBack: () => void }) {
 				<p>Projects and imported working media remain in local app storage until you delete the project or remove the app/data from Android settings. Android cloud backup is disabled for Cutlyra. Exported videos remain wherever you choose to save them and are under your control.</p>
 				<h2>Accounts</h2>
 				<p>Cutlyra does not provide user accounts or sign-in, so it does not hold server-side account data and there is no cloud account to delete.</p>
+				<h2>On-device captions</h2>
+				<p>Automatic captions use Cutlyra's bundled whisper.cpp runtime and English model locally on supported Android devices. Audio/video is not uploaded to a speech-recognition service.</p>
 				<h2>Third-party components</h2>
 				<p>Cutlyra uses open-source libraries for its app shell, editing, media processing, and on-device captions. They are used locally by the app; Cutlyra does not integrate advertising, analytics, or tracking services.</p>
 				<h2>Privacy inquiries</h2>
-				<p>The developer contact email published in Cutlyra's Google Play listing is the privacy contact and inquiry mechanism for this app.</p>
-				<p className="kc-privacy__updated">Last updated: 29 September 2026</p>
+				<p>Use the verified developer/support email on Cutlyra's Google Play listing or the Cutlyra issue tracker at github.com/Pavithran-R-A/Cutlyra/issues for privacy inquiries.</p>
+				<p className="kc-privacy__updated">Last updated: 4 October 2026</p>
 			</div>
 		</main>
 	);
