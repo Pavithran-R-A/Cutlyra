@@ -97,19 +97,13 @@ BASELINE_LINT_ERRORS_EFFECTIVE=131
 # (packages/editor-core/src/test-support/wasm-stub.ts), so those files run:
 # 199 tests collected became 218.
 #
-# The 3 remaining failures are pre-existing defects in inherited code that
-# the abort had been HIDING, not regressions — all three are in
-# packages/editor-core/src/masks/__tests__/snap.test.ts:
-#   1. "snaps uniform scale handle for box masks" — snap returns an extra
-#      vertical line at -100 that the test does not expect.
-#   2. "snaps text mask movement using intrinsic text bounds" — needs a real
-#      2D canvas for text measurement; Bun has no DOM.
-#   3. "splits a segment into two segments at the insertion point" — bezier
-#      handles come back +-0.1 instead of 0.
-# None are time/tick related and none are in M2's scope. Fixing them is
-# tracked work for whoever next touches masks (post-v1 per plan §2.3 rule 4).
+# 2026-10-04 release-hardening: the three inherited mask failures were
+# closed instead of grandfathered (uniform-scale snap-line selection,
+# headless text-position snapping, and straight freeform-segment insertion).
+# The custom ESLint RuleTester harness was also made CI-safe. From this point
+# forward the unit-test gate is strict: no test failures are accepted.
 BASELINE_TEST_PASS_MIN=250
-BASELINE_TEST_FAIL_MAX=3
+BASELINE_TEST_FAIL_MAX=0
 
 STRICT_MOUSE_EVENT_GATE="${STRICT_MOUSE_EVENT_GATE:-1}"
 

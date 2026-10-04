@@ -5,7 +5,7 @@ import rule from "../prefer-object-params.mjs";
 
 RuleTester.describe = describe;
 RuleTester.it = it;
-RuleTester.itOnly = it.only;
+RuleTester.itOnly = process.env.CI ? it : it.only;
 RuleTester.afterAll = afterAll;
 
 const ruleTester = new RuleTester({
