@@ -54,12 +54,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Fetch and verify Android caption build inputs
-        run: |
-          bash scripts/fetch-whisper-cpp.sh
-          bash scripts/download-whisper-model.sh tiny.en --platform android
-        working-directory: apps/mobile
-
       - name: Build the M3 shell harness (apps/mobile/www)
         run: bun run build
         working-directory: apps/mobile
@@ -118,6 +112,12 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: "platforms;android-36 build-tools;36.0.0 platform-tools ndk;27.2.12479018 cmake;3.22.1"
+
+      - name: Fetch and verify Android caption build inputs
+        run: |
+          bash scripts/fetch-whisper-cpp.sh
+          bash scripts/download-whisper-model.sh tiny.en --platform android
+        working-directory: apps/mobile
 
       - name: Build the M3 shell harness (apps/mobile/www)
         run: bun run build
