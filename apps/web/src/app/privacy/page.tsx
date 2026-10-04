@@ -38,7 +38,7 @@ export default function PrivacyPage() {
 			</section>
 			<section className="flex flex-col gap-3">
 				<h2 className="text-2xl font-semibold">Privacy inquiries</h2>
-				<p>Use the verified developer/support email published in Cutlyra&apos;s Google Play listing or the Cutlyra issue tracker at github.com/Pavithran-R-A/Cutlyra/issues for privacy inquiries.</p>
+				<p>Use the verified developer/support email published in Cutlyra&apos;s Google Play listing for privacy inquiries. The publisher must keep that contact active wherever this policy is deployed.</p>
 			</section>
 			<Separator />
 			<p className="text-muted-foreground text-sm">Last updated: October 4, 2026</p>
