@@ -78,6 +78,9 @@ jobs:
           unzip -l "$AAB" | grep -q "base/assets/models/ggml-tiny.en.bin"
           unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libcutlyra_whisper.so"
           unzip -l "$AAB" | grep -q "base/lib/x86_64/libcutlyra_whisper.so"
+          unzip -l "$AAB" | grep -q "BUNDLE-METADATA/com.android.tools.build.debugsymbols/"
+          MODEL_SHA="$(unzip -p "$AAB" base/assets/models/ggml-tiny.en.bin | sha256sum | awk '{print $1}')"
+          test "$MODEL_SHA" = "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"
           if unzip -l "$AAB" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
             echo "::error::Internal spike assets leaked into Play bundle." >&2
             exit 1
