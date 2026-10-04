@@ -27,9 +27,8 @@ name: Release (signed direct-distribution artifacts)
 # keystore, produces an APK that `apksigner verify` confirms is
 # genuinely signed — and the same build without those env vars still
 # succeeds (unsigned, different output filename — see
-# docs/RELEASING.md); and the exact `apps/mobile/scripts/build-ios-
-# unsigned-ipa.sh` this workflow calls, run standalone, produces a real
-# arm64 Mach-O App.app and a validly-structured Payload/App.app .ipa.
+# docs/RELEASING.md). The iOS source/build health path is intentionally
+# separate in Mobile CI and is not part of this v0.1.0 publishing workflow.
 # What's NOT verified: the workflow-as-a-whole in GitHub Actions itself
 # (job graph, Android artifact hand-off, `gh release create`) — see
 # docs/RELEASING.md §3 for the full breakdown.
