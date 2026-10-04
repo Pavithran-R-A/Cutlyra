@@ -1,4 +1,4 @@
-import { Copy, RotateCcw, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
+import { Copy, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
 import { CC_ICON_STROKE } from "../../tokens";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
@@ -22,14 +22,15 @@ interface EditPanelProps {
 	onCutDeadSpace?: () => void;
 	onSetSpeed: (args: { rate: number; maintainPitch: boolean }) => void;
 	onSetVolume: (db: number) => void;
-	onToggleReverse: () => void;
 }
 
 /**
- * M8 Edit panel — task scope: "contextual: split/speed/volume/delete/
- * duplicate/reverse." Speed/volume/reverse only apply to retimable
+ * Release edit panel: split/speed/volume/delete/duplicate. Reverse remains
+ * in the engine data model for project compatibility, but is intentionally
+ * hidden in v0.1.0 until preview and native export can honor it. Speed/volume
+ * only apply to retimable
  * elements (video/audio, per `RETIMABLE_ELEMENT_TYPES` in the engine) —
- * for a text/sticker/graphic selection those three controls are hidden
+ * for a text/sticker/graphic selection those controls are hidden
  * rather than shown-and-disabled, since there is no engine-side field for
  * them to write to on those types.
  */
@@ -42,14 +43,12 @@ export function EditPanel({
 	onCutDeadSpace,
 	onSetSpeed,
 	onSetVolume,
-	onToggleReverse,
 }: EditPanelProps) {
 	const isRetimable = RETIMABLE_TYPES.has(element.type);
 	const retime = "retime" in element ? element.retime : undefined;
 	const rate = retime?.rate ?? DEFAULT_RETIME_RATE;
 	const maintainPitch = retime?.maintainPitch ?? false;
 	const volumeDb = typeof element.params.volume === "number" ? element.params.volume : 0;
-	const reversed = Boolean(element.params.reversed);
 
 	return (
 		<PanelSheet onScrimClick={onClose} header={<SheetHeader onClose={onClose} />}>
@@ -115,17 +114,6 @@ export function EditPanel({
 							)
 						}
 					/>
-					<ToggleRow
-						label="Reverse"
-						active={reversed}
-						onToggle={onToggleReverse}
-					/>
-					{reversed && (
-						<p className="cc-panel-note">
-							<RotateCcw size={12} strokeWidth={CC_ICON_STROKE} aria-hidden="true" /> Reverse state is saved with the
-							clip, but preview/export playback direction isn&apos;t implemented yet — see the M8 handoff.
-						</p>
-					)}
 				</>
 			)}
 		</PanelSheet>
