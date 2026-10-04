@@ -178,6 +178,45 @@ jobs:
         run: ./gradlew :app:assembleDebugAndroidTest --console=plain
         working-directory: apps/mobile/android
 
+      - name: Build unsigned release APK + AAB smoke artifacts
+        run: ./gradlew assembleRelease bundleRelease --console=plain
+        working-directory: apps/mobile/android
+
+      - name: Verify unsigned release packaging
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          SYMBOLS="app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip"
+          MODEL_SHA="921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"
+
+          test -s "$APK"
+          test -s "$AAB"
+          test -s "$SYMBOLS"
+
+          zipalign -P 16 -c 4 "$APK"
+          unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
+          unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
+          test "$(unzip -p "$APK" assets/models/ggml-tiny.en.bin | sha256sum | awk '{print $1}')" = "$MODEL_SHA"
+
+          unzip -t "$AAB" >/dev/null
+          unzip -l "$AAB" | grep -q "base/assets/models/ggml-tiny.en.bin"
+          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libcutlyra_whisper.so"
+          unzip -l "$AAB" | grep -q "base/lib/x86_64/libcutlyra_whisper.so"
+          unzip -l "$AAB" | grep -q "BUNDLE-METADATA/com.android.tools.build.debugsymbols/"
+          test "$(unzip -p "$AAB" base/assets/models/ggml-tiny.en.bin | sha256sum | awk '{print $1}')" = "$MODEL_SHA"
+
+          if unzip -l "$APK" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
+            echo "::error::Internal spike assets leaked into release APK." >&2
+            exit 1
+          fi
+          if unzip -l "$AAB" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
+            echo "::error::Internal spike assets leaked into release AAB." >&2
+            exit 1
+          fi
+        working-directory: apps/mobile/android
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
