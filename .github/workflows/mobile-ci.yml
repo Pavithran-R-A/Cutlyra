@@ -230,7 +230,7 @@ jobs:
     name: Android instrumentation (API 35 emulator)
     needs: android-debug-build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -250,20 +250,22 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Android SDK + emulator
+      - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
-          packages: "platforms;android-36 build-tools;36.0.0 platform-tools emulator system-images;android-35;google_apis;x86_64 ndk;27.2.12479018 cmake;3.22.1"
+          packages: "platforms;android-36 build-tools;36.0.0 platform-tools ndk;27.2.12479018 cmake;3.22.1"
 
       - name: Enable KVM
         run: |
           set -euo pipefail
-          if [ -e /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm
-          else
-            echo "::error::/dev/kvm is unavailable on this runner; refusing an unbounded software-emulator run." >&2
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::/dev/kvm is unavailable on this runner." >&2
             exit 1
           fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
 
       - name: Fetch and verify Android caption build inputs
         run: |
@@ -277,38 +279,21 @@ jobs:
           bunx cap sync android
         working-directory: apps/mobile
 
-      - name: Create and boot API 35 emulator
-        run: |
-          set -euo pipefail
-          echo "no" | avdmanager create avd             --force             --name cutlyra-ci             --package "system-images;android-35;google_apis;x86_64"             --device "pixel_7"
-
-          nohup "$ANDROID_SDK_ROOT/emulator/emulator"             -avd cutlyra-ci             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -wipe-data             -gpu swiftshader_indirect             > "$RUNNER_TEMP/cutlyra-emulator.log" 2>&1 &
-
-          adb wait-for-device
-          booted=""
-          for _ in $(seq 1 120); do
-            booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
-            if [ "$booted" = "1" ]; then
-              break
-            fi
-            sleep 2
-          done
-          if [ "$booted" != "1" ]; then
-            echo "::error::Android emulator did not finish booting." >&2
-            cat "$RUNNER_TEMP/cutlyra-emulator.log" >&2 || true
-            exit 1
-          fi
-
-          adb shell settings put global window_animation_scale 0
-          adb shell settings put global transition_animation_scale 0
-          adb shell settings put global animator_duration_scale 0
-          adb shell input keyevent 82 || true
-          adb shell getprop ro.build.fingerprint
-          adb shell getprop ro.build.version.sdk
-
       - name: Run connected Android instrumentation suite
-        run: ./gradlew :app:connectedDebugAndroidTest --console=plain
-        working-directory: apps/mobile/android
+        # Pinned to a reviewed commit rather than a floating v2 tag. This
+        # action handles AVD creation/boot readiness; our earlier hand-rolled
+        # background emulator could exit before adb appeared and leave
+        # `adb wait-for-device` hanging until the job timeout.
+        uses: ReactiveCircus/android-emulator-runner@ed009f5318f15b1cf93a191b856c4f1748a2d4c1
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          working-directory: apps/mobile/android
+          script: ./gradlew :app:connectedDebugAndroidTest --console=plain
 
       - name: Upload instrumentation reports
         if: always()
@@ -320,8 +305,4 @@ jobs:
             apps/mobile/android/app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Stop emulator
-        if: always()
-        run: adb emu kill || true
 
