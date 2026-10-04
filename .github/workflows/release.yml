@@ -87,6 +87,12 @@ jobs:
         with:
           packages: "platforms;android-36 build-tools;36.0.0 platform-tools ndk;27.2.12479018 cmake;3.22.1"
 
+      - name: Fetch and verify Android caption build inputs
+        run: |
+          bash scripts/fetch-whisper-cpp.sh
+          bash scripts/download-whisper-model.sh tiny.en --platform android
+        working-directory: apps/mobile
+
       - name: Build the mobile web harness (apps/mobile/www)
         run: bun run build
         working-directory: apps/mobile
@@ -132,7 +138,15 @@ jobs:
             echo "::error::apksigner not found under build-tools (ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT ANDROID_HOME=$ANDROID_HOME)" >&2
             exit 1
           fi
-          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
+          APK="app/build/outputs/apk/release/app-release.apk"
+          "$APKSIGNER" verify --print-certs "$APK"
+          unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
+          unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
+          if unzip -l "$APK" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
+            echo "::error::Internal spike assets leaked into release APK." >&2
+            exit 1
+          fi
         working-directory: apps/mobile/android
 
       - name: Stage release artifact
