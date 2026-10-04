@@ -120,7 +120,11 @@ bash scripts/fetch-whisper-cpp.sh            # whisper.cpp sources (MIT)
 bash scripts/download-whisper-model.sh tiny.en --platform android
 ```
 
-Without them the app still builds and runs; generating captions then fails
+Official Android CI/release workflows run these fetches automatically and
+hard-verify the pinned model/source before packaging, so end users receive the
+Whisper runtime + tiny.en model inside Cutlyra and do not install or download
+developer prerequisites themselves. For ad-hoc local builds, without these
+inputs the app still builds and runs; generating captions then fails
 with a clear error naming the missing pieces instead of pretending to work.
 
 ## Installing the APK
