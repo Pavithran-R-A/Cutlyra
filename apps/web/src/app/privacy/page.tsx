@@ -29,15 +29,19 @@ export default function PrivacyPage() {
 				<p>Cutlyra does not provide user accounts or sign-in, so the Cutlyra developer does not hold server-side account data and there is no cloud account to delete.</p>
 			</section>
 			<section className="flex flex-col gap-3">
+				<h2 className="text-2xl font-semibold">On-device captions</h2>
+				<p>Automatic captions use Cutlyra&apos;s bundled whisper.cpp runtime and English model locally on supported Android devices. Audio/video is not uploaded to a speech-recognition service.</p>
+			</section>
+			<section className="flex flex-col gap-3">
 				<h2 className="text-2xl font-semibold">Third-party components</h2>
 				<p>Cutlyra uses open-source libraries for its app shell, editing, media processing, and on-device captions. They are used locally by the app; Cutlyra does not integrate advertising, analytics, or tracking services.</p>
 			</section>
 			<section className="flex flex-col gap-3">
 				<h2 className="text-2xl font-semibold">Privacy inquiries</h2>
-				<p>The developer contact email published in Cutlyra&apos;s Google Play listing is the privacy contact and inquiry mechanism for this app.</p>
+				<p>Use the verified developer/support email published in Cutlyra&apos;s Google Play listing or the Cutlyra issue tracker at github.com/Pavithran-R-A/Cutlyra/issues for privacy inquiries.</p>
 			</section>
 			<Separator />
-			<p className="text-muted-foreground text-sm">Last updated: September 29, 2026</p>
+			<p className="text-muted-foreground text-sm">Last updated: October 4, 2026</p>
 		</BasePage>
 	);
 }
