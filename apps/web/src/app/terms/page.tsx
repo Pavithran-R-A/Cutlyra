@@ -126,17 +126,8 @@ export default function TermsPage() {
 			<section className="flex flex-col gap-3">
 				<h2 className="text-2xl font-semibold">Contact</h2>
 				<p>
-					For product or terms questions, use the{" "}
-					<a
-						href="https://github.com/Pavithran-R-A/Cutlyra/issues"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-primary hover:underline"
-					>
-						Cutlyra GitHub issue tracker
-					</a>
-					. The verified developer/support contact published with an official
-					release is also an authorized contact channel.
+					For product or terms questions, use the verified developer/support
+					contact published with the official Cutlyra release.
 				</p>
 			</section>
 
