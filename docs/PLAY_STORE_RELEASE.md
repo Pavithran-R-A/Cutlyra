@@ -118,10 +118,9 @@ runtime dependencies.
 
 Before Play submission, the publisher must make that page available at an
 active, public, non-geofenced, non-PDF URL and supply the real
-developer/support/privacy contact email used by the Play listing. The policy
-also exposes the Cutlyra project issue tracker as an inquiry mechanism; the
-verified Play contact email remains the preferred user-facing contact once the
-listing exists.
+developer/support/privacy contact email used by the Play listing. The
+standalone policy intentionally relies on that verified public contact rather
+than a private repository issue tracker.
 
 ## Closed-test plan
 
