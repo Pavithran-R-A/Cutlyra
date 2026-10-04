@@ -79,6 +79,13 @@ android {
     }
     buildTypes {
         release {
+            // Play/App Bundle native crash symbolication. FULL adds function,
+            // file, and line metadata to AAB BUNDLE-METADATA and emits
+            // native-debug-symbols.zip for direct APK releases; it does not
+            // make the packaged release .so itself debuggable.
+            ndk {
+                debugSymbolLevel 'FULL'
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             if (hasReleaseSigning) {
