@@ -79,7 +79,11 @@ class CrashBoundary extends Component<
 	}
 }
 
-type Screen = { name: "home" } | { name: "editor" } | { name: "privacy" };
+type Screen =
+	| { name: "home" }
+	| { name: "editor" }
+	| { name: "privacy" }
+	| { name: "legal" };
 
 function App() {
 	const [screen, setScreen] = useState<Screen>({ name: "home" });
@@ -104,10 +108,15 @@ function App() {
 		return <PrivacyScreen onBack={() => setScreen({ name: "home" })} />;
 	}
 
+	if (screen.name === "legal") {
+		return <LegalNoticesScreen onBack={() => setScreen({ name: "home" })} />;
+	}
+
 	return (
 		<HomeScreen
 			onOpenEditor={() => setScreen({ name: "editor" })}
 			onOpenPrivacy={() => setScreen({ name: "privacy" })}
+			onOpenLegal={() => setScreen({ name: "legal" })}
 		/>
 	);
 }
@@ -115,9 +124,11 @@ function App() {
 function HomeScreen({
 	onOpenEditor,
 	onOpenPrivacy,
+	onOpenLegal,
 }: {
 	onOpenEditor: () => void;
 	onOpenPrivacy: () => void;
+	onOpenLegal: () => void;
 }) {
 	const editor = useEditor();
 	// CRITICAL finding #2 of the 2026-08-18 test sweep ("saved projects never
@@ -205,9 +216,84 @@ function HomeScreen({
 					Privacy
 				</button>
 				<span aria-hidden="true">•</span>
+				<button type="button" className="kc-home__legal-link" onClick={onOpenLegal}>
+					Open-source notices
+				</button>
+				<span aria-hidden="true">•</span>
 				<span>Offline · no account · no ads</span>
 			</footer>
 		</div>
+	);
+}
+
+function LegalNoticesScreen({ onBack }: { onBack: () => void }) {
+	const [text, setText] = useState("Loading bundled notices…");
+
+	useEffect(() => {
+		let cancelled = false;
+		const files = [
+			"CUTLYRA-LICENSE.txt",
+			"CUTLYRA-NOTICE.txt",
+			"THIRD_PARTY_NOTICES.md",
+			"SOUNDTOUCHJS-LICENSE.txt",
+			"WHISPERCPP-LICENSE.txt",
+		];
+
+		void (async () => {
+			const sections: string[] = [];
+			for (const file of files) {
+				try {
+					const response = await fetch(`./legal/${file}`, { cache: "no-store" });
+					if (!response.ok) {
+						// WHISPERCPP-LICENSE is Android-release-only because the
+						// source is fetched at build time. Other files must exist.
+						if (file === "WHISPERCPP-LICENSE.txt" && response.status === 404) continue;
+						throw new Error(`${file}: HTTP ${response.status}`);
+					}
+					sections.push(`===== ${file} =====\n\n${await response.text()}`);
+				} catch (error) {
+					if (file === "WHISPERCPP-LICENSE.txt") continue;
+					throw error;
+				}
+			}
+			if (!cancelled) setText(sections.join("\n\n"));
+		})().catch((error: unknown) => {
+			if (!cancelled) {
+				setText(
+					`Bundled legal notices could not be opened: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		});
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	return (
+		<main className="kc-privacy" data-cutlyra-theme="cutlyra-dark">
+			<header className="kc-privacy__header">
+				<button type="button" className="kc-privacy__back" onClick={onBack} aria-label="Back to projects">←</button>
+				<h1>Open-source notices</h1>
+			</header>
+			<div className="kc-privacy__body">
+				<p>
+					Cutlyra is open-source software and includes third-party open-source
+					components. The license and notice texts below are bundled inside this
+					copy of the app so they remain available offline.
+				</p>
+				<pre
+					style={{
+						whiteSpace: "pre-wrap",
+						overflowWrap: "anywhere",
+						fontSize: "11px",
+						lineHeight: 1.45,
+					}}
+				>
+					{text}
+				</pre>
+			</div>
+		</main>
 	);
 }
 
