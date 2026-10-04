@@ -37,10 +37,10 @@ import java.util.concurrent.TimeUnit
  * THE golden-frame parity harness for M9 (plan §M9 item 6, §2.3 rule 3),
  * exercising exactly the construct M1's spike test describes: "a
  * hand-written 2-clip + cross-fade + text-overlay EDL." Structurally mirrors
- * M4's `MediaPipelineInstrumentedTest` (same fixture-copy setup, same
- * `@RunWith(AndroidJUnit4::class)`, same honest "written but not run" status
- * — see that file's doc comment for why: no working emulator system image in
- * this session).
+ * M4's `MediaPipelineInstrumentedTest` (same fixture-copy setup and
+ * `@RunWith(AndroidJUnit4::class)`). These tests are part of physical-device
+ * release qualification and must also remain runnable from the standalone
+ * instrumentation APK.
  *
  * WHAT THIS HARNESS DOES vs. WHAT "GOLDEN-FRAME PARITY" MEANS (plan §2.3
  * rule 3: "render frame N in the webview, export frame N natively, compare
@@ -65,8 +65,8 @@ import java.util.concurrent.TimeUnit
  *            check (the crossfade compositor produced SOME visible content,
  *            not a black/corrupt frame), not a parity check.
  *
- * Fixture: reuses M4's instrumentation-APK `res/raw/test_clip.mp4` as BOTH of the two main-track
- * clips (different trim windows of the same 2s source) — avoids bundling a
+ * Fixture: reuses M4's instrumentation-APK `res/raw/test_clip.mp4` as BOTH
+ * of the two main-track clips (different trim windows of the same 2s source) — avoids bundling a
  * second binary fixture while still genuinely exercising two distinct
  * `EditedMediaItemSequence` entries, a `addGap` + overlay sequence for the
  * transition, and the base-sequence hard cut alongside it.
