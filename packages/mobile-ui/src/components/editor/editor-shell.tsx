@@ -16,9 +16,6 @@ import { AudioPanel } from "../panels/audio-panel";
 import { TextPanel } from "../panels/text-panel";
 import { StickersPanel } from "../panels/stickers-panel";
 import { OverlayPanel } from "../panels/overlay-panel";
-import { EffectsPanel } from "../panels/effects-panel";
-import { FiltersPanel } from "../panels/filters-panel";
-import { AdjustPanel } from "../panels/adjust-panel";
 import { CaptionsPanel } from "../panels/captions-panel";
 import { ExportSheet } from "../panels/export-sheet";
 import { KeyframeGraphSheet } from "../panels/keyframe-graph-sheet";
@@ -40,7 +37,6 @@ import {
 	duplicateSelected,
 	setRetime,
 	setElementParam,
-	toggleReversed,
 	selectElement,
 	insertTextElement,
 	importAndPlaceOverlay,
@@ -167,8 +163,6 @@ function buildContextualItems({
 function formatKeyframeTime(time: MediaTime): string {
 	return `${mediaTimeToSeconds({ time }).toFixed(2)}s`;
 }
-
-const VISUAL_ONLY_SHEETS = new Set<SheetId>(["effects", "filters", "adjust"]);
 
 function formatTimecode(seconds: number): string {
 	const clamped = Math.max(0, seconds);
@@ -619,7 +613,6 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 					}
 					onSetSpeed={({ rate, maintainPitch }) => setRetime({ editor, ref: selectedRef, rate, maintainPitch })}
 					onSetVolume={(db) => setElementParam({ editor, ref: selectedRef, key: "volume", value: db })}
-					onToggleReverse={() => toggleReversed({ editor, ref: selectedRef })}
 				/>
 			)}
 
@@ -662,21 +655,6 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 				/>
 			)}
 
-			{activeSheet === "effects" && selectedRef && visualElement && (
-				<EffectsPanel editor={editor} elementRef={selectedRef} element={visualElement} onClose={closeSheet} />
-			)}
-
-			{activeSheet === "filters" && selectedRef && visualElement && (
-				<FiltersPanel editor={editor} elementRef={selectedRef} element={visualElement} onClose={closeSheet} />
-			)}
-
-			{activeSheet === "adjust" && selectedRef && visualElement && (
-				<AdjustPanel editor={editor} elementRef={selectedRef} element={visualElement} onClose={closeSheet} />
-			)}
-
-			{activeSheet && VISUAL_ONLY_SHEETS.has(activeSheet) && !visualElement && (
-				<PanelSelectPrompt onClose={closeSheet} />
-			)}
 
 			{/* Fixer pass: the Edit sheet had no fallback when opened with
 			    nothing selected — unlike VISUAL_ONLY_SHEETS above, it rendered
