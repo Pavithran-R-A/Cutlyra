@@ -7,7 +7,6 @@ import {
 	AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Separator } from "@/components/ui/separator";
-import { SOCIAL_LINKS } from "@/site/social";
 
 export const metadata: Metadata = {
 	title: "Terms of Service - Cutlyra",
@@ -129,7 +128,7 @@ export default function TermsPage() {
 				<p>
 					For product or terms questions, use the{" "}
 					<a
-						href={`${SOCIAL_LINKS.github}/issues`}
+						href="https://github.com/Pavithran-R-A/Cutlyra/issues"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="text-primary hover:underline"
