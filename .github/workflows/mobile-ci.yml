@@ -54,6 +54,12 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Fetch and verify Android caption build inputs
+        run: |
+          bash scripts/fetch-whisper-cpp.sh
+          bash scripts/download-whisper-model.sh tiny.en --platform android
+        working-directory: apps/mobile
+
       - name: Build the M3 shell harness (apps/mobile/www)
         run: bun run build
         working-directory: apps/mobile
@@ -144,6 +150,16 @@ jobs:
 
       - name: gradlew assembleDebug
         run: ./gradlew assembleDebug --console=plain
+        working-directory: apps/mobile/android
+
+      - name: Verify bundled offline-caption payload
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
+          unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
         working-directory: apps/mobile/android
 
       - name: gradlew :app:assembleDebugAndroidTest
