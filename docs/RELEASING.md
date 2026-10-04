@@ -187,13 +187,13 @@ Once the keystore secrets exist:
      generates native debug symbols.
    - `publish-release` downloads the Android artifacts, writes a
      `SHA256SUMS.txt`, and creates the GitHub Release.
-4. Once the release is live, update the two install guides in
+4. Once the release is live, update the Android install guide in
    `docs/guides/` if the flow changed.
 
 ### Fast rollback
 
 If a release turns out to be broken: delete the GitHub Release and its
-tag (`gh release delete vX.Y.Z --cleanup-tag`), and re-point the publik
+tag (`gh release delete vX.Y.Z --cleanup-tag`), and re-point the public
 listing at the last-known-good tag. This is the same "pull the release
 asset + repin the guide" ritual used elsewhere — see plan M13 item 5.
 
