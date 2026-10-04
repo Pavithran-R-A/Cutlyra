@@ -326,11 +326,14 @@ jobs:
         working-directory: apps/mobile
 
       - name: Run connected Android instrumentation suite
-        # Pinned to a reviewed commit rather than a floating v2 tag. This
-        # action handles AVD creation/boot readiness; our earlier hand-rolled
+        # Pinned to the immutable commit behind upstream v2.38.0 (the release
+        # commit includes the action's runtime node_modules; a later source
+        # commit without them failed before emulator startup with
+        # MODULE_NOT_FOUND @actions/core). This action handles AVD
+        # creation/boot readiness; our earlier hand-rolled
         # background emulator could exit before adb appeared and leave
         # `adb wait-for-device` hanging until the job timeout.
-        uses: ReactiveCircus/android-emulator-runner@ed009f5318f15b1cf93a191b856c4f1748a2d4c1
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 35
           target: google_apis
