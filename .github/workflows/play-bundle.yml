@@ -86,6 +86,26 @@ jobs:
           test -s "$AAB"
           unzip -t "$AAB" >/dev/null
           jarsigner -verify "$AAB" >/dev/null
+          READELF="$ANDROID_SDK_ROOT/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          test -x "$READELF"
+          rm -rf "$RUNNER_TEMP/cutlyra-elf-aab"
+          mkdir -p "$RUNNER_TEMP/cutlyra-elf-aab"
+          unzip -q "$AAB" 'base/lib/*/*.so' -d "$RUNNER_TEMP/cutlyra-elf-aab"
+          READELF="$READELF" ELF_ROOT="$RUNNER_TEMP/cutlyra-elf-aab" python3 - <<'PY'
+          import os, pathlib, subprocess
+          readelf = os.environ["READELF"]
+          root = pathlib.Path(os.environ["ELF_ROOT"])
+          libs = list(root.rglob("*.so"))
+          if not libs:
+              raise SystemExit("no native libraries found in AAB")
+          for lib in libs:
+              out = subprocess.check_output([readelf, "-lW", str(lib)], text=True)
+              aligns = [int(line.split()[-1], 16) for line in out.splitlines()
+                        if line.lstrip().startswith("LOAD ")]
+              if not aligns or min(aligns) < 0x4000:
+                  raise SystemExit(f"16 KB ELF alignment failed for {lib}: {aligns}")
+              print(f"16 KB ELF OK: {lib} {aligns}")
+          PY
           unzip -l "$AAB" | grep -q "base/manifest/AndroidManifest.xml"
           unzip -l "$AAB" | grep -q "base/assets/models/ggml-tiny.en.bin"
           unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libcutlyra_whisper.so"
