@@ -32,10 +32,11 @@ Cutlyra is a touch-first mobile editor for Android, running fully on-device:
   kind. The app is designed to work correctly with the network off.
 - **On-device auto-captions** (whisper.cpp running locally on Android),
   multi-track timeline editing, trim/split/duplicate, transitions, text and
-  stickers, picture-in-picture overlay media, filters, adjust controls
-  (brightness/contrast/saturation), aspect-ratio canvas control, clip
-  speed, transform/opacity keyframes, undo/redo, and hardware-accelerated
-  MP4 export — all local.
+  stickers, picture-in-picture overlay media, aspect-ratio canvas control,
+  clip speed, transform/opacity keyframes, cross-fade transitions, undo/redo,
+  and hardware-accelerated MP4 export — all local. Preview-only effect/filter
+  code remains in the shared engine but is intentionally not exposed in the
+  Android v0.1.0 release until native export parity exists.
 - **Android distribution.** Direct signed APK releases remain supported, and
   Google Play preparation is tracked in `docs/PLAY_STORE_RELEASE.md`.
   Play uses an AAB + Play App Signing; sideload guides remain available.
