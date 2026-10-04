@@ -65,7 +65,7 @@ The first Cutlyra release: a free, open-source, local-first Android mobile
 video editor. No account, no subscription, no ads, no watermark, no cloud —
 editing and export run entirely on-device.
 
-### Added (Android, arm64-v8a, minSdk 29 / targetSdk 36)
+### Added (Android, arm64-v8a phones; x86_64 compatible environments, minSdk 29 / targetSdk 36)
 
 - **Local projects** — create, rename, delete, and reopen projects; all
   data is stored on-device (IndexedDB + app-private native storage).
@@ -75,9 +75,10 @@ editing and export run entirely on-device.
   native proxy transcode for large videos).
 - **Editing** — multi-track timeline; trim, split, duplicate, delete;
   reorder; per-clip speed; aspect-ratio canvas; overlays /
-  picture-in-picture; text; transitions; filters and adjust controls
-  (brightness/contrast/saturation); transform/opacity keyframes;
-  undo/redo throughout.
+  picture-in-picture; text; cross-fade transitions; transform/opacity
+  keyframes; undo/redo throughout. Preview-only effect/filter code remains
+  in the shared engine but is not exposed in Android v0.1.0 because native
+  export parity is not yet implemented.
 - **Playback** — frame-accurate preview backed by the same engine state
   used for export.
 - **Export** — hardware-accelerated MP4 (Media3 Transformer): H.264 +
@@ -96,7 +97,9 @@ editing and export run entirely on-device.
   automation (Photo Picker included), plus a real-speech caption round
   trip and multiple exports verified with ffprobe (`docs/EMULATOR-QA.md`).
 - **Physical-device qualification WAS performed 2026-09-24/25** on an
-  iQOO I2221 (Android 16, arm64, 16 KB-page capable): install, cold
+  iQOO I2221 (Android 16, arm64, 16 KB-page capable), with a second-device
+  POCO M4 Pro 5G qualification campaign in progress for the final release
+  candidate: install, cold
   launch, first-run, project create, import (photo picker + SAF),
   playback, scrub, split/undo/redo, persistence across force-stop, and
   native Media3 exports — plus the Stage 11 regression fixes above,
