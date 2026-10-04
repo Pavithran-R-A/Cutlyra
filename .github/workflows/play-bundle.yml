@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Install Bun
         uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
         with:
@@ -29,12 +29,12 @@ jobs:
       - name: Install dependencies
         run: bun install
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
           java-version: "21"
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           packages: "platforms;android-36 build-tools;36.0.0 platform-tools ndk;27.2.12479018 cmake;3.22.1"
       - name: Fetch and verify Android caption build inputs
@@ -93,7 +93,7 @@ jobs:
           cp apps/mobile/android/app/build/outputs/bundle/release/app-release.aab play-artifacts/cutlyra-play-${{ github.sha }}.aab
           (cd play-artifacts && sha256sum *.aab > SHA256SUMS.txt)
       - name: Upload Play artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: cutlyra-play-aab
           path: play-artifacts/*
