@@ -76,6 +76,12 @@ jobs:
         # repo root and fails fast with a clear message if it's missing.
         run: bun install
 
+      - name: Audit shipped WASM dependency licenses
+        # Traverse only the dependency closure reachable from opencut-wasm.
+        # Missing, opaque, or copyleft/custom external licenses fail closed
+        # for explicit review rather than being silently shipped.
+        run: bun scripts/audit-wasm-licenses.mjs
+
       - name: "invariants.sh: build, typecheck, lint, unit tests, offline audit, bridge-import gate, mouse-event gate"
         shell: bash
         run: bash scripts/invariants.sh
