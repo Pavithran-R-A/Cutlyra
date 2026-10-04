@@ -53,9 +53,40 @@ jobs:
     name: invariants gate
     uses: ./.github/workflows/bun-ci.yml
 
+  release-preflight:
+    name: Release provenance + version gate
+    needs: invariants
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Require tag commit to be on main and match Android versionName
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Release tag commit $GITHUB_SHA is not contained in origin/main." >&2
+            exit 1
+          fi
+
+          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' apps/mobile/android/app/build.gradle | head -n1)"
+          if [ -z "$VERSION_NAME" ]; then
+            echo "::error::Could not read Android versionName." >&2
+            exit 1
+          fi
+          EXPECTED_TAG="v$VERSION_NAME"
+          if [ "$GITHUB_REF_NAME" != "$EXPECTED_TAG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Android versionName $VERSION_NAME (expected $EXPECTED_TAG)." >&2
+            exit 1
+          fi
+          echo "Release provenance OK: $GITHUB_REF_NAME -> $GITHUB_SHA on main"
+
   android-release:
     name: Android (signed release APK)
-    needs: invariants
+    needs: release-preflight
     runs-on: ubuntu-latest
 
     steps:
@@ -173,7 +204,7 @@ jobs:
 
   ios-release:
     name: iOS (unsigned device build .ipa)
-    needs: invariants
+    needs: release-preflight
     runs-on: macos-latest
 
     steps:
