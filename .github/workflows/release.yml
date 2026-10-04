@@ -143,6 +143,10 @@ jobs:
           unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
           unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
+          MODEL_SHA="$(unzip -p "$APK" assets/models/ggml-tiny.en.bin | sha256sum | awk '{print $1}')"
+          test "$MODEL_SHA" = "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"
+          SYMBOLS="app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip"
+          test -s "$SYMBOLS"
           if unzip -l "$APK" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
             echo "::error::Internal spike assets leaked into release APK." >&2
             exit 1
@@ -155,12 +159,16 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/release-artifacts"
           cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
             "$GITHUB_WORKSPACE/release-artifacts/cutlyra-${{ github.ref_name }}-android.apk"
+          cp apps/mobile/android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip \
+            "$GITHUB_WORKSPACE/release-artifacts/cutlyra-${{ github.ref_name }}-android-native-debug-symbols.zip"
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-release-apk
-          path: release-artifacts/*.apk
+          path: |
+            release-artifacts/*.apk
+            release-artifacts/*-native-debug-symbols.zip
           if-no-files-found: error
 
   ios-release:
@@ -221,8 +229,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-artifacts
-          find downloaded -type f \( -name '*.apk' -o -name '*.ipa' \) -exec cp {} release-artifacts/ \;
-          (cd release-artifacts && shasum -a 256 -- * > SHA256SUMS.txt)
+          find downloaded -type f \( -name '*.apk' -o -name '*.ipa' -o -name '*-native-debug-symbols.zip' \) -exec cp {} release-artifacts/ \;
+          (cd release-artifacts && sha256sum -- * > SHA256SUMS.txt)
           ls -la release-artifacts
 
       - name: Create GitHub Release
