@@ -760,3 +760,84 @@ and submit.
 No permanent signing identity, release tag, GitHub Release, or Play submission
 was created during this stage.
 
+# Stage 14 — POCO physical qualification found video-only export blocker (2026-10-05)
+
+Authoritative candidate tested:
+`main@8003289d92c500df586eeea311e8192d86272424`.
+
+Device:
+POCO M4 Pro 5G (Android 13 / API 33, MIUI 14).
+
+## What passed physically
+
+- repository/source invariant at the exact merged SHA;
+- Bun/unit/typecheck/Android JVM gates;
+- corrected connected instrumentation: **7/7 PASS**;
+- clean/upgrade install and persistence;
+- SAF audio picker on MIUI when navigated through a visible provider root;
+- real on-device English captions from a public-domain LibriVox sample;
+- caption edit + persistence + model-cache repeat behavior;
+- offline cold launch/playback/captions/export with zero required network calls;
+- release APK non-debuggable, targetSdk 36, both supported ABIs, bundled tiny.en,
+  bundled native whisper runtime, legal notices, 16 KB ZIP/ELF alignment;
+- release-mode project -> media/audio -> captions -> multi-track export completed;
+- no Cutlyra FATAL/ANR/native fatal/OOM in the final forensic sweep.
+
+## Release blocker discovered
+
+**P0: an ordinary video-only MP4 (no audio stream) crashes export composition.**
+
+The dedicated audio-lane builder admitted main-track video assets even when
+`EdlAsset.hasAudio == false`. The audio lane then called
+`buildEditedMediaItem(... removeVideo=true)`, while that helper inferred
+`removeAudio=true` from the missing audio stream. Media3 rejects an
+`EditedMediaItem` that removes both tracks.
+
+Physical isolation:
+- H.264 video-only inputs: FAIL;
+- H.264 + AAC input: PASS;
+- stack pointed to `EdlToComposition.buildEditedMediaItem`.
+
+This is a real product blocker because screen recordings/downloaded videos may
+legitimately contain no audio.
+
+## Fix branch / PR
+
+- branch: `fix/poco-video-only-export`
+- PR: #4, "Fix POCO video-only export blocker and close release QA gaps"
+
+PR #4:
+1. filters `hasAudio=false` assets out of dedicated audio sequences so their
+   time range becomes silence;
+2. adds a fail-closed guard against ever giving Media3 an item with both tracks
+   removed;
+3. adds an instrumentation regression that remuxes the existing MP4 fixture
+   into a **real video-only MP4 at runtime** and proves end-to-end export;
+4. guarantees non-blank native/UI export diagnostics;
+5. rejects audio-only *video export* with explicit "add a video or image"
+   guidance;
+6. prunes hidden autotest/legacy-diagnostics chunks from release artifacts and
+   extends release CI leak checks;
+7. reports on-device STT capability truthfully now that release-mode Android
+   captions were physically proven.
+
+## Remaining qualification after PR #4
+
+Do not permanently sign/tag/publish yet.
+
+Required:
+1. PR #4 Bun CI green;
+2. PR #4 Mobile CI green, including the new video-only instrumentation test;
+3. merge PR #4, then merged-main CI green;
+4. sync Freebuff to that exact merged SHA;
+5. rerun the POCO export matrix cases blocked/skipped by the P0, especially:
+   image-only, portrait, landscape, speed, crossfade, keyframes/transforms,
+   M4A, mixed-media, repeated exports, heavy/combined project;
+6. explicitly re-run video-only MP4 physical export;
+7. verify caption playback sync + caption visibility in a produced file;
+8. verify release-mode result and forensic sweep;
+9. require **0 P0 + 0 P1**.
+
+Only then is permanent signing / GitHub v0.1.0 release / Play Internal Testing
+eligible.
+
