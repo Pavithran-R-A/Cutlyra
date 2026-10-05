@@ -382,6 +382,82 @@ class ExportGoldenFrameInstrumentedTest {
     }
 
     /**
+     * Stage 14 POCO regression: an 8 s video + 15 s MP3 exported as 15 s,
+     * producing a 7 s black tail because audio-only content extended
+     * meta.durationTicks beyond the last visual frame.
+     *
+     * Reproduce the same shape with the 2 s fixture: a 1 s visual main clip
+     * plus a 2 s audio clip. Video export must end at the 1 s visual boundary,
+     * while retaining valid audio during that visible second.
+     */
+    @Test
+    fun export_clamps_audio_that_outlasts_visual_timeline() {
+        val base = buildFixtureEdl()
+        val mainTrack = base.tracks.first { it.kind == EdlTrackKind.MAIN }
+        val oneSecondVisual = mainTrack.clips.first().copy(
+            clipId = "visual-1s",
+            startTicks = 0,
+            durationTicks = ticksPerSecond,
+            sourceStartTicks = 0,
+            sourceEndTicks = ticksPerSecond,
+        )
+        val longAudioClip = oneSecondVisual.copy(
+            clipId = "audio-2s",
+            kind = "audio",
+            name = "long-audio",
+            durationTicks = 2 * ticksPerSecond,
+            sourceEndTicks = 2 * ticksPerSecond,
+        )
+        val audioTrack = EdlTrack(
+            trackId = "track-audio",
+            kind = EdlTrackKind.AUDIO,
+            trackType = EdlTrackType.AUDIO,
+            name = "Audio",
+            zIndex = 1,
+            muted = false,
+            hidden = false,
+            clips = listOf(longAudioClip),
+        )
+        val edl = base.copy(
+            meta = base.meta.copy(durationTicks = 2 * ticksPerSecond),
+            tracks = listOf(
+                mainTrack.copy(clips = listOf(oneSecondVisual)),
+                audioTrack,
+            ),
+            transitions = emptyList(),
+            overlays = emptyList(),
+        )
+
+        val latch = CountDownLatch(1)
+        val events = mutableListOf<Media3Exporter.Event>()
+        Media3Exporter.start(context, edl, outputFile) { event ->
+            events.add(event)
+            if (event is Media3Exporter.Event.Done || event is Media3Exporter.Event.Error) {
+                latch.countDown()
+            }
+        }
+
+        assertTrue(
+            "audio-tail regression export did not terminate within 60s",
+            latch.await(60, TimeUnit.SECONDS),
+        )
+        val terminal = events.lastOrNull()
+        assertTrue(
+            "expected audio-tail regression export to succeed, got: $terminal",
+            terminal is Media3Exporter.Event.Done,
+        )
+
+        val done = terminal as Media3Exporter.Event.Done
+        val probe = MediaProbe.probe(done.outputFile, mimeTypeHint = "video/mp4")
+        assertTrue(probe.hasAudio)
+        assertTrue(
+            "video export must end at the ~1s visual boundary, was ${probe.durationMicros}us",
+            Math.abs(probe.durationMicros - 1_000_000L) < 300_000L,
+        )
+        assertFrameDecodesNonBlack(done.outputFile, atUs = 750_000L)
+    }
+
+    /**
      * The real end-to-end path: `Media3Exporter.start` -> hardware/software
      * `Transformer` -> a playable MP4. THIS is the assertion that needs a
      * device/emulator's actual codec stack — everything above this comment
