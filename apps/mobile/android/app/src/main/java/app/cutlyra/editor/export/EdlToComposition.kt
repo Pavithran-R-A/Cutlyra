@@ -284,17 +284,25 @@ object EdlToComposition {
         fun audibleClips(clips: List<EdlClip>, trackMuted: Boolean): List<EdlClip> =
             clips
                 .filter { clip ->
-                    !trackMuted && !clip.muted && edl.output.includeAudio &&
+                    if (trackMuted || clip.muted || !edl.output.includeAudio || clip.assetId == null) {
+                        false
+                    } else {
+                        // Only assets that ACTUALLY carry audio may enter an
+                        // audio-only Media3 sequence. Stage 13 POCO QA found a
+                        // release-blocking crash for ordinary video-only MP4s:
+                        // this filter admitted them, addAudioSequence then set
+                        // removeVideo=true, while buildEditedMediaItem also
+                        // inferred removeAudio=true from asset.hasAudio=false.
+                        // Media3 correctly rejects an EditedMediaItem with
+                        // BOTH streams removed. Omitting the clip here makes
+                        // its time range silence in the dedicated audio lane.
+                        //
                         // Generated clips (bundled library sounds, whose
-                        // `sourceUrl` has no place in the EDL's asset table,
-                        // plus any other assetless clip) are NOT exportable
-                        // audio sources: `requireAsset` would throw here and
-                        // abort the whole export — found in Stage 11 physical
-                        // QA (iQOO I2221) where one bundled "Warm Hum" clip
-                        // killed exports of an otherwise valid project. Skip
-                        // them; the export's audio mix simply omits them.
-                        clip.assetId != null &&
-                        requireAsset(edl, clip).kind != EdlAssetKind.IMAGE
+                        // sourceUrl has no asset-table entry) are still skipped
+                        // above; images are silent by definition.
+                        val asset = requireAsset(edl, clip)
+                        asset.kind != EdlAssetKind.IMAGE && asset.hasAudio
+                    }
                 }
                 .sortedBy { it.startTicks }
 
@@ -519,8 +527,20 @@ object EdlToComposition {
             )
         }
 
+        val effectiveRemoveAudio = removeAudio || !asset.hasAudio
+        if (effectiveRemoveAudio && removeVideo) {
+            // Never hand Media3 the impossible "remove both tracks" shape.
+            // Callers that want an audio-only lane must first exclude assets
+            // with hasAudio=false (see audibleClips above). Keep this guard so
+            // any future regression fails with a Cutlyra diagnostic instead
+            // of Media3's IllegalStateException.
+            throw ExportUnsupportedException(
+                "clip ${clip.clipId} (${asset.name}) has no audio stream and cannot be used in an audio-only export sequence",
+            )
+        }
+
         val builder = EditedMediaItem.Builder(mediaItemBuilder.build())
-            .setRemoveAudio(removeAudio || !asset.hasAudio)
+            .setRemoveAudio(effectiveRemoveAudio)
             .setRemoveVideo(removeVideo)
             // Per-clip volume. Parsed since M9 but never applied on Android —
             // the slider was a no-op in every Android export until now.
