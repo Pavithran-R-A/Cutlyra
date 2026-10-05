@@ -168,16 +168,48 @@ def pruneSpikeAssetsForRelease = tasks.register('pruneSpikeAssetsForRelease') {
             println('pruneSpikeAssetsForRelease: no synced asset copy present — nothing to prune')
             return
         }
+        // Do not rely only on Gradle's PatternSet varargs semantics here:
+        // Stage 14 CI proved a hashed autotest chunk could survive even though
+        // the narrow include list looked correct. Walk every generated file
+        // and classify by its relative path instead, then fail closed if any
+        // internal QA payload remains.
         def toRemove = []
-        project.fileTree(syncCopy).matching { it.include(spikePrunePatterns) }.each { toRemove << it }
+        project.fileTree(syncCopy).each { file ->
+            def rel = syncCopy.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+            def internalQa =
+                rel == 'spike.html' ||
+                rel.startsWith('spike-assets/') ||
+                rel.startsWith('assets/spike-') ||
+                rel.startsWith('assets/autotest-') ||
+                rel.startsWith('assets/legacy-harness-')
+            if (internalQa) toRemove << file
+        }
         toRemove.each { it.delete() }
+
         // The emptied payload directory (everything under it is spike material
         // by construction).
         def spikeAssetsDir = new File(syncCopy, 'spike-assets')
         if (spikeAssetsDir.exists()) {
             spikeAssetsDir.deleteDir()
         }
-        println("pruneSpikeAssetsForRelease: removed ${toRemove.size()} spike/diagnostics file(s) from the generated asset copy (${syncCopy})")
+
+        def survivors = []
+        project.fileTree(syncCopy).each { file ->
+            def rel = syncCopy.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+            if (
+                rel == 'spike.html' ||
+                rel.startsWith('spike-assets/') ||
+                rel.startsWith('assets/spike-') ||
+                rel.startsWith('assets/autotest-') ||
+                rel.startsWith('assets/legacy-harness-')
+            ) {
+                survivors << rel
+            }
+        }
+        if (!survivors.isEmpty()) {
+            throw new GradleException("release QA payload prune failed; survivors=" + survivors)
+        }
+        println("pruneSpikeAssetsForRelease: removed ${toRemove.size()} internal QA file(s) from the generated asset copy (${syncCopy})")
     }
 }
 
