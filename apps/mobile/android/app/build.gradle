@@ -149,12 +149,14 @@ def spikePrunePatterns = [
     'spike.html',                  // spike harness page (vite entry spike.html)
     'assets/spike-*.js',           // hashed vite chunk of the spike entry
     'assets/spike-*.css',          // hashed vite css of the spike entry
+    'assets/autotest-*.js',        // hidden end-to-end QA route
+    'assets/legacy-harness-*.js',  // hidden diagnostics/native-bridge route
     'spike-assets/**',             // committed spike test videos (proxy/full.mp4)
 ]
 
 def pruneSpikeAssetsForRelease = tasks.register('pruneSpikeAssetsForRelease') {
     group = 'build'
-    description = 'Removes the spike/diagnostics web payload from the generated cap-sync asset copy before release packaging (debug builds keep it).'
+    description = 'Removes spike/autotest/diagnostics web payloads from the generated cap-sync asset copy before release packaging (debug builds keep them).'
     doLast {
         // The generated `cap sync` copy of apps/mobile/www: gitignored,
         // regenerable, safe to mutate. The source of truth (www/) and the
