@@ -255,11 +255,11 @@ jobs:
           unzip -l "$AAB" | grep -q "BUNDLE-METADATA/com.android.tools.build.debugsymbols/"
           test "$(unzip -p "$AAB" base/assets/models/ggml-tiny.en.bin | sha256sum | awk '{print $1}')" = "$MODEL_SHA"
 
-          if unzip -l "$APK" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
+          if unzip -l "$APK" | grep -Eq 'spike\.html|spike-assets|assets/spike|assets/autotest-|assets/legacy-harness-'; then
             echo "::error::Internal spike assets leaked into release APK." >&2
             exit 1
           fi
-          if unzip -l "$AAB" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
+          if unzip -l "$AAB" | grep -Eq 'spike\.html|spike-assets|assets/spike|assets/autotest-|assets/legacy-harness-'; then
             echo "::error::Internal spike assets leaked into release AAB." >&2
             exit 1
           fi
