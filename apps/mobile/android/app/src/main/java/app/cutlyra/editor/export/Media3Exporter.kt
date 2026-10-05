@@ -36,6 +36,16 @@ import java.io.File
 object Media3Exporter {
     private const val PROGRESS_POLL_INTERVAL_MS = 250L
 
+    private fun diagnosticMessage(error: Throwable, fallback: String): String {
+        var current: Throwable? = error
+        while (current != null) {
+            val message = current.message?.trim()
+            if (!message.isNullOrEmpty()) return message
+            current = current.cause
+        }
+        return "$fallback (${error.javaClass.simpleName})"
+    }
+
     /** Software-codec name prefixes on Android's `MediaCodecList` — the
      * standard signature (no dedicated `isSoftwareOnly()` API existed before
      * API 29's `MediaCodecInfo.isSoftwareOnly()`, which IS available at our
@@ -87,14 +97,14 @@ object Media3Exporter {
                     onEvent = onEvent,
                 )
             } catch (e: ExportUnsupportedException) {
-                onEvent(Event.Error(e.message ?: "EDL has an unsupported construct for native export"))
+                onEvent(Event.Error(diagnosticMessage(e, "EDL has an unsupported construct for native export")))
             } catch (e: Exception) {
                 // Stage 11 physical QA (iQOO I2221): media3 can throw a
                 // message-less exception synchronously out of
                 // `Transformer.start()` — surfacing only the fallback string
                 // hid the real fault. Log the full stack and name the class.
                 android.util.Log.e("cutlyra-export", "export failed to start", e)
-                onEvent(Event.Error(e.message ?: "export failed to start (${e.javaClass.simpleName})"))
+                onEvent(Event.Error(diagnosticMessage(e, "export failed to start")))
             }
         }
     }
@@ -179,7 +189,7 @@ object Media3Exporter {
                         )
                     } else {
                         outputFile.delete() // no partial file left behind — plan M9 exit criteria.
-                        onEvent(Event.Error(exportException.message ?: "export failed on both hardware and software encoders"))
+                        onEvent(Event.Error(diagnosticMessage(exportException, "export failed on both hardware and software encoders")))
                     }
                 }
             })
@@ -218,7 +228,7 @@ object Media3Exporter {
             MediaProbe.probe(outputFile, mimeTypeHint = null)
         } catch (e: Exception) {
             outputFile.delete()
-            onEvent(Event.Error("export produced an unreadable/corrupt file: ${e.message}"))
+            onEvent(Event.Error("export produced an unreadable/corrupt file: ${diagnosticMessage(e, "probe failed")}"))
             return
         }
         onEvent(Event.Done(outputFile, exportResult.approximateDurationMs, outputFile.length()))
