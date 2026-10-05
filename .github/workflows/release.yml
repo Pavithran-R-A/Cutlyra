@@ -205,7 +205,7 @@ jobs:
           test "$MODEL_SHA" = "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"
           SYMBOLS="app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip"
           test -s "$SYMBOLS"
-          if unzip -l "$APK" | grep -Eq 'spike\.html|spike-assets|assets/spike'; then
+          if unzip -l "$APK" | grep -Eq 'spike\.html|spike-assets|assets/spike|assets/autotest-|assets/legacy-harness-'; then
             echo "::error::Internal spike assets leaked into release APK." >&2
             exit 1
           fi

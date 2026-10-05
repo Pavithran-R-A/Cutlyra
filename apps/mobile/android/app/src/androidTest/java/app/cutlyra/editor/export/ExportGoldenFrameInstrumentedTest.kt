@@ -2,7 +2,11 @@ package app.cutlyra.editor.export
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -24,12 +28,14 @@ import app.cutlyra.editor.media.MediaProbe
 import app.cutlyra.editor.test.R
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -101,7 +107,10 @@ class ExportGoldenFrameInstrumentedTest {
         outputFile.delete()
     }
 
-    private fun buildFixtureEdl(): Edl {
+    private fun buildFixtureEdl(
+        source: File = sourceClip,
+        hasAudio: Boolean = true,
+    ): Edl {
         // 1s crossfading into a second 1s segment of the SAME source clip,
         // 200ms cross-fade, "cutlyra" text overlay spanning the whole
         // timeline — the M1 spike shape.
@@ -111,14 +120,14 @@ class ExportGoldenFrameInstrumentedTest {
         val asset = EdlAsset(
             assetId = "asset-1",
             kind = EdlAssetKind.VIDEO,
-            name = "test_clip.mp4",
-            sourceUri = sourceClip.toURI().toString(),
+            name = source.name,
+            sourceUri = source.toURI().toString(),
             codec = null,
             width = 320,
             height = 240,
             durationTicks = 2 * oneSecondTicks,
             rotationDegrees = 0,
-            hasAudio = true,
+            hasAudio = hasAudio,
         )
 
         fun identityTransform() = EdlTransform(0.0, 0.0, 1.0, 1.0, 0.0)
@@ -258,6 +267,118 @@ class ExportGoldenFrameInstrumentedTest {
         // Stage 11's mixed video/image export fixes, so three sequences is
         // now the intended shape for this audio-bearing fixture.
         assertEquals(3, composition.sequences.size)
+    }
+
+    /**
+     * Stage 13 POCO regression: an ordinary MP4 with a video stream but NO
+     * audio stream used to enter the dedicated audio sequence anyway. The
+     * exporter then set removeVideo=true for that lane while
+     * buildEditedMediaItem inferred removeAudio=true from hasAudio=false,
+     * which Media3 rejects with "Audio and video cannot both be removed".
+     *
+     * Build a REAL video-only MP4 at runtime by remuxing only the fixture's
+     * video track. This keeps the repository free of another binary fixture
+     * while exercising the exact stream shape that failed on the POCO.
+     */
+    @Test
+    fun exports_a_video_only_mp4_without_creating_an_impossible_audio_item() {
+        val videoOnly = createVideoOnlyFixture(sourceClip)
+        try {
+            val sourceProbe = MediaProbe.probe(videoOnly, mimeTypeHint = "video/mp4")
+            assertFalse("runtime fixture must genuinely have no audio", sourceProbe.hasAudio)
+
+            val edl = buildFixtureEdl(source = videoOnly, hasAudio = false)
+            val composition = EdlToComposition.buildComposition(edl)
+            // Base video + crossfade overlay only. No main-track audio lane
+            // may be created when the asset contains no audio.
+            assertEquals(2, composition.sequences.size)
+
+            val latch = CountDownLatch(1)
+            val events = mutableListOf<Media3Exporter.Event>()
+            Media3Exporter.start(context, edl, outputFile) { event ->
+                events.add(event)
+                if (event is Media3Exporter.Event.Done || event is Media3Exporter.Event.Error) {
+                    latch.countDown()
+                }
+            }
+
+            assertTrue(
+                "video-only export did not reach a terminal state within 60s",
+                latch.await(60, TimeUnit.SECONDS),
+            )
+            val terminal = events.lastOrNull()
+            assertTrue(
+                "expected video-only export to succeed, got: $terminal",
+                terminal is Media3Exporter.Event.Done,
+            )
+
+            val done = terminal as Media3Exporter.Event.Done
+            val outputProbe = MediaProbe.probe(done.outputFile, mimeTypeHint = "video/mp4")
+            assertFalse("video-only output unexpectedly acquired an audio track", outputProbe.hasAudio)
+            assertTrue(done.outputFile.length() > 0)
+            assertFrameDecodesNonBlack(done.outputFile, atUs = 1_000_000L)
+        } finally {
+            videoOnly.delete()
+        }
+    }
+
+    private fun createVideoOnlyFixture(source: File): File {
+        val destination = File(context.cacheDir, "golden_video_only_${System.nanoTime()}.mp4")
+        val extractor = MediaExtractor()
+        val muxer = MediaMuxer(
+            destination.absolutePath,
+            MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4,
+        )
+        var muxerStarted = false
+        try {
+            extractor.setDataSource(source.absolutePath)
+            var sourceVideoTrack = -1
+            for (index in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(index)
+                val mime = format.getString(MediaFormat.KEY_MIME)
+                if (mime?.startsWith("video/") == true) {
+                    sourceVideoTrack = index
+                    break
+                }
+            }
+            assertTrue("source fixture must contain a video track", sourceVideoTrack >= 0)
+
+            val videoFormat = extractor.getTrackFormat(sourceVideoTrack)
+            val destinationTrack = muxer.addTrack(videoFormat)
+            extractor.selectTrack(sourceVideoTrack)
+            muxer.start()
+            muxerStarted = true
+
+            val requestedBufferSize =
+                if (videoFormat.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    videoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)
+                } else {
+                    0
+                }
+            val buffer = ByteBuffer.allocate(maxOf(1_048_576, requestedBufferSize))
+            val info = MediaCodec.BufferInfo()
+
+            while (true) {
+                buffer.clear()
+                val size = extractor.readSampleData(buffer, 0)
+                if (size < 0) break
+                info.set(
+                    0,
+                    size,
+                    extractor.sampleTime,
+                    extractor.sampleFlags,
+                )
+                muxer.writeSampleData(destinationTrack, buffer, info)
+                extractor.advance()
+            }
+        } finally {
+            if (muxerStarted) {
+                muxer.stop()
+            }
+            muxer.release()
+            extractor.release()
+        }
+        return destination
     }
 
     /**
