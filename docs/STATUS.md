@@ -281,10 +281,29 @@ Not done / follow-ups: rotate gesture on the preview (rotate is keyed but only e
 
 All three CRITICALs found by the sweep are fixed and re-verified live in the browser harness: (C1) GPU init now gates the preview renderer (plus boot-time `ensurePreviewGpu` + font atlas bundled into apps/mobile, so text renders with real fonts); (C2) the home project list re-renders via a selector subscription — the engine always had the data, the UI never re-subscribed (verified: engine 1 / DOM 0 before, 1/1 after; reopen-after-reload rehydrates); (C3) a CrashBoundary paints any React render crash on screen instead of silent black. HIGHs still open, in priority order: Android's EDL parser missing ~12 field families that TS emits and iOS parses (must parse-or-reject, never silently drop); split-at-boundary silently no-ops; audio waveforms never populated (mock-only).
 
-## Known residual defects / debt
+## Current release qualification status (2026-10-04)
 
-- Trim-commit wiring in the timeline (disclosed in `timeline-view.tsx`).
-- `demo-project.ts` bootstrap leaves an element pre-selected (noted by fixer; dev-harness-only).
-- Whisper model is fetched at build time, not committed; CI needs network for that step (documented known gap in the offline audit for the web ML runtime signatures).
-- 3 pre-existing unit-test failures in `masks/snap.test.ts` (documented baseline; predates this campaign).
-- Spike tests 1/6 can only run in a foregrounded tab/app (rAF-gated) — fine on real hardware.
+The older residual list that lived here was stale: trim commits and real
+waveforms are wired, the three mask tests are fixed, and the unit-test gate now
+allows zero failures.
+
+The authoritative release work is Stage 13 in `CUTLYRA_HANDOFF.md` and PR #3
+(`release/github-play-hardening`). Release is currently **NO-GO pending
+verification**, not because a known core product flow is broken, but because
+the corrected native instrumentation gate and the final POCO physical matrix
+must pass on the exact final candidate.
+
+Known non-blocking hygiene carried forward from physical QA:
+
+- occasional Android export teardown log line "A resource failed to call close"
+  (no observed functional failure; investigate after release gate unless it
+  correlates with resource growth);
+- corrupt input can surface Media3's generic "Asset loader error" wording;
+  rejection is correct but the message can be friendlier;
+- dev/spike harnesses remain development-only and are pruned from release
+  payloads.
+
+The Whisper model and whisper.cpp source remain fetched build inputs rather
+than committed binaries, but release/CI workflows now pin and cryptographically
+verify them and assert the resulting offline-caption model/runtime are present
+inside the APK/AAB.

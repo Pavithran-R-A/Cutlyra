@@ -3,7 +3,6 @@ import { WandSparkles } from "lucide-react";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
 import { ChipRow } from "../chip-row";
-import { SegmentedControl } from "../segmented-control";
 import type { EditorCore } from "@cutlyra/editor-core";
 import type { ElementRef } from "@cutlyra/editor-core/timeline";
 import { CAPTION_STYLE_PRESETS, DEFAULT_CAPTION_STYLE_PRESET_ID } from "@cutlyra/editor-core/captions";
@@ -29,12 +28,6 @@ interface CaptionsPanelProps {
 	onInserted: (ref: ElementRef) => void;
 }
 
-const LANGUAGES = [
-	{ id: "auto", label: "Auto-detect" },
-	{ id: "en", label: "English" },
-	{ id: "es", label: "Spanish" },
-];
-
 const STYLES = CAPTION_STYLE_PRESETS.map((preset) => ({ id: preset.id, label: preset.name }));
 
 type GenerateState = "idle" | "generating" | "done" | "error";
@@ -52,16 +45,13 @@ type GenerateState = "idle" | "generating" | "done" | "error";
  * The style chips call the real `ApplyCaptionStyleCommand` ("apply to
  * all"), not local-only UI state.
  *
- * Still genuinely NOT built: transcribing a REAL user-picked clip (only
- * the bundled sample fixture is reachable from this panel — the
- * web-fallback bridge itself still throws honest `UNSUPPORTED` for any
- * other file, and no native whisper.cpp call is wired from this panel
- * either), and per-word caption editing UI (`UpdateCaptionWordCommand`
- * exists in editor-core but has no UI control here yet). Both are
- * disclosed below, not hidden.
+ * On Android, Generate uses the native bridge to transcribe the project's
+ * real audio-bearing timeline clips through the bundled English tiny.en
+ * whisper.cpp runtime. Per-word caption editing UI remains out of v0.1; the
+ * text-area editor rewrites caption text while preserving the timed caption
+ * element envelope.
  */
 export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: CaptionsPanelProps) {
-	const [language, setLanguage] = useState("auto");
 	const [stylePreset, setStylePreset] = useState(DEFAULT_CAPTION_STYLE_PRESET_ID);
 	const [state, setState] = useState<GenerateState>("idle");
 	// Local draft for the caption-text field: committing rewrites words and
@@ -146,15 +136,12 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 			<div className="cc-param-row">
 				<div className="cc-param-row__head">
 					<span className="cc-param-row__label">Language</span>
+					<span className="cc-param-row__value">English · on-device</span>
 				</div>
-				<SegmentedControl aria-label="Caption language" segments={LANGUAGES} activeId={language} onSelect={setLanguage} />
 			</div>
-			{/* v0.1.0 truthfulness: the selection above is reserved UI — only the
-			    English-only ggml-tiny.en model is bundled, so picking another
-			    language silently transcribes English. Disclosed, not fake-wired. */}
 			<p className="cc-panel-note">
-				v0.1.0 transcribes English only (bundled on-device model); other language
-				choices are reserved for a future model.
+				v0.1.0 bundles the English tiny.en model. Language choices are shown
+				only when a matching on-device model is actually available.
 			</p>
 			<ChipRow
 				chips={STYLES}

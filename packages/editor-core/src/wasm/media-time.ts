@@ -3,7 +3,6 @@ import {
 	parseTimecode as _parseTimecode,
 	roundToFrame as _roundToFrame,
 	snappedSeekTime as _snappedSeekTime,
-	TICKS_PER_SECOND as _TICKS_PER_SECOND,
 	mediaTimeFromSeconds as _mediaTimeFromSeconds,
 	mediaTimeToSeconds as _mediaTimeToSeconds,
 	type FrameRate,
@@ -24,7 +23,19 @@ import {
  */
 export type MediaTime = number & { readonly __mediaTime: unique symbol };
 
-export const TICKS_PER_SECOND = _TICKS_PER_SECOND();
+/**
+ * Stable editor timebase mirrored from rust/crates/time/src/media_time.rs.
+ *
+ * Keep this as a plain TypeScript constant instead of calling the generated
+ * wasm export during module evaluation. Next.js production prerendering
+ * evaluates modules server-side before a browser Wasm instance exists; a
+ * top-level wasm call made /dev/mobile-editor intermittently fail on macOS
+ * with "Cannot read properties of undefined (reading 'TICKS_PER_SECOND')".
+ *
+ * Rust has a unit test pinning the same value. Any timebase change must update
+ * both sides deliberately.
+ */
+export const TICKS_PER_SECOND = 120_000;
 
 function isMediaTime(value: number): value is MediaTime {
 	return Number.isInteger(value);

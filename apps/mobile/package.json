@@ -6,7 +6,7 @@
 	"license": "MIT",
 	"type": "module",
 	"scripts": {
-		"build": "vite build",
+		"build": "vite build && bash scripts/copy-legal-notices.sh",
 		"dev": "vite",
 		"check-types": "tsc --project tsconfig.json --noEmit",
 		"cap:sync": "cap sync",

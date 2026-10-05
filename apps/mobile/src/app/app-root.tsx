@@ -79,7 +79,11 @@ class CrashBoundary extends Component<
 	}
 }
 
-type Screen = { name: "home" } | { name: "editor" } | { name: "privacy" };
+type Screen =
+	| { name: "home" }
+	| { name: "editor" }
+	| { name: "privacy" }
+	| { name: "legal" };
 
 function App() {
 	const [screen, setScreen] = useState<Screen>({ name: "home" });
@@ -104,10 +108,15 @@ function App() {
 		return <PrivacyScreen onBack={() => setScreen({ name: "home" })} />;
 	}
 
+	if (screen.name === "legal") {
+		return <LegalNoticesScreen onBack={() => setScreen({ name: "home" })} />;
+	}
+
 	return (
 		<HomeScreen
 			onOpenEditor={() => setScreen({ name: "editor" })}
 			onOpenPrivacy={() => setScreen({ name: "privacy" })}
+			onOpenLegal={() => setScreen({ name: "legal" })}
 		/>
 	);
 }
@@ -115,9 +124,11 @@ function App() {
 function HomeScreen({
 	onOpenEditor,
 	onOpenPrivacy,
+	onOpenLegal,
 }: {
 	onOpenEditor: () => void;
 	onOpenPrivacy: () => void;
+	onOpenLegal: () => void;
 }) {
 	const editor = useEditor();
 	// CRITICAL finding #2 of the 2026-08-18 test sweep ("saved projects never
@@ -205,9 +216,85 @@ function HomeScreen({
 					Privacy
 				</button>
 				<span aria-hidden="true">•</span>
+				<button type="button" className="kc-home__legal-link" onClick={onOpenLegal}>
+					Open-source notices
+				</button>
+				<span aria-hidden="true">•</span>
 				<span>Offline · no account · no ads</span>
 			</footer>
 		</div>
+	);
+}
+
+function LegalNoticesScreen({ onBack }: { onBack: () => void }) {
+	const [text, setText] = useState("Loading bundled notices…");
+
+	useEffect(() => {
+		let cancelled = false;
+		const files = [
+			"CUTLYRA-LICENSE.txt",
+			"CUTLYRA-NOTICE.txt",
+			"THIRD_PARTY_NOTICES.md",
+			"SOUNDTOUCHJS-LICENSE.txt",
+			"WHISPERCPP-LICENSE.txt",
+		];
+
+		void (async () => {
+			const sections: string[] = [];
+			for (const file of files) {
+				try {
+					const response = await fetch(`./legal/${file}`, { cache: "no-store" });
+					if (!response.ok) {
+						// WHISPERCPP-LICENSE is Android-release-only because the
+						// source is fetched at build time. Other files must exist.
+						if (file === "WHISPERCPP-LICENSE.txt" && response.status === 404) continue;
+						throw new Error(`${file}: HTTP ${response.status}`);
+					}
+					sections.push(`===== ${file} =====\n\n${await response.text()}`);
+				} catch (error) {
+					if (file === "WHISPERCPP-LICENSE.txt") continue;
+					throw error;
+				}
+			}
+			if (!cancelled) setText(sections.join("\n\n"));
+		})().catch((error: unknown) => {
+			if (!cancelled) {
+				setText(
+					`Bundled legal notices could not be opened: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		});
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	return (
+		<main className="kc-privacy" data-cutlyra-theme="cutlyra-dark">
+			<header className="kc-privacy__header">
+				<button type="button" className="kc-privacy__back" onClick={onBack} aria-label="Back to projects">←</button>
+				<h1>Open-source notices</h1>
+			</header>
+			<div className="kc-privacy__body">
+				<p>
+					Cutlyra is open-source software and includes third-party open-source
+					components. The license and notice texts below are bundled inside this
+					copy of the app so they remain available offline. Source code for
+					Cutlyra is published at github.com/Pavithran-R-A/Cutlyra.
+				</p>
+				<pre
+					style={{
+						whiteSpace: "pre-wrap",
+						overflowWrap: "anywhere",
+						fontSize: "11px",
+						lineHeight: 1.45,
+					}}
+				>
+					{text}
+				</pre>
+			</div>
+		</main>
 	);
 }
 
@@ -229,11 +316,13 @@ function PrivacyScreen({ onBack }: { onBack: () => void }) {
 				<p>Projects and imported working media remain in local app storage until you delete the project or remove the app/data from Android settings. Android cloud backup is disabled for Cutlyra. Exported videos remain wherever you choose to save them and are under your control.</p>
 				<h2>Accounts</h2>
 				<p>Cutlyra does not provide user accounts or sign-in, so it does not hold server-side account data and there is no cloud account to delete.</p>
+				<h2>On-device captions</h2>
+				<p>Automatic captions use Cutlyra's bundled whisper.cpp runtime and English model locally on supported Android devices. Audio/video is not uploaded to a speech-recognition service.</p>
 				<h2>Third-party components</h2>
 				<p>Cutlyra uses open-source libraries for its app shell, editing, media processing, and on-device captions. They are used locally by the app; Cutlyra does not integrate advertising, analytics, or tracking services.</p>
 				<h2>Privacy inquiries</h2>
-				<p>The developer contact email published in Cutlyra's Google Play listing is the privacy contact and inquiry mechanism for this app.</p>
-				<p className="kc-privacy__updated">Last updated: 29 September 2026</p>
+				<p>Use the verified developer/support email on Cutlyra's official Google Play listing for privacy inquiries.</p>
+				<p className="kc-privacy__updated">Last updated: 4 October 2026</p>
 			</div>
 		</main>
 	);

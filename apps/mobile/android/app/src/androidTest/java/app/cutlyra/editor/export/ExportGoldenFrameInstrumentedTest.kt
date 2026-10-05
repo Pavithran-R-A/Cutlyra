@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.cutlyra.editor.edl.Edl
 import app.cutlyra.editor.edl.EdlAsset
 import app.cutlyra.editor.edl.EdlAssetKind
@@ -36,10 +37,10 @@ import java.util.concurrent.TimeUnit
  * THE golden-frame parity harness for M9 (plan §M9 item 6, §2.3 rule 3),
  * exercising exactly the construct M1's spike test describes: "a
  * hand-written 2-clip + cross-fade + text-overlay EDL." Structurally mirrors
- * M4's `MediaPipelineInstrumentedTest` (same fixture-copy setup, same
- * `@RunWith(AndroidJUnit4::class)`, same honest "written but not run" status
- * — see that file's doc comment for why: no working emulator system image in
- * this session).
+ * M4's `MediaPipelineInstrumentedTest` (same fixture-copy setup and
+ * `@RunWith(AndroidJUnit4::class)`). These tests are part of physical-device
+ * release qualification and must also remain runnable from the standalone
+ * instrumentation APK.
  *
  * WHAT THIS HARNESS DOES vs. WHAT "GOLDEN-FRAME PARITY" MEANS (plan §2.3
  * rule 3: "render frame N in the webview, export frame N natively, compare
@@ -64,8 +65,8 @@ import java.util.concurrent.TimeUnit
  *            check (the crossfade compositor produced SOME visible content,
  *            not a black/corrupt frame), not a parity check.
  *
- * Fixture: reuses M4's `res/raw/test_clip.mp4` as BOTH of the two main-track
- * clips (different trim windows of the same 2s source) — avoids bundling a
+ * Fixture: reuses M4's instrumentation-APK `res/raw/test_clip.mp4` as BOTH
+ * of the two main-track clips (different trim windows of the same 2s source) — avoids bundling a
  * second binary fixture while still genuinely exercising two distinct
  * `EditedMediaItemSequence` entries, a `addGap` + overlay sequence for the
  * transition, and the base-sequence hard cut alongside it.
@@ -73,6 +74,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(AndroidJUnit4::class)
 class ExportGoldenFrameInstrumentedTest {
     private lateinit var context: Context
+    private lateinit var testContext: Context
     private lateinit var sourceClip: File
     private lateinit var outputFile: File
 
@@ -81,8 +83,13 @@ class ExportGoldenFrameInstrumentedTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        testContext = InstrumentationRegistry.getInstrumentation().context
         sourceClip = File(context.cacheDir, "golden_source_${System.nanoTime()}.mp4")
-        context.resources.openRawResource(R.raw.test_clip).use { input ->
+        // R is the instrumentation APK's generated R class, so the resource
+        // must be opened through the instrumentation package context. Using
+        // the target app context with this test-package resource id can resolve
+        // an unrelated target-app resource with the same integer id.
+        testContext.resources.openRawResource(R.raw.test_clip).use { input ->
             sourceClip.outputStream().use { output -> input.copyTo(output) }
         }
         outputFile = File(context.cacheDir, "golden_export_${System.nanoTime()}.mp4")
@@ -244,10 +251,13 @@ class ExportGoldenFrameInstrumentedTest {
     fun buildComposition_produces_a_base_sequence_plus_one_crossfade_overlay_sequence() {
         val edl = buildFixtureEdl()
         val composition = EdlToComposition.buildComposition(edl)
-        // sequences[0] = base (clip-a, clip-b hard-cut); sequences[1] = the
-        // crossfade overlay (the head of clip-b, gapped); sequences[2] has no
-        // slot here (no PiP/audio-only tracks in this fixture).
-        assertEquals(2, composition.sequences.size)
+        // sequences[0] = base video (clip-a, clip-b hard-cut)
+        // sequences[1] = crossfade overlay (the head of clip-b, gapped)
+        // sequences[2] = the main track's audio-only sequence. Main-track
+        // audio was deliberately split out of the base video sequence after
+        // Stage 11's mixed video/image export fixes, so three sequences is
+        // now the intended shape for this audio-bearing fixture.
+        assertEquals(3, composition.sequences.size)
     }
 
     /**

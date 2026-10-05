@@ -20,6 +20,7 @@ set -euo pipefail
 
 MOBILE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$MOBILE_DIR/android/app/src/main/cpp/whisper.cpp"
+STAMP="$DEST/.cutlyra-whisper-commit"
 
 # Pinned tag. Bumping this is a deliberate act: the JNI glue in
 # cutlyra_whisper_jni.cpp is written against this version's whisper.h
@@ -27,6 +28,9 @@ DEST="$MOBILE_DIR/android/app/src/main/cpp/whisper.cpp"
 # `whisper_full_get_token_data`'s `t_dtw` field, all of which are
 # comparatively recent additions).
 WHISPER_TAG="v1.9.2"
+# Immutable commit behind v1.9.2. The tag is retained for readability, while
+# this SHA prevents a moved/retagged ref from silently changing release input.
+WHISPER_COMMIT="306c88f4d1286aec1bf96e544632897886af5501"
 WHISPER_REPO="https://github.com/ggml-org/whisper.cpp.git"
 
 if [ "${1:-}" = "--force" ]; then
@@ -34,17 +38,35 @@ if [ "${1:-}" = "--force" ]; then
 fi
 
 if [ -f "$DEST/include/whisper.h" ]; then
-	echo "==> whisper.cpp already present at $DEST (use --force to re-fetch)"
-	exit 0
+	if [ -f "$STAMP" ] && [ "$(tr -d '\r\n' < "$STAMP")" = "$WHISPER_COMMIT" ]; then
+		echo "==> whisper.cpp already present at pinned commit $WHISPER_COMMIT"
+		exit 0
+	fi
+	echo "ERROR: whisper.cpp already exists but has no matching Cutlyra provenance stamp." >&2
+	echo "Run '$0 --force' to replace it with the pinned release input." >&2
+	exit 1
 fi
 
 echo "==> Cloning whisper.cpp $WHISPER_TAG"
 rm -rf "$DEST"
 mkdir -p "$(dirname "$DEST")"
 git clone --depth 1 --branch "$WHISPER_TAG" "$WHISPER_REPO" "$DEST"
+actual_commit="$(git -C "$DEST" rev-parse HEAD)"
+if [ "$actual_commit" != "$WHISPER_COMMIT" ]; then
+	echo "ERROR: whisper.cpp $WHISPER_TAG resolved to unexpected commit" >&2
+	echo "  expected: $WHISPER_COMMIT" >&2
+	echo "  actual:   $actual_commit" >&2
+	rm -rf "$DEST"
+	exit 1
+fi
+echo "    commit OK ($actual_commit)"
+
+# Persist provenance before removing .git so future local/reused worktrees can
+# verify that the untracked source tree is still the exact release input.
+printf '%s\n' "$actual_commit" > "$STAMP"
 
 # The clone's own .git is dead weight (and would confuse the outer repo's
-# status); the pinned tag above is the provenance record.
+# status); the pinned commit + stamp above are the provenance record.
 rm -rf "$DEST/.git"
 
 # The addon.node example ships a *.spec.js that the outer repo's `bun test`

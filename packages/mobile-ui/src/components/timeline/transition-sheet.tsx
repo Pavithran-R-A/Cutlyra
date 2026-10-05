@@ -9,8 +9,6 @@ import { formatClipDuration } from "./timeline-clip";
 const TRANSITION_KINDS = [
 	{ id: "none", label: "None" },
 	{ id: "fade", label: "Fade" },
-	{ id: "slide", label: "Slide" },
-	{ id: "zoom", label: "Zoom" },
 ];
 
 /**
@@ -26,9 +24,10 @@ const TRANSITION_KINDS = [
  * engine's `TScene.transitions` (undoable TransitionsSnapshotCommand),
  * which drives BOTH the preview (timeline/transitions.ts placement +
  * cross-fade) and the native export (buildEdl -> MainTrackPlacement.swift).
- * "None" removes the transition. v1 renders every kind as a cross-fade in
- * preview and export alike (the native compositor's documented fallback);
- * the kind is stored so richer renders slot in later.
+ * "None" removes the transition. Android v0.1.0 exposes only Fade because
+ * that is the transition semantic the preview and native exporter both
+ * actually honor. Slide/Zoom remain representable in the engine for project
+ * compatibility, but are not offered until their native render paths exist.
  */
 export function TransitionSheet({
 	afterClipId,

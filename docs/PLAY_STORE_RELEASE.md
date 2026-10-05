@@ -1,6 +1,6 @@
 # Cutlyra — Google Play release runbook
 
-**Status 2026-10-04: SOURCE + CI READY; HUMAN PLAY ACCOUNT/SIGNING/PUBLISHER INPUTS REMAIN.**
+**Status 2026-10-04: FINAL RELEASE HARDENING IN PROGRESS; connected-device retest + publisher inputs remain.**
 
 This is the source of truth for Cutlyra's Android Google Play release and
 supersedes older notes that said "no Play Store release". Direct APK
@@ -46,26 +46,40 @@ Cutlyra uses minimum-scope system pickers instead of broad photo/video access.
 
 ## Signing
 
-Use **Play App Signing**. Let Google manage/generate the Play app-signing key
-for this new app unless a later migration requirement justifies a different
-choice. The developer-owned keystore used to sign the uploaded AAB is the
-**upload key**.
+Use **Play App Signing** and keep the **upload key separate** from the app
+signing key. Google recommends this separation because an upload key can be
+reset without changing the signing identity installed on users' devices.
 
-GitHub Actions secrets:
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
+Cutlyra also supports direct GitHub APK distribution. Decide the cross-channel
+strategy before the first Play rollout:
 
-Never commit the keystore or passwords. Human step: create and securely back up
-the real upload key, then configure these secrets.
+- If GitHub-installed and Play-installed copies must be able to update one
+  another in place, provide Play App Signing with a copy of the SAME
+  app-signing key used by the GitHub direct APK channel, then use a distinct
+  Play upload key for AAB uploads.
+- If cross-channel updates are not required, let Google generate the Play
+  app-signing key. GitHub and Play builds will then intentionally have
+  different signing identities.
+
+The Play AAB workflow uses dedicated upload-key secrets:
+- `PLAY_UPLOAD_KEYSTORE_BASE64`
+- `PLAY_UPLOAD_KEYSTORE_PASSWORD`
+- `PLAY_UPLOAD_KEY_ALIAS`
+- `PLAY_UPLOAD_KEY_PASSWORD`
+
+The GitHub direct-release workflow uses separate `ANDROID_RELEASE_*` secrets.
+Never commit any keystore or password. Human step: create and securely back up
+the Play upload key, then configure only the `PLAY_UPLOAD_*` secrets here.
 
 ## Play AAB workflow
 
-Run `.github/workflows/play-bundle.yml` manually. It runs invariants, builds
-the mobile payload, syncs Capacitor, executes `./gradlew bundleRelease`,
-checks the AAB ZIP/JAR signature and manifest, rejects internal spike assets,
-and uploads the AAB plus SHA-256 checksum as a private Actions artifact.
+Run `.github/workflows/play-bundle.yml` manually. It runs invariants,
+fetches whisper.cpp at the immutable v1.9.2 commit, downloads the pinned
+tiny.en model and hard-verifies its SHA-256, builds the mobile payload, syncs
+Capacitor, executes `./gradlew bundleRelease`, checks the AAB ZIP/JAR
+signature and manifest, proves the bundled offline-caption model and native
+libraries are present, rejects internal spike assets, and uploads the AAB plus
+SHA-256 checksum as a private Actions artifact.
 
 Expected Gradle output:
 `apps/mobile/android/app/build/outputs/bundle/release/app-release.aab`
@@ -95,32 +109,36 @@ age-group and IARC questions truthfully from the final feature/listing set.
 
 ## Privacy-policy blocker owned by the publisher
 
-The app now contains privacy text. The web source at
-`apps/web/src/app/privacy/page.tsx` has also been rewritten for Cutlyra.
+The app now contains privacy text. For public hosting, the repository also
+contains a standalone, dependency-free policy at
+`apps/web/public/privacy-policy.html`. Use that static page (or an equivalent
+verbatim deployment) for the Play Console privacy-policy field so the public
+document cannot inherit unrelated web-app branding, scripts, analytics, or
+runtime dependencies.
 
 Before Play submission, the publisher must make that page available at an
-active public non-PDF URL and supply the real developer/support/privacy contact
-email used by the Play listing. The privacy text intentionally points to that
-Play developer-contact email instead of inventing an address.
+active, public, non-geofenced, non-PDF URL and supply the real
+developer/support/privacy contact email used by the Play listing. The
+standalone policy intentionally relies on that verified public contact rather
+than a private repository issue tracker.
 
 ## Closed-test plan
 
 Invite at least 15 people to preserve margin above Google's 12-tester floor.
 Have each tester exercise: first launch; project create/open/delete; photo,
 video and audio import; optional camera capture; timeline playback/scrub;
-trim/split/delete/undo/redo; text/captions; normal effects/keyframes; export;
+trim/split/delete/undo/redo; text/captions; keyframes/cross-fade; export;
 play/share result; force-stop/reopen persistence.
 
 Record device, Android version, tested features, failures, feedback and fixes.
 
 ## Source-readiness verdict
 
-The repository is **100% source-ready for the v0.1.0 release process** at the
-current verified merge: product code, release-prep changes, cross-platform CI,
-permissions/privacy hardening, Play AAB workflow, store copy, and testing
-runbooks are in place. The remaining items below are not missing engineering
-work; they require the publisher's identity, signing material, Play Console,
-real testers, or Google's approval.
+Release hardening is complete only when the fixed connected-test harness runs
+green on a real device and the final physical export/release-mode matrix is
+repeated from the merged release candidate. Do not call the repository 100%
+release-ready merely because host CI is green. Publisher-controlled Play gates
+remain separate from engineering readiness.
 
 ## Human-only sequence
 
@@ -128,7 +146,7 @@ real testers, or Google's approval.
 2. Complete identity/contact/device verification.
 3. Create app `app.cutlyra.editor`.
 4. Supply the real developer/support/privacy contact email.
-5. Publish the privacy policy at a public URL.
+5. Publish `apps/web/public/privacy-policy.html` (or equivalent) at an active public URL and verify it in a signed-out browser.
 6. Prepare the required Play icon, feature graphic, and final-candidate screenshots per `PLAY_STORE_LISTING.md`.
 7. Create/back up the upload key and configure GitHub secrets.
 8. Run the Play AAB workflow; retain AAB + checksum.
@@ -147,7 +165,10 @@ real testers, or Google's approval.
 - [x] FileProvider minimized
 - [x] privacy policy text available in-app
 - [x] store/Data Safety drafts prepared
-- [x] final GitHub CI gates execute green on merged release-prep source
+- [x] target/API/permission/privacy source hardening complete
+- [ ] fixed connected instrumentation suite executes 0 failures on real device
+- [ ] final physical import/edit/caption/export/offline/release-mode matrix passes
+- [ ] final GitHub CI gates execute green on merged hardening source
 - [ ] real Play upload key configured
 - [ ] final AAB rebuilt/checksummed
 - [ ] public privacy URL + real contact live

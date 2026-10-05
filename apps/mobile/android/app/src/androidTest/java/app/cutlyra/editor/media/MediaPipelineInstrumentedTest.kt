@@ -5,6 +5,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.cutlyra.editor.test.R
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -24,10 +25,9 @@ import java.io.File
  * `PackageManager`) that a JVM unit test's stub `android.jar` throws
  * `RuntimeException` on — these genuinely require a device or emulator.
  *
- * STATUS AS OF M4: written but NOT run. No emulator with a working system
- * image was available in this session (the two local AVDs' system images
- * are missing on disk — see the M4 handoff for the exact `df`/`avdmanager`
- * evidence). Run via:
+ * STATUS: this suite is exercised during physical-device release
+ * qualification. Keep it runnable from a standalone instrumentation APK as
+ * well as through Gradle. Run via:
  *
  *   cd apps/mobile/android && ./gradlew connectedDebugAndroidTest
  *
@@ -45,16 +45,20 @@ import java.io.File
 class MediaPipelineInstrumentedTest {
 
 	private lateinit var context: Context
+	private lateinit var testContext: Context
 	private lateinit var copiedClip: File
 
 	@Before
 	fun setUp() {
 		context = ApplicationProvider.getApplicationContext()
+		testContext = InstrumentationRegistry.getInstrumentation().context
 		// MediaProbe/ThumbnailStripGenerator take a File, not a raw resource id
-		// — copy the fixture out of res/raw once per test, mirroring what
-		// MediaImporter itself produces from a picked content:// Uri.
+		// — copy the fixture out of the instrumentation APK's res/raw once per
+		// test, mirroring what MediaImporter itself produces from a picked
+		// content:// Uri. R belongs to the test package, so opening it through
+		// the target app's Resources risks a cross-package integer-id collision.
 		copiedClip = File(context.cacheDir, "test_clip_${System.nanoTime()}.mp4")
-		context.resources.openRawResource(R.raw.test_clip).use { input ->
+		testContext.resources.openRawResource(R.raw.test_clip).use { input ->
 			copiedClip.outputStream().use { output -> input.copyTo(output) }
 		}
 	}
@@ -131,7 +135,7 @@ class MediaPipelineInstrumentedTest {
 		// same shape (openInputStream-able, not a plain file) as a real
 		// content://... URI from the Photo Picker/SAF/camera intent.
 		val resourceUri = Uri.parse(
-			"android.resource://${context.packageName}/${R.raw.test_clip}",
+			"android.resource://${testContext.packageName}/${R.raw.test_clip}",
 		)
 
 		val imported = MediaImporter.importInto(context, resourceUri)
