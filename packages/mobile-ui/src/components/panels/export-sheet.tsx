@@ -78,6 +78,12 @@ function isExportQuality(value: string): value is ExportQuality {
 
 type ExportRunState = "idle" | "exporting" | "done" | "error";
 
+function exportErrorMessage(value: unknown): string {
+	if (typeof value === "string" && value.trim().length > 0) return value.trim();
+	if (value instanceof Error && value.message.trim().length > 0) return value.message.trim();
+	return "The native exporter failed without a diagnostic. Check Cutlyra logs for details.";
+}
+
 /**
  * M8 Export sheet — task scope: "resolution/fps/quality." Resolution and
  * fps write straight to REAL `TProjectSettings` via
@@ -236,7 +242,7 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 			edl = buildCurrentEdl();
 		} catch (error) {
 			setRunState("error");
-			setExportError(error instanceof Error ? error.message : String(error));
+			setExportError(exportErrorMessage(error));
 			return;
 		}
 
@@ -272,7 +278,7 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 				setProgress({ stage: event.stage, fraction: event.fraction });
 				if (event.stage === "error") {
 					setRunState("error");
-					setExportError(event.error ?? "Export failed");
+					setExportError(exportErrorMessage(event.error));
 					break;
 				}
 				if (event.stage === "done") {
