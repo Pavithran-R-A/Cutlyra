@@ -18,7 +18,10 @@
  * whatever the M4/M9 handoffs record as device/simulator-verified. It does
  * NOT by itself mean "verified end-to-end on device".
  *
- * WHAT IS STUBBED: `transcribe` (M10).
+ * WHAT IS REAL (continued): `transcribe` (M10) is implemented natively
+ * on Android with the bundled whisper.cpp runtime/model and on iOS through
+ * the platform speech path. Android release-mode real-speech transcription
+ * was physically re-qualified on the POCO M4 Pro 5G during Stage 14.
  *
  * ---------------------------------------------------------------------
  * MERGE NOTE (track/ios + track/android unification, 2026-08-17)
@@ -719,7 +722,7 @@ export function createCapacitorBridge({
 				// normally uses `createWebFallbackBridge()` instead, which
 				// answers `false` for its own reasons).
 				supportsNativeExport: platform === "ios" || platform === "android",
-				supportsOnDeviceStt: false, // flips true when M10 lands.
+				supportsOnDeviceStt: platform === "ios" || platform === "android",
 			};
 		},
 	};
