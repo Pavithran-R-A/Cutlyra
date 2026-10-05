@@ -194,14 +194,9 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 	const buildCurrentEdl = (): Edl => {
 		const scene = editor.scenes.getActiveScene();
 		const fpsPreset = FPS_OPTIONS.find((f) => f.id === fpsId)?.fps;
-		return buildEdl({
+		const edl = buildEdl({
 			project,
 			scene,
-			// Real live media assets, not a hardcoded `[]` — genuinely empty
-			// today only because no panel in this app can insert a video/image
-			// element yet (media import is out of M8 scope; see
-			// demo-project.ts's header). The moment that lands, this keeps
-			// working with no change here.
 			mediaAssets: toEdlMediaAssets({ assets: editor.media.getAssets() }),
 			// Native custody paths for the exporter — without this every
 			// asset built with sourceUri:null and the on-device export died
@@ -216,6 +211,21 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 				fps: fpsPreset,
 			},
 		});
+
+		// Cutlyra v0.1 exports VIDEO files. An audio-only timeline used to
+		// fall through to native and produce a vague/empty Media3 failure on
+		// the POCO release qualification. Refuse it at the sheet boundary
+		// with the action the user can take instead of pretending it is a
+		// supported video export shape.
+		const mainTrack = edl.tracks.find((track) => track.kind === "main");
+		const hasVisualClip =
+			mainTrack?.clips.some((clip) => clip.kind === "video" || clip.kind === "image") ??
+			false;
+		if (!hasVisualClip) {
+			throw new Error("Add at least one video or image clip before exporting a video.");
+		}
+
+		return edl;
 	};
 
 	const previewEdl = () => {
