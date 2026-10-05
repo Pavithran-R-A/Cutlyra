@@ -841,3 +841,59 @@ Required:
 Only then is permanent signing / GitHub v0.1.0 release / Play Internal Testing
 eligible.
 
+# Stage 15 — final POCO pass exposed audio-tail polish defect (2026-10-05)
+
+Authoritative candidate physically qualified:
+`main@97192a5678ecff08e9566bf17ade5f0a9e991583`.
+
+The Stage 14 release-blocking video-only export defect is physically fixed.
+The focused POCO rerun reported **P0=0 / P1=0**, 8/8 connected tests, successful
+release-mode video-only export, real offline captions, release payload audit,
+repeated-export stability, and clean Cutlyra logcat.
+
+## Remaining user-visible defect found
+
+**P2: audio can extend a video export into a black tail.**
+
+Physical reproduction:
+- visual main track: 8 s;
+- external MP3: 15 s;
+- export duration: ~15 s;
+- blackdetect: black starts at 8 s and runs to ~15.03 s.
+
+The exporter intentionally padded the base video sequence to
+`edl.meta.durationTicks`, which includes audio-only clips, and also allowed
+audio sequences to run to that same project end. That behavior preserved
+text/caption tails but incorrectly let audio alone extend a VIDEO file.
+
+## Fix branch
+
+- branch: `fix/export-audio-black-tail`
+
+The fix defines the video-export end as the last VISUAL item:
+- main video/image end;
+- overlay video/graphic end;
+- text/caption overlay end.
+
+Audio may be padded with silence up to that visual end but can no longer extend
+the video beyond it. Audio clips that straddle the visual boundary are trimmed
+to it; clips starting after the visual end are omitted from video export.
+
+A real Media3 instrumentation regression reuses the 2 s MP4 fixture to create a
+1 s visual timeline plus 2 s audio and requires the final MP4 to end at ~1 s
+while retaining valid audio during that visible second.
+
+## Final remaining physical proof after merge
+
+Before permanent signing/tagging:
+1. CI green including the new audio-tail regression;
+2. merge and post-merge CI green;
+3. POCO re-test:
+   - 8 s video + 15 s MP3 must export to ~8 s with no black tail;
+   - cross-fade export physically observed;
+   - transform/keyframe export physically observed;
+   - final release-mode combined export/logcat check;
+4. require P0=0 / P1=0.
+
+No permanent signing, tag, GitHub Release, or Play submission has happened yet.
+
