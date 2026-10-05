@@ -81,10 +81,28 @@ object EdlToComposition {
         ).toInt().coerceAtLeast(1)
 
         val sequences = mutableListOf<EditedMediaItemSequence>()
-        // The project runs to the LAST thing on any track, which is routinely
-        // a caption or title that outlives the final video clip.
+        // A VIDEO export ends at the last VISUAL thing, not at the last audio
+        // sample. Stage 14 POCO QA caught an ordinary 8 s video + 15 s MP3
+        // exporting as 15 s with a 7 s black tail because meta.durationTicks
+        // includes audio-only clips. Preserve intentional visual tails
+        // (PiP/graphics/text/captions can outlive the main track), but never
+        // let audio alone extend the video canvas.
         val mainEndTicks = mainClips.maxOf { it.startTicks + it.durationTicks }
-        val projectEndTicks = maxOf(edl.meta.durationTicks, mainEndTicks)
+        val overlayVisualEndTicks = edl.tracks
+            .asSequence()
+            .filter {
+                it.kind == EdlTrackKind.OVERLAY &&
+                    (it.trackType == EdlTrackType.VIDEO || it.trackType == EdlTrackType.GRAPHIC)
+            }
+            .flatMap { it.clips.asSequence() }
+            .maxOfOrNull { it.startTicks + it.durationTicks }
+            ?: 0L
+        val textOverlayEndTicks = edl.overlays
+            .asSequence()
+            .filter { it.kind == EdlOverlayKind.TEXT || it.kind == EdlOverlayKind.CAPTION }
+            .maxOfOrNull { it.startTicks + it.durationTicks }
+            ?: 0L
+        val projectEndTicks = maxOf(mainEndTicks, overlayVisualEndTicks, textOverlayEndTicks)
         val transitionWindows = mutableMapOf<Int, TransitionAlphaMath.Window>()
         val overlaySettingsByIndex = mutableMapOf<Int, StaticOverlaySettings>()
         val animatedOverlayAlphaByIndex = mutableMapOf<Int, CrossfadeCompositorSettings.AnimatedOverlayAlpha>()
@@ -318,7 +336,25 @@ object EdlToComposition {
         fun addAudioSequence(audible: List<EdlClip>) {
             var seqBuilder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO))
             var cursorTicks = 0L
-            for (clip in audible) {
+            for (originalClip in audible) {
+                // Audio clips that start beyond the visual output are not
+                // part of a video export. If one straddles the visual end,
+                // trim it exactly to that boundary so Media3 cannot extend the
+                // composition into black frames just to finish the audio.
+                if (originalClip.startTicks >= projectEndTicks) continue
+
+                val remainingTicks = projectEndTicks - originalClip.startTicks
+                val clip =
+                    if (originalClip.durationTicks <= remainingTicks) {
+                        originalClip
+                    } else {
+                        originalClip.copy(
+                            durationTicks = remainingTicks,
+                            sourceEndTicks = originalClip.sourceStartTicks +
+                                Math.round(remainingTicks * originalClip.speed.toDouble()),
+                        )
+                    }
+
                 if (clip.startTicks > cursorTicks) {
                     seqBuilder = seqBuilder.addGap(us(clip.startTicks - cursorTicks))
                 }
@@ -340,8 +376,9 @@ object EdlToComposition {
                 cursorTicks = clip.startTicks + clip.durationTicks
             }
             // Trailing silence: a music clip is routinely shorter than the
-            // video under it, and a sequence that just ENDS is torn down while
-            // the composition still runs — the same released-input failure.
+            // visual timeline under it, and a sequence that just ENDS is torn
+            // down while the composition still runs — the same released-input
+            // failure. Silence may pad audio TO the visual end, never beyond it.
             if (cursorTicks < projectEndTicks) {
                 seqBuilder = seqBuilder.addGap(us(projectEndTicks - cursorTicks))
             }
