@@ -84,6 +84,7 @@ import {
 	planDeadSpaceCut,
 } from "@cutlyra/editor-core/timeline/dead-space-cut";
 import { getSourceSpanAtClipTime } from "@cutlyra/editor-core/retime";
+import { getMainTrackAppendTime } from "./main-track-append";
 
 /**
  * The EDL asset resolver for native exports (2026-08-20, fixes the on-device
@@ -852,14 +853,9 @@ export async function importAndPlaceMedia({
 	});
 	for (const asset of imported) {
 		const mainTrack = editor.scenes.getActiveScene().tracks.main;
-		const appendTime = mainTrack.elements.reduce(
-			(end, element) =>
-				maxMediaTime({
-					a: end,
-					b: addMediaTime({ a: element.startTime, b: element.duration }),
-				}),
-			ZERO_MEDIA_TIME,
-		);
+		const appendTime = getMainTrackAppendTime({
+			elements: mainTrack.elements,
+		});
 		const create = buildElementFromMedia({
 			mediaId: asset.id,
 			mediaType: asset.type,
