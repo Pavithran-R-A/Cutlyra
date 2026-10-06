@@ -84,6 +84,7 @@ import {
 	planDeadSpaceCut,
 } from "@cutlyra/editor-core/timeline/dead-space-cut";
 import { getSourceSpanAtClipTime } from "@cutlyra/editor-core/retime";
+import { getMainTrackAppendTime } from "./main-track-append";
 
 /**
  * The EDL asset resolver for native exports (2026-08-20, fixes the on-device
@@ -815,9 +816,23 @@ const IMAGE_DEFAULT_DURATION_SEC = 3;
 /**
  * The timeline's "+" add-clip button (capture-verified CapCut chrome,
  * 2026-08-18): native picker -> proxy -> asset registration via the real M4
- * import pipeline, then each imported asset is placed on the main track at
- * the playhead through the same InsertElementCommand path every other
- * insert action here uses. Returns how many clips landed.
+ * import pipeline, then each imported asset is APPENDED to the magnetic main
+ * track through the same InsertElementCommand path every other insert action
+ * here uses.
+ *
+ * Why explicit main-track placement matters (Stage 16 POCO qualification):
+ * this button is rendered after the main track's last clip, but the old
+ * implementation inserted at the current playhead with placement "auto".
+ * When the playhead overlapped the first clip, the generic placement resolver
+ * correctly created an overlay track for the second video. That made the
+ * public transition square/cross-fade feature unreachable from the release UI
+ * because there were never two adjacent main-track clips. Appending here makes
+ * the visual semantics match the "+" button's location and keeps Overlay
+ * imports exclusive to importAndPlaceOverlay().
+ *
+ * Multi-select imports append in picker order: the main-track end is recomputed
+ * after every insertion, so each successful command advances the next start.
+ * Returns how many clips landed.
  */
 export async function importAndPlaceMedia({
 	editor,
@@ -837,6 +852,10 @@ export async function importAndPlaceMedia({
 		onProgress,
 	});
 	for (const asset of imported) {
+		const mainTrack = editor.scenes.getActiveScene().tracks.main;
+		const appendTime = getMainTrackAppendTime({
+			elements: mainTrack.elements,
+		});
 		const create = buildElementFromMedia({
 			mediaId: asset.id,
 			mediaType: asset.type,
@@ -845,10 +864,13 @@ export async function importAndPlaceMedia({
 			// and a 0-length clip is invisible/untrimmable (found on device
 			// 2026-08-19 alongside the image-proxy fix).
 			duration: mediaTimeFromSeconds({ seconds: asset.duration || IMAGE_DEFAULT_DURATION_SEC }),
-			startTime: editor.playback.getCurrentTime(),
+			startTime: appendTime,
 		});
 		editor.command.execute({
-			command: new InsertElementCommand({ element: create, placement: { mode: "auto", trackType: "video" } }),
+			command: new InsertElementCommand({
+				element: create,
+				placement: { mode: "explicit", trackId: mainTrack.id },
+			}),
 		});
 	}
 	return imported.length;
