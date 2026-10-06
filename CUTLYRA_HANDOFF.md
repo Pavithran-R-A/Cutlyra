@@ -897,3 +897,80 @@ Before permanent signing/tagging:
 
 No permanent signing, tag, GitHub Release, or Play submission has happened yet.
 
+# Stage 16 — POCO release-surface cross-fade fix (2026-10-06)
+
+Authoritative candidate physically inspected:
+`main@48e4a37f9f1b2da3ddfa107df0b867166d8ab719`.
+
+The Stage 15 black-tail fix physically passed on the POCO, and the final
+forensic sweep still showed P0=0 / P1=0. The remaining release blocker was a
+**user-facing construction defect**: the release UI exposed Cross-fade, but
+ordinary Add clip imports could not create two adjacent main-track clips.
+
+## Physical root cause
+
+The timeline's `+ Add clip` button is rendered after the main track's final
+clip, but `importAndPlaceMedia()` inserted every picked asset at the current
+playhead using generic auto placement:
+
+`placement: { mode: "auto", trackType: "video" }`.
+
+When the playhead overlapped the existing main clip, the generic placement
+resolver correctly found no free span on main and created an overlay video
+track. POCO UI dumps repeatedly showed:
+- first picked video on the main row;
+- second picked video on a separate overlay row;
+- no supported release-UI action to promote/move that overlay clip onto main.
+
+Because transition squares only exist between adjacent main-track clips,
+Cross-fade was publicly visible but unreachable.
+
+## Fix branch / PR
+
+- branch: `fix/main-track-add-clip-crossfade`
+- PR: #6, "Make Add clip append to the main track so transitions are reachable"
+
+The fix:
+1. recomputes the end of the magnetic main track for every Add clip import;
+2. appends the imported element at that end;
+3. uses explicit placement into the existing main track instead of generic
+   auto placement;
+4. recomputes after every item in a multi-select import so picker order becomes
+   sequential main-track order;
+5. leaves Overlay import semantics unchanged and isolated in
+   `importAndPlaceOverlay()`;
+6. adds a pure append-time helper and unit regression tests.
+
+## Why this is the correct surface contract
+
+The Add clip affordance is spatially located after the final main-track clip,
+so append-to-main matches what the control communicates. Picture-in-picture
+already has a separate Overlay action and should not be an accidental fallback
+of ordinary clip import.
+
+Android Media3 Composition still does not provide native cross-track
+crossfading, so Cutlyra continues to use its existing custom compositor/export
+implementation. This stage changes only how users construct the adjacent main
+sequence required to reach that existing transition implementation.
+
+## Remaining final gate
+
+Do not permanently sign/tag/publish yet.
+
+Required after PR #6:
+1. Bun CI + Mobile CI green on the exact PR head;
+2. merge, then post-merge main CI green;
+3. POCO release build:
+   - import videoA + videoC through Add clip;
+   - verify both are adjacent on the SAME main row;
+   - open the transition square and apply Cross-fade;
+   - export and visually confirm the fade;
+   - physically verify transform + keyframe export;
+   - run one combined representative release export;
+   - final logcat sweep;
+4. require P0=0 / P1=0 and no release-surface blocker.
+
+The prior POCO evidence host also hit 0 bytes free during Stage 16 discovery.
+That is an infrastructure constraint, not an app defect; free enough workspace
+for evidence/build artifacts before the final device rerun.
+
