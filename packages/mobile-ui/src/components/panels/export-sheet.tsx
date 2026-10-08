@@ -382,7 +382,11 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 				</button>
 				{runState === "error" && exportError && <p className="cc-panel-note">Export failed: {exportError}</p>}
 				{runState === "done" && (
-					<p className="cc-panel-note">Export complete{outputUri ? ` — ${outputUri}` : "."}</p>
+					<p className="cc-panel-note" role="status">
+						{outputUri?.startsWith("content://")
+							? "Saved to Gallery — Movies/Cutlyra. Open Photos or Gallery to play or share your video."
+							: `Export complete${outputUri ? ` — ${outputUri}` : "."}`}
+					</p>
 				)}
 				{libraryAudioNote && (
 					<p className="cc-panel-note" role="status">
