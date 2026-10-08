@@ -20,6 +20,7 @@ import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
 import app.cutlyra.editor.edl.EdlParseException
 import app.cutlyra.editor.edl.EdlParser
+import app.cutlyra.editor.export.GalleryExportPublisher
 import app.cutlyra.editor.export.Media3Exporter
 import app.cutlyra.editor.export.PrerenderedOverlay
 import app.cutlyra.editor.export.ticksToUs
@@ -546,7 +547,39 @@ class NativeBridgePlugin : Plugin() {
 			outputFile = outputFile,
 			overlayFrames = overlayFrames,
 		) { event ->
-			notifyListeners("exportProgress", exportEventToJson(exportId, event))
+			if (event is Media3Exporter.Event.Done) {
+				// Media3 invokes this callback on the main looper. MediaStore
+				// publication copies the whole file, so NEVER do it on that
+				// looper: the device would freeze on longer exports.
+				val publishing = JSObject()
+				publishing.put("exportId", exportId)
+				publishing.put("stage", "muxing")
+				publishing.put("fraction", 0.99)
+				notifyListeners("exportProgress", publishing)
+				Thread {
+					try {
+						val galleryUri = GalleryExportPublisher.publish(context, event.outputFile)
+						// Avoid retaining a second, invisible copy indefinitely.
+						if (!event.outputFile.delete()) {
+							android.util.Log.w("cutlyra-export", "temporary export cleanup deferred")
+						}
+						notifyListeners("exportProgress", exportEventToJson(exportId, event, galleryUri))
+					} catch (error: Exception) {
+						android.util.Log.e("cutlyra-export", "failed to save encoded video to Gallery", error)
+						val message = error.message?.trim().takeUnless { it.isNullOrEmpty() }
+								?: error.javaClass.simpleName
+						notifyListeners(
+							"exportProgress",
+							exportEventToJson(
+								exportId,
+								Media3Exporter.Event.Error("Video encoded but Save to Gallery failed: $message"),
+							),
+							)
+					}
+				}.start()
+			} else {
+				notifyListeners("exportProgress", exportEventToJson(exportId, event))
+			}
 		}
 	}
 
@@ -578,7 +611,7 @@ class NativeBridgePlugin : Plugin() {
 		call.resolve(ack)
 	}
 
-	private fun exportEventToJson(exportId: String, event: Media3Exporter.Event): JSObject {
+	private fun exportEventToJson(exportId: String, event: Media3Exporter.Event, publishedUri: Uri? = null): JSObject {
 		val payload = JSObject()
 		payload.put("exportId", exportId)
 		when (event) {
@@ -589,7 +622,7 @@ class NativeBridgePlugin : Plugin() {
 			is Media3Exporter.Event.Done -> {
 				payload.put("stage", "done")
 				payload.put("fraction", 1.0)
-				payload.put("outputUri", Uri.fromFile(event.outputFile).toString())
+				payload.put("outputUri", (publishedUri ?: Uri.fromFile(event.outputFile)).toString())
 				// Terminal — a later `exportCancel` for this id must not tear
 				// down whatever export started after it.
 				if (activeExportId == exportId) activeExportId = null
