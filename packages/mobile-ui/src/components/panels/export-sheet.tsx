@@ -397,8 +397,11 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 			{runState === "exporting" && progress && (
 				<ProgressOverlay
 					percent={progress.fraction * 100}
-					label={`Exporting — ${progress.stage}`}
-					onCancel={cancelExport}
+					label={progress.stage === "muxing" ? "Saving to Gallery…" : `Exporting — ${progress.stage}`}
+					// Publishing to MediaStore is a final atomic save: at this
+					// point encoding has finished, and cancelling the JS listener
+					// would misleadingly hide a file that is still being saved.
+					onCancel={progress.stage === "muxing" ? undefined : cancelExport}
 				/>
 			)}
 		</>
