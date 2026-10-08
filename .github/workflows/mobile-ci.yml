@@ -265,6 +265,33 @@ jobs:
           fi
         working-directory: apps/mobile/android
 
+      - name: Stage checksum-verified unsigned release candidate for POCO
+        # Stage 17 found an old packaged Vite bundle. Validate the fresh
+        # checked-out editor entrypoint against the actual release APK.
+        # Never auto-sign with a new key: an in-place update must use the
+        # original disposable QA certificate to preserve on-device projects.
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$APK"
+          cmp ../www/index.html <(unzip -p "$APK" assets/public/index.html)
+          mkdir -p "$GITHUB_WORKSPACE/device-qa"
+          cp "$APK" "$GITHUB_WORKSPACE/device-qa/cutlyra-$GITHUB_SHA-unsigned-release.apk"
+          cd "$GITHUB_WORKSPACE/device-qa"
+          sha256sum -- *.apk > SHA256SUMS.txt
+          echo "source_commit=$GITHUB_SHA" > BUILD_PROVENANCE.txt
+          echo "workflow_run=$GITHUB_RUN_ID" >> BUILD_PROVENANCE.txt
+          echo "variant=release" >> BUILD_PROVENANCE.txt
+          echo "signing=UNSIGNED (QA certificate required before device install)" >> BUILD_PROVENANCE.txt
+        working-directory: apps/mobile/android
+
+      - name: Upload unsigned release APK for POCO qualification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cutlyra-unsigned-device-qa
+          path: device-qa/
+          retention-days: 14
+          if-no-files-found: error
       - name: Upload debug APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
