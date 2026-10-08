@@ -18,42 +18,15 @@ import type {
 	MediaAssetData,
 	StorageConfig,
 	SerializedProject,
-	SerializedScene,
 } from "./types";
 import type { SavedSoundsData, SavedSound, SoundEffect } from "@/sounds/types";
 import {
 	migrations,
 	runStorageMigrations,
 } from "@/services/storage/migrations";
-import type { Bookmark, SceneTracks, TScene } from "@/timeline";
+import type { TScene } from "@/timeline";
 import { roundMediaTime } from "@/wasm";
-
-function normalizeBookmarks({ raw }: { raw: unknown }): Bookmark[] {
-	if (!Array.isArray(raw)) return [];
-	return raw
-		.map((item): Bookmark | null => {
-			if (typeof item === "number") {
-				return { time: roundMediaTime({ time: item }) };
-			}
-			const obj = item as Record<string, unknown>;
-			if (
-				typeof obj !== "object" ||
-				obj === null ||
-				typeof obj.time !== "number"
-			) {
-				return null;
-			}
-			return {
-				time: roundMediaTime({ time: obj.time }),
-				...(typeof obj.note === "string" && { note: obj.note }),
-				...(typeof obj.color === "string" && { color: obj.color }),
-				...(typeof obj.duration === "number" && {
-					duration: roundMediaTime({ time: obj.duration }),
-				}),
-			};
-		})
-		.filter((b): b is Bookmark => b !== null);
-}
+import { serializeScene, deserializeScene } from "./scene-serialization";
 
 class StorageService {
 	private projectsAdapter: IndexedDBAdapter<SerializedProject>;
@@ -122,32 +95,11 @@ class StorageService {
 		return isStorageQuotaExceededError({ error });
 	}
 
-	private stripAudioBuffers({ tracks }: { tracks: SceneTracks }): SceneTracks {
-		return {
-			...tracks,
-			audio: tracks.audio.map((track) => ({
-				...track,
-				elements: track.elements.map((element) => {
-					const { buffer: _buffer, ...rest } = element;
-					return rest;
-				}),
-			})),
-		};
-	}
-
 	async saveProject({ project }: { project: TProject }): Promise<void> {
 		const duration =
 			project.metadata.duration ??
 			getProjectDurationFromScenes({ scenes: project.scenes });
-		const serializedScenes: SerializedScene[] = project.scenes.map((scene) => ({
-			id: scene.id,
-			name: scene.name,
-			isMain: scene.isMain,
-			tracks: this.stripAudioBuffers({ tracks: scene.tracks }),
-			bookmarks: scene.bookmarks,
-			createdAt: scene.createdAt.toISOString(),
-			updatedAt: scene.updatedAt.toISOString(),
-		}));
+		const serializedScenes = project.scenes.map((scene) => serializeScene({ scene }));
 
 		const serializedProject: SerializedProject = {
 			metadata: {
@@ -194,16 +146,7 @@ class StorageService {
 			return null;
 		}
 
-		const scenes =
-			serializedProject.scenes?.map((scene) => ({
-				id: scene.id,
-				name: scene.name,
-				isMain: scene.isMain,
-				tracks: scene.tracks,
-				bookmarks: normalizeBookmarks({ raw: scene.bookmarks }),
-				createdAt: new Date(scene.createdAt),
-				updatedAt: new Date(scene.updatedAt),
-			})) ?? [];
+		const scenes = serializedProject.scenes?.map((scene) => deserializeScene({ scene })) ?? [];
 
 		const project: TProject = {
 			metadata: {

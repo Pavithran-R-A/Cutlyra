@@ -974,3 +974,52 @@ The prior POCO evidence host also hit 0 bytes free during Stage 16 discovery.
 That is an infrastructure constraint, not an app defect; free enough workspace
 for evidence/build artifacts before the final device rerun.
 
+# Stage 17 — transition persistence and Gallery export delivery (2026-10-08)
+
+Physical qualification of release-mode SHA
+`main@19e900afa1d90d0c382a1adfece832459c2fcda9` finally used a
+hash-matched fresh PR #6 APK. The old install was demonstrably stale.
+
+POCO results:
+- Two sequential `+ Add clip` imports finally landed adjacent on MAIN: PASS.
+- Cross-fade created through the real transition square: PASS.
+- Preview fade verified quantitatively (real intermediate alpha blending): PASS.
+- Transform gesture, two keyframes, their animated interpolation: PASS.
+- Combined in-app export reached Done; logcat clean: PASS.
+- Release asset pruning: PASS; production APK contains none of the
+  spike/autotest/legacy-harness payloads despite their presence in Vite www/.
+- **P1:** cross-fade disappeared on project close/reload. `StorageService`
+  hand-enumerated scene fields and omitted `scene.transitions` on BOTH
+  saving and loading. The UI reverted to Add transition / None.
+- **P2:** export success returned a private `noBackupFilesDir/exports/*.mp4`
+  file URI, unusable from Gallery/share apps and unreadable to physical QA
+  without privileged access. A Done event did not mean a customer got a file.
+
+Branch: `fix/poco-transition-persistence`.
+
+Changes:
+1. Scene serialization now preserves the whole TScene shape and transforms
+   only date/audio-buffer fields. Legacy scenes without transitions remain
+   compatible; round-trip regression tests included.
+2. Android completed export now publishes the verified video to the public
+   MediaStore Videos collection at `Movies/Cutlyra` (API 29+, no storage
+   permission), copying off the main thread, finalizing the pending media
+   row only after all bytes are copied. On failure the pending row is deleted
+   and a meaningful export error is surfaced; no false Done.
+3. After successful publication the invisible private temp copy is removed
+   to avoid accumulating large duplicate videos. Export Sheet tells users
+   where their saved video appears.
+4. Android device instrumentation verifies that gallery-published bytes
+   are actually readable and identical to the source.
+
+Release gate: Bun + Mobile CI must pass on exact PR head, followed by merged
+main CI. Then build a FRESH release APK from exact merged SHA, prove its
+bundled editor JS is current (no stale Vite/cap-sync state), upgrade the POCO
+without deleting existing project data, reapply Fade, close/reopen and verify
+it persists; export and independently retrieve/play the Gallery file
+(including cross-fade and keyframe effects), verify no permission creep, and
+perform a final logcat/resource audit.
+
+Do not sign permanently, tag/publish GitHub Release, or submit Play until
+the physical P1/P2 acceptance and all release gates are green.
+

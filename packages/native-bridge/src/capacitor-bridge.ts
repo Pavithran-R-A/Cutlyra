@@ -640,9 +640,15 @@ export function createCapacitorBridge({
 					yield {
 						stage: event.stage,
 						fraction: event.fraction,
+						// A Gallery-published MediaStore content:// URI is
+						// the user-visible output identity. Do not turn it into a
+						// WebViewAssetLoader URL: that is a playback URL, not
+						// a durable location or useful Save confirmation.
 						outputUri:
 							event.outputUri !== undefined
-								? toPlaybackUri(event.outputUri)
+								? event.outputUri.startsWith("content://")
+									? event.outputUri
+									: toPlaybackUri(event.outputUri)
 								: undefined,
 						error: event.error,
 					};

@@ -559,6 +559,36 @@ describe("createCapacitorBridge (injected fake plugin — DI seam for full orche
 		expect(plugin.exportCancel).not.toHaveBeenCalled();
 	});
 
+	test("exportProject preserves a Gallery-published content URI for the user", async () => {
+		let capturedCallback: ((data: RawExportEvent) => void) | null = null;
+		const { exportProject, recorded } = recordingExportProject();
+		const plugin = fakePlugin({
+			exportProject,
+			addListener: mock(
+				async (_event: string, cb: (data: RawExportEvent) => void) => {
+					capturedCallback = cb;
+					return { remove: mock(async () => undefined) };
+				},
+			),
+		});
+		const bridge = createCapacitorBridge({ plugin: plugin as never });
+		const it = bridge.exportProject({ edl: FIXTURE_EDL });
+		const received: ExportProgress[] = [];
+		const drive = (async () => {
+			for await (const progress of it) received.push(progress);
+		})();
+		await flush();
+		const galleryUri = "content://media/external/video/media/42";
+		(capturedCallback as unknown as (data: RawExportEvent) => void)({
+			exportId: recorded.id as string,
+			stage: "done",
+			fraction: 1,
+			outputUri: galleryUri,
+		});
+		await drive;
+		expect(received).toEqual([{ stage: "done", fraction: 1, outputUri: galleryUri }]);
+	});
+
 	test("exportProject's stream terminates on 'error' the same way it terminates on 'done'", async () => {
 		let capturedCallback: ((data: RawExportEvent) => void) | null = null;
 		const { exportProject, recorded } = recordingExportProject();

@@ -458,6 +458,24 @@ class ExportGoldenFrameInstrumentedTest {
     }
 
     /**
+     * Release v0.1 must produce a USER-VISIBLE video, not only a valid
+     * noBackupFilesDir output (Stage 17 POCO private-export finding).
+     * MediaStore publication needs no broad storage permissions on API 29+.
+     */
+    @Test
+    fun completed_video_can_be_published_and_read_from_gallery() {
+        val published = GalleryExportPublisher.publish(context, sourceClip)
+        try {
+            assertEquals("content", published.scheme)
+            val bytes = context.contentResolver.openInputStream(published)?.use { it.readBytes() }
+            assertNotNull("Gallery export should be readable through MediaStore", bytes)
+            assertTrue("Gallery video bytes must match the verified source", sourceClip.readBytes().contentEquals(bytes!!))
+        } finally {
+            context.contentResolver.delete(published, null, null)
+        }
+    }
+
+    /**
      * The real end-to-end path: `Media3Exporter.start` -> hardware/software
      * `Transformer` -> a playable MP4. THIS is the assertion that needs a
      * device/emulator's actual codec stack — everything above this comment
