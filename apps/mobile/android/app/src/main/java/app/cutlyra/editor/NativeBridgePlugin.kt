@@ -21,6 +21,7 @@ import org.json.JSONObject
 import app.cutlyra.editor.edl.EdlParseException
 import app.cutlyra.editor.edl.EdlParser
 import app.cutlyra.editor.export.GalleryExportPublisher
+import app.cutlyra.editor.export.MainTrackPlacements
 import app.cutlyra.editor.export.Media3Exporter
 import app.cutlyra.editor.export.PrerenderedOverlay
 import app.cutlyra.editor.export.ticksToUs
@@ -495,6 +496,15 @@ class NativeBridgePlugin : Plugin() {
 		// removes `EdlTextOverlay` — a second, drifting implementation of the
 		// editor's text rendering — from the export path. A frame that fails
 		// to decode is skipped rather than failing the export.
+		// Nominal -> output clock for overlay timings (Stage 18): prerendered
+		// frames are rendered against the NOMINAL scene, while cross-fades
+		// compress the timeline (`MainTrackPlacements`) — shift each frame's
+		// window by the cumulative overlaps ahead of it, start-only, exactly
+		// as the preview remaps overlay elements.
+		val placements = MainTrackPlacements.build(
+			edl.mainTrack()?.clips?.filter { it.kind == "video" || it.kind == "image" } ?: emptyList(),
+			edl.transitions,
+		)
 		val overlayFrames = mutableListOf<PrerenderedOverlay.Frame>()
 		call.getArray("overlayFrames")?.let { array ->
 			for (index in 0 until array.length()) {
@@ -525,10 +535,11 @@ class NativeBridgePlugin : Plugin() {
 						bitmap, targetWidth, targetHeight, /* filter= */ true,
 					)
 				}
+				val outStartTicks = placements.remapNominalTick(startTicks)
 				overlayFrames.add(
 					PrerenderedOverlay.Frame(
-						startUs = ticksToUs(startTicks, edl.meta.ticksPerSecond),
-						endUs = ticksToUs(endTicks, edl.meta.ticksPerSecond),
+						startUs = ticksToUs(outStartTicks, edl.meta.ticksPerSecond),
+						endUs = ticksToUs(outStartTicks + (endTicks - startTicks), edl.meta.ticksPerSecond),
 						bitmap = bitmap,
 					),
 				)
