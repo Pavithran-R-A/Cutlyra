@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+ <defs>
+  <linearGradient id="film" x1=".1" x2=".92" y1=".1" y2="1" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#09F0E4"/><stop offset=".48" stop-color="#00CAE0"/><stop offset="1" stop-color="#2786F7"/></linearGradient>
+  <linearGradient id="blade" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#FFBE43"/><stop offset=".45" stop-color="#FF8732"/><stop offset="1" stop-color="#FF4760"/></linearGradient>
+ </defs>
+ <!-- Video timeline ribbons form a custom C; central orange playhead marks the edit point. -->
+ <path d="M775 249H438C302 249 214 349 214 470v85c0 139 96 220 225 220h336c30 0 54-24 54-54v-30c0-29-24-53-54-53H450c-62 0-93-35-93-93v-75c0-59 35-91 97-91h321c30 0 54-24 54-54v-23c0-29-24-53-54-53Z" fill="url(#film)"/>
+ <path d="M357 467v88c0 57 31 93 92 93l-35 127c-129-3-200-87-200-220v-85c0-82 40-152 106-190-26 47-39 107-39 174 0 48 25 60 76 13Z" fill="#086CA8" opacity=".56"/>
+ <rect x="435" y="287" width="122" height="57" rx="20" fill="#0B274C" opacity=".88"/>
+ <rect x="584" y="287" width="102" height="57" rx="19" fill="#0B274C" opacity=".88"/>
+ <rect x="711" y="287" width="80" height="57" rx="17" fill="#0B274C" opacity=".88"/>
+ <rect x="448" y="672" width="112" height="65" rx="19" fill="#0B274C" opacity=".88"/>
+ <rect x="589" y="672" width="101" height="65" rx="19" fill="#0B274C" opacity=".88"/>
+ <rect x="714" y="672" width="78" height="65" rx="18" fill="#0B274C" opacity=".88"/>
+ <path d="M480 439c0-18 20-29 35-20l130 79c15 9 15 31 0 40l-130 79c-15 9-35-2-35-20V439Z" fill="#F8FCFF"/>
+ <path d="M515 197c-15 0-23 17-14 29l44 53v523c0 14 12 26 26 26s26-12 26-26V279l44-53c9-12 1-29-14-29H515Z" fill="url(#blade)"/>
+ <path d="M525 221h91" stroke="#FFE6AD" stroke-width="9" stroke-linecap="round" opacity=".65"/>
+</svg>

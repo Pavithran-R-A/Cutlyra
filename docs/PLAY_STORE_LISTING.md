@@ -58,9 +58,9 @@ successfully.
 
 Google Play currently requires these assets for a phone/tablet store listing:
 
-- **Store icon:** 512×512 PNG, max 1024 KB. Cutlyra's canonical source is
-  `assets/brand/icon-only.png` (1024×1024); export a 512×512 store copy from
-  that source rather than using a launcher-density raster.
+- **Store icon:** 512×512 PNG, max 1024 KB. Cutlyra's regenerated, ready-to-upload PNG is
+  `assets/brand/play-store-icon-512.png` (512×512, full-bleed sRGB); it is
+  produced by the canonical `assets/brand/cutlyra-mark.svg` pipeline.
 - **Feature graphic:** 1024×500 JPEG or 24-bit PNG with no alpha. This is a
   store-marketing asset and must be created from Cutlyra's own brand/UI; do not
   reuse inherited OpenCut art.
