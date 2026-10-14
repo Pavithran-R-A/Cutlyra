@@ -21,7 +21,7 @@ Outputs:
 | --- | --- |
 | `icon-only.png` | 1024 square full-bleed store/app canonical icon |
 | `play-store-icon-512.png` | 512×512 sRGB full-bleed PNG, Play Console icon, must be <=1024 KB |
-| `icon-foreground.png` | 1024 adaptive foreground layer (transparent, mark at 44/108) |
+| `icon-foreground.png` | 1024 adaptive foreground layer (transparent, mark at 58/108) |
 | `icon-background.png` | 1024 adaptive background layer (flat navy) |
 | `splash.png` | 2732 square, mark + CUTLYRA wordmark (canonical splash) |
 | `splash-dark.png` | 2732 square, same on pure black (OLED variant) |
@@ -43,7 +43,7 @@ The script also writes platform rasters directly into their res trees:
 
 Design constraints encoded in the pipeline: no text inside the launcher
 icon; mark centered with generous adaptive-mask safe area; wordmark only on
-splash surfaces; flat geometry, no gradients introduced by the pipeline.
+splash surfaces; SVG mark with subtle cyan and coral gradients; generation does not invent gradients.
 
 The CI regeneration workflow for the icon-refresh feature branch runs
 `pip install pillow cairosvg` and this generator. All Android adaptive,
