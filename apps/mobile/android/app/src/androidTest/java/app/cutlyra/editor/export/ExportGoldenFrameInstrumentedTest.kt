@@ -458,6 +458,92 @@ class ExportGoldenFrameInstrumentedTest {
     }
 
     /**
+     * Stage 18 POCO regression (P2): with captions on the timeline the same
+     * 8 s video + 15 s speech project exported 15.03 s — 7 s of pure black —
+     * while the caption-less project correctly clamped to 8.05 s. Captions
+     * ride the audio clock, so the caption track outlives the visual
+     * timeline, and `textOverlayEndTicks` used to feed that into
+     * `projectEndTicks` — re-opening exactly the Stage-15 audio-clamp
+     * loophole.
+     *
+     * Same shape with the 2 s fixture: 1 s of video, 2 s of audio, and a
+     * text overlay spanning the full 2 s. The export must still end at the
+     * ~1 s visual boundary — the caption tail may not extend the canvas.
+     */
+    @Test
+    fun export_clamps_caption_tail_that_outlasts_visual_timeline() {
+        val base = buildFixtureEdl()
+        val mainTrack = base.tracks.first { it.kind == EdlTrackKind.MAIN }
+        val oneSecondVisual = mainTrack.clips.first().copy(
+            clipId = "visual-1s",
+            startTicks = 0,
+            durationTicks = ticksPerSecond,
+            sourceStartTicks = 0,
+            sourceEndTicks = ticksPerSecond,
+        )
+        val longAudioClip = oneSecondVisual.copy(
+            clipId = "audio-2s",
+            kind = "audio",
+            name = "long-audio",
+            durationTicks = 2 * ticksPerSecond,
+            sourceEndTicks = 2 * ticksPerSecond,
+        )
+        val audioTrack = EdlTrack(
+            trackId = "track-audio",
+            kind = EdlTrackKind.AUDIO,
+            trackType = EdlTrackType.AUDIO,
+            name = "Audio",
+            zIndex = 1,
+            muted = false,
+            hidden = false,
+            clips = listOf(longAudioClip),
+        )
+        // The fixture's text overlay (track "track-text", clip "clip-title")
+        // spans the full 2 s — overlay content outliving the 1 s visual
+        // timeline, exactly the Stage 18 caption shape.
+        val textTrack = base.tracks.first { it.trackId == "track-text" }
+        val edl = base.copy(
+            meta = base.meta.copy(durationTicks = 2 * ticksPerSecond),
+            tracks = listOf(
+                mainTrack.copy(clips = listOf(oneSecondVisual)),
+                audioTrack,
+                textTrack,
+            ),
+            transitions = emptyList(),
+            overlays = base.overlays.map { it.copy(durationTicks = 2 * ticksPerSecond) },
+        )
+
+        val latch = CountDownLatch(1)
+        val events = mutableListOf<Media3Exporter.Event>()
+        Media3Exporter.start(context, edl, outputFile) { event ->
+            events.add(event)
+            if (event is Media3Exporter.Event.Done || event is Media3Exporter.Event.Error) {
+                latch.countDown()
+            }
+        }
+
+        assertTrue(
+            "caption-tail regression export did not terminate within 60s",
+            latch.await(60, TimeUnit.SECONDS),
+        )
+        val terminal = events.lastOrNull()
+        assertTrue(
+            "expected caption-tail regression export to succeed, got: $terminal",
+            terminal is Media3Exporter.Event.Done,
+        )
+
+        val done = terminal as Media3Exporter.Event.Done
+        val probe = MediaProbe.probe(done.outputFile, mimeTypeHint = "video/mp4")
+        assertTrue(probe.hasAudio)
+        assertTrue(
+            "caption/text overlay must not extend a video export past the ~1s visual " +
+                "boundary (Stage 18 P2 black tail), was ${probe.durationMicros}us",
+            Math.abs(probe.durationMicros - 1_000_000L) < 300_000L,
+        )
+        assertFrameDecodesNonBlack(done.outputFile, atUs = 750_000L)
+    }
+
+    /**
      * Release v0.1 must produce a USER-VISIBLE video, not only a valid
      * noBackupFilesDir output (Stage 17 POCO private-export finding).
      * MediaStore publication needs no broad storage permissions on API 29+.
