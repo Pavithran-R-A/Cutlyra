@@ -20,3 +20,18 @@ Each app is a frontend that calls into Rust. Logic is never duplicated between a
 ### React
 
 - Read components before using them. They may already apply classes, which affects what you need to pass and how to override them.
+
+## Commit and release attribution
+
+This is an owner-maintained project. Do not append automated agent or AI
+co-authorship trailers, assistant signatures, or "Generated with ..." lines
+to Git commit messages, pull request descriptions, release notes, or handoff
+reports. In particular, do not add Codebuff, Claude, Copilot, or other AI
+systems as co-authors. Keep the actual Git author identity accurately
+configured to the account owner before making owner-authorized commits.
+
+Do not rewrite existing Git history, force-push, alter commit authors, or
+remove third-party copyright/license/notice statements automatically.
+Keep required upstream MIT and other license attributions intact. If a real
+external person contributes original work, accurately represent their
+contribution rather than claiming it is the owner's own work.
