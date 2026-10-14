@@ -84,11 +84,11 @@ def make_icon(size: int, with_tile: bool) -> Image.Image:
 
 def make_foreground(size: int) -> Image.Image:
     """Adaptive foreground: transparent 108dp-equivalent canvas, mark drawn
-    inside the central ~66% safe zone (i.e. mark side = 44% of full canvas,
+    inside the central ~66% safe zone (i.e. mark side = 58% of full canvas,
     because the safe zone is the middle 66% of the 108dp viewport)."""
     mark = load_mark()
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    inner = int(size * 0.44)
+    inner = int(size * 0.58)
     m = mark.resize((inner, inner), Image.LANCZOS)
     canvas.paste(m, ((size - inner) // 2, (size - inner) // 2), m)
     return canvas
@@ -181,10 +181,10 @@ ADAPTIVE_VIEWPORT = 108.0
 def make_foreground_png(px: int) -> Image.Image:
     """Adaptive foreground raster at native bucket size: the 108dp viewport
     rendered at `px`. Mark sits inside the middle-66dp safe zone, exactly as
-    the vector version did (mark side = 44/108 of the viewport)."""
+    the vector version did (mark side = 58/108 of the viewport)."""
     mark = load_mark()
     canvas = Image.new("RGBA", (px, px), (0, 0, 0, 0))
-    inner = int(px * 44.0 / ADAPTIVE_VIEWPORT)
+    inner = int(px * 58.0 / ADAPTIVE_VIEWPORT)
     m = mark.resize((inner, inner), Image.LANCZOS)
     canvas.paste(m, ((px - inner) // 2, (px - inner) // 2), m)
     return canvas
