@@ -31,7 +31,11 @@ import app.cutlyra.editor.edl.EdlTrackType
  * Sequence-index layout of the returned `Composition` (also documented on
  * `CrossfadeCompositorSettings`):
  *   0                    -> base sequence: every main-track video/image clip,
- *                           hard-cut, in order. Always fully opaque.
+ *                           hard-cut, in order, on the COMPRESSED timeline
+ *                           (`MainTrackPlacements` — preview parity, Stage 18).
+ *                           Fades out inside a transition window: media3
+ *                           paints the primary last (on top), so the base's
+ *                           own alpha is what makes the cross-fade visible.
  *   1..transitions.size  -> one short overlay sequence per CROSS-FADE
  *                           transition (non-crossfade `EdlTransition.kind`s
  *                           degrade to a hard cut, i.e. contribute NO
@@ -74,6 +78,29 @@ object EdlToComposition {
             throw ExportUnsupportedException("main track has no video/image clips")
         }
 
+        // Cross-fade placements: reproduce the preview's compressed timeline
+        // (Stage 18 POCO regression) — an overlap window per cross-fade to
+        // blend in, base clips front-trimmed by their overlap so no head is
+        // played twice, and a start-remap for everything outside the main
+        // track. Dormant/non-crossfade transitions are dropped inside
+        // `build()`; a cross-fade that cannot fit inside BOTH neighbours is a
+        // hard error (plan §2.3 rule 3: fail loudly, never degrade).
+        val placements = MainTrackPlacements.build(mainClips, edl.transitions)
+        for (window in placements.windows) {
+            val afterClip = mainClips.first { it.clipId == window.afterClipId }
+            val incomingClip = window.incomingClip
+            if (window.durationTicks <= 0 ||
+                window.durationTicks > afterClip.durationTicks ||
+                window.durationTicks > incomingClip.durationTicks
+            ) {
+                throw ExportUnsupportedException(
+                    "transition ${window.transitionId} durationTicks=${window.durationTicks} " +
+                        "does not fit within both adjacent clips (${afterClip.clipId}=${afterClip.durationTicks}, " +
+                        "${incomingClip.clipId}=${incomingClip.durationTicks})",
+                )
+            }
+        }
+
         // Whole frames per second; a still is emitted at the project's own
         // rate so its frames line up with the video clips around it.
         val outputFrameRate = Math.round(
@@ -87,7 +114,7 @@ object EdlToComposition {
         // includes audio-only clips. Preserve intentional visual tails
         // (PiP/graphics/text/captions can outlive the main track), but never
         // let audio alone extend the video canvas.
-        val mainEndTicks = mainClips.maxOf { it.startTicks + it.durationTicks }
+        val mainEndTicks = placements.placedClips.maxOf { it.clip.startTicks + it.clip.durationTicks }
         val overlayVisualEndTicks = edl.tracks
             .asSequence()
             .filter {
@@ -95,12 +122,12 @@ object EdlToComposition {
                     (it.trackType == EdlTrackType.VIDEO || it.trackType == EdlTrackType.GRAPHIC)
             }
             .flatMap { it.clips.asSequence() }
-            .maxOfOrNull { it.startTicks + it.durationTicks }
+            .maxOfOrNull { placements.remapNominalTick(it.startTicks) + it.durationTicks }
             ?: 0L
         val textOverlayEndTicks = edl.overlays
             .asSequence()
             .filter { it.kind == EdlOverlayKind.TEXT || it.kind == EdlOverlayKind.CAPTION }
-            .maxOfOrNull { it.startTicks + it.durationTicks }
+            .maxOfOrNull { placements.remapNominalTick(it.startTicks) + it.durationTicks }
             ?: 0L
         val projectEndTicks = maxOf(mainEndTicks, overlayVisualEndTicks, textOverlayEndTicks)
         val transitionWindows = mutableMapOf<Int, TransitionAlphaMath.Window>()
@@ -117,11 +144,11 @@ object EdlToComposition {
         // inferred is what produced, in order on the emulator: the gap
         // exception, then a released-audio-input crash at 54%.
         var baseSeqBuilder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
-        for (clip in mainClips) {
+        for (placed in placements.placedClips) {
             baseSeqBuilder = baseSeqBuilder.addItem(
                 buildEditedMediaItem(
-                    clip = clip,
-                    asset = requireAsset(edl, clip),
+                    clip = placed.clip,
+                    asset = requireAsset(edl, placed.clip),
                     us = ::us,
                     ticksPerSecond = tps,
                     canvasWidth = edl.meta.canvasWidth,
@@ -129,6 +156,9 @@ object EdlToComposition {
                     frameRate = outputFrameRate,
                     outputWidth = edl.output.resolutionWidth,
                     outputHeight = edl.output.resolutionHeight,
+                    // Keyframes/animations run on the preview's own
+                    // element-local clock, not the sequence position.
+                    itemStartTicks = placed.insertStartTicks,
                     // Video only — the main track's audio rides its own
                     // sequence (see "audio sequences" below).
                     removeAudio = true,
@@ -147,46 +177,21 @@ object EdlToComposition {
         sequences.add(baseSeqBuilder.build())
 
         // -- 1..N: one overlay sequence per cross-fade transition ------------
+        // Windows come from `placements` (validated above): they sit on the
+        // COMPRESSED output timeline, at the tail of the OUTGOING clip's
+        // rendered span — exactly where the base's alpha dips and the head
+        // beneath it must play.
         var nextIndex = 1
-        val clipsByStart = mainClips
-        for (transition in edl.transitions) {
-            if (TransitionAlphaMath.classify(transition.kind) != TransitionAlphaMath.TransitionKind.CROSSFADE) {
-                // v1 scope cut (plan §2.3 rule 4): degrades to the base
-                // sequence's own hard cut. Not an error — an unrecognized
-                // transition kind on the main track is expected to become a
-                // plain cut, same as "no transition specified."
-                continue
-            }
-            val afterIdx = clipsByStart.indexOfFirst { it.clipId == transition.afterClipId }
-            if (afterIdx < 0) {
-                throw ExportUnsupportedException(
-                    "transition ${transition.transitionId} references unknown afterClipId ${transition.afterClipId}",
-                )
-            }
-            val afterClip = clipsByStart[afterIdx]
-            val incomingClip = clipsByStart.getOrNull(afterIdx + 1)
-                ?: throw ExportUnsupportedException(
-                    "transition ${transition.transitionId} is after the last main-track clip; nothing to cross-fade into",
-                )
-            if (transition.durationTicks <= 0 ||
-                transition.durationTicks > afterClip.durationTicks ||
-                transition.durationTicks > incomingClip.durationTicks
-            ) {
-                throw ExportUnsupportedException(
-                    "transition ${transition.transitionId} durationTicks=${transition.durationTicks} " +
-                        "does not fit within both adjacent clips (${afterClip.clipId}=${afterClip.durationTicks}, " +
-                        "${incomingClip.clipId}=${incomingClip.durationTicks})",
-                )
-            }
-
-            val windowStartTicks = afterClip.startTicks + afterClip.durationTicks - transition.durationTicks
+        for (window in placements.windows) {
+            val incomingClip = window.incomingClip
+            val windowStartTicks = window.startTicks
             val windowStartUs = us(windowStartTicks)
-            val windowEndUs = us(afterClip.startTicks + afterClip.durationTicks)
+            val windowEndUs = us(window.startTicks + window.durationTicks)
 
             val headClip = incomingClip.copy(
-                durationTicks = transition.durationTicks,
+                durationTicks = window.durationTicks,
                 sourceEndTicks = incomingClip.sourceStartTicks +
-                    Math.round(transition.durationTicks * incomingClip.speed.toDouble()),
+                    Math.round(window.durationTicks * incomingClip.speed.toDouble()),
             )
             val overlayItem = buildEditedMediaItem(
                 clip = headClip,
@@ -233,7 +238,10 @@ object EdlToComposition {
                 (it.trackType == EdlTrackType.VIDEO || it.trackType == EdlTrackType.GRAPHIC)
         }
         for (track in overlayVisualTracks) {
-            for (clip in track.clips.sortedBy { it.startTicks }) {
+            for (rawClip in track.clips.sortedBy { it.startTicks }) {
+                // Nominal -> output clock (cumulative cross-fade shift ahead
+                // of this clip) — same start-only remap as the preview.
+                val clip = rawClip.copy(startTicks = placements.remapNominalTick(rawClip.startTicks))
                 val asset = requireAsset(edl, clip)
                 val animated = KeyframeEvaluator.hasVisualAnimations(clip)
                 val item = buildEditedMediaItem(
@@ -327,9 +335,16 @@ object EdlToComposition {
         // The summed mix is limited by `LimitingAudioMixer` (installed on the
         // Transformer), so nothing here needs to reserve headroom.
         val audioSources = buildList {
-            add(audibleClips(mainClips, mainTrack.muted))
+            add(audibleClips(placements.placedClips.map { it.clip }, mainTrack.muted))
             for (track in edl.tracks.filter { it.kind == EdlTrackKind.AUDIO }) {
-                add(audibleClips(track.clips, track.muted))
+                // Non-main audio rides the nominal clock; shift its start by
+                // the cumulative overlaps ahead of it (preview parity).
+                add(
+                    audibleClips(
+                        track.clips.map { it.copy(startTicks = placements.remapNominalTick(it.startTicks)) },
+                        track.muted,
+                    ),
+                )
             }
         }.filter { it.isNotEmpty() }
 
@@ -398,10 +413,12 @@ object EdlToComposition {
             .sortedBy { it.zIndex }
             .mapNotNull { overlay ->
                 val clip = findClip(edl, overlay.trackId, overlay.clipId) ?: return@mapNotNull null
+                // Nominal -> output clock (start-only remap, preview parity).
+                val startTicks = placements.remapNominalTick(overlay.startTicks)
                 EdlTextOverlay(
                     clip = clip,
-                    startUs = us(overlay.startTicks),
-                    endUs = us(overlay.startTicks + overlay.durationTicks),
+                    startUs = us(startTicks),
+                    endUs = us(startTicks + overlay.durationTicks),
                     canvasWidth = edl.meta.canvasWidth,
                     canvasHeight = edl.meta.canvasHeight,
                 )
