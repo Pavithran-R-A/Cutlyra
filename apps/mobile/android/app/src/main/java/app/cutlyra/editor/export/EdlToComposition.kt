@@ -112,8 +112,20 @@ object EdlToComposition {
         // sample. Stage 14 POCO QA caught an ordinary 8 s video + 15 s MP3
         // exporting as 15 s with a 7 s black tail because meta.durationTicks
         // includes audio-only clips. Preserve intentional visual tails
-        // (PiP/graphics/text/captions can outlive the main track), but never
-        // let audio alone extend the video canvas.
+        // (PiP/graphics layers can outlive the main track), but never let
+        // audio alone extend the video canvas.
+        //
+        // Stage 18 P2 (POCO): text/caption overlays must NOT extend it
+        // either. Captions are generated on the AUDIO clock, so a caption
+        // track routinely outlives an 8 s video under 15 s of speech —
+        // counting `textOverlayEndTicks` here re-opened exactly the
+        // Stage-15 loophole it was written to close: the same project
+        // exported 8.05 s without captions and 15.03 s (7 s of black) with
+        // them. The speech those trailing captions belong to is itself
+        // trimmed to the visual end below (see `addAudioSequence`), so
+        // keeping the captions would burn text describing audio that is no
+        // longer in the file. Captions over real video still render — only
+        // the black-tail extension is gone.
         val mainEndTicks = placements.placedClips.maxOf { it.clip.startTicks + it.clip.durationTicks }
         val overlayVisualEndTicks = edl.tracks
             .asSequence()
@@ -124,12 +136,7 @@ object EdlToComposition {
             .flatMap { it.clips.asSequence() }
             .maxOfOrNull { placements.remapNominalTick(it.startTicks) + it.durationTicks }
             ?: 0L
-        val textOverlayEndTicks = edl.overlays
-            .asSequence()
-            .filter { it.kind == EdlOverlayKind.TEXT || it.kind == EdlOverlayKind.CAPTION }
-            .maxOfOrNull { placements.remapNominalTick(it.startTicks) + it.durationTicks }
-            ?: 0L
-        val projectEndTicks = maxOf(mainEndTicks, overlayVisualEndTicks, textOverlayEndTicks)
+        val projectEndTicks = maxOf(mainEndTicks, overlayVisualEndTicks)
         val transitionWindows = mutableMapOf<Int, TransitionAlphaMath.Window>()
         val overlaySettingsByIndex = mutableMapOf<Int, StaticOverlaySettings>()
         val animatedOverlayAlphaByIndex = mutableMapOf<Int, CrossfadeCompositorSettings.AnimatedOverlayAlpha>()
@@ -166,11 +173,13 @@ object EdlToComposition {
             )
         }
         // Black tail. Without it the video stream simply STOPS at the last
-        // main clip while the overlays (and the audio) run on — an export
-        // whose captions ran past the final clip lost them entirely, and the
-        // file ended up with a 9s video track under a 11.9s audio track. A gap
-        // in a video-declared sequence is exactly the blank-frame filler iOS
-        // gets from its pacer lane.
+        // main clip while a PiP/graphic overlay (and the audio) runs on — a
+        // torn file whose video track is shorter than the rest. A gap in a
+        // video-declared sequence is exactly the blank-frame filler iOS gets
+        // from its pacer lane. Note this gap is now keyed only to VISUAL
+        // overlays: text/caption tails no longer reach `projectEndTicks`
+        // (Stage 18 P2), so captions past the last clip are trimmed with the
+        // audio they belong to instead of drawing onto 7 s of black.
         if (mainEndTicks < projectEndTicks) {
             baseSeqBuilder = baseSeqBuilder.addGap(us(projectEndTicks - mainEndTicks))
         }
