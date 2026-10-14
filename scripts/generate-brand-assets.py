@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Cutlyra canonical brand-asset pipeline.
 
-Canonical source: assets/brand/source-logo.png (1254x1254, provided brand art).
+Canonical source: assets/brand/cutlyra-mark.svg (original scalable timeline mark).
 Canonical outputs (assets/brand/): icon-only.png, icon-foreground.png,
 icon-background.png, splash.png, splash-dark.png — plus the Android/iOS res
 rasters the platforms need, written directly into their res trees.
 
 No npm dependency is added. The pipeline is PIL-based and deterministic:
-geometry is derived from the measured pixel bounds of the source art, never
-regenerated, so re-running after dropping a new source-logo.png in place
-reproduces the whole set.
+the SVG is rendered at a fixed resolution then alpha-cropped; rerunning with
+the same cutlyra-mark.svg regenerates all platform rasters.
 
 Design rules encoded here (see assets/brand/README.md):
 - mark sits inside the Android adaptive-icon ~66/108 center safe zone
@@ -30,29 +29,32 @@ BRAND = os.path.join(ROOT, "assets", "brand")
 ANDROID_RES = os.path.join(ROOT, "apps", "mobile", "android", "app", "src", "main", "res")
 IOS_APPICON = os.path.join(ROOT, "apps", "mobile", "ios", "App", "App", "Assets.xcassets", "AppIcon.appiconset")
 
-# Brand tokens sampled from the source art (see Task A/B audit notes).
+# Cutlyra palette shared by launcher, splash and store graphics.
 TILE = (11, 23, 44, 255)  # #0B172C dark graphite/navy base
 CYAN = (1, 237, 252, 255)  # #01EDFC electric cyan accent
 BLUE = (1, 140, 252, 255)  # #018CFC deep electric blue
 WHITE = (247, 247, 247, 255)  # #F7F7F7 near-white geometry
 
-SOURCE = os.path.join(BRAND, "source-logo.png")
+SOURCE = os.path.join(BRAND, "cutlyra-mark.svg")
 
 
 def load_mark() -> Image.Image:
-    """The mark = the source art minus its rounded-square tile, cropped to
-    the artwork's tight bounding box and padded to a square canvas."""
-    src = Image.open(SOURCE).convert("RGBA")
-    w, h = src.size
-    # Scan alpha to find the tile bounds; the tile itself is opaque inside
-    # its rounded rect, transparent outside.
-    alpha = src.split()[3]
-    bbox = alpha.getbbox()
-    tile = src.crop(bbox)
-    tw, th = tile.size
-    side = max(tw, th)
+    """Render and crop the transparent timeline-C / editing playhead mark.
+    The dark tile is never included in adaptive foreground layers.
+    """
+    import io
+    import cairosvg
+    with open(SOURCE, "rb") as f:
+        svg = f.read()
+    png = cairosvg.svg2png(bytestring=svg, output_width=1024, output_height=1024)
+    mark = Image.open(io.BytesIO(png)).convert("RGBA")
+    bbox = mark.getchannel("A").getbbox()
+    if bbox is None:
+        raise ValueError("Cutlyra SVG has empty alpha")
+    cut = mark.crop(bbox)
+    side = max(cut.size)
     canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-    canvas.paste(tile, ((side - tw) // 2, (side - th) // 2))
+    canvas.alpha_composite(cut, ((side - cut.width) // 2, (side - cut.height) // 2))
     return canvas
 
 
@@ -72,8 +74,7 @@ def make_icon(size: int, with_tile: bool) -> Image.Image:
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     if with_tile:
         draw = ImageDraw.Draw(canvas)
-        radius = int(size * 0.2237)  # matches the source tile's corner ratio
-        draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=radius, fill=TILE)
+        draw.rectangle([0, 0, size - 1, size - 1], fill=TILE)  # Google Play masks full square
     # Mark occupies 64% of the canvas side — generous adaptive-mask safe area.
     inner = int(size * 0.64)
     m = mark.resize((inner, inner), Image.LANCZOS)
@@ -106,6 +107,7 @@ def find_font() -> str:
         os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "segoeuib.ttf"),
         os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "arialbd.ttf"),
     ]
+    candidates.append("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
     for c in candidates:
         if os.path.exists(c):
             return c
@@ -145,6 +147,7 @@ def main() -> None:
 
     # Canonical sources.
     write(make_icon(1024, with_tile=True), os.path.join(BRAND, "icon-only.png"))
+    write(make_icon(512, with_tile=True), os.path.join(BRAND, "play-store-icon-512.png"))
     write(make_foreground(1024), os.path.join(BRAND, "icon-foreground.png"))
     write(make_background(1024), os.path.join(BRAND, "icon-background.png"))
     write(make_splash(2732, dark=False), os.path.join(BRAND, "splash.png"))
@@ -167,6 +170,7 @@ def main() -> None:
 
     regenerate_android_res()
     regenerate_ios_splash()
+    regenerate_web_icons()
 
     print("brand pipeline complete")
 
@@ -257,6 +261,24 @@ def regenerate_ios_splash() -> None:
         path = os.path.join(imageset, fn)
         w, h = Image.open(path).size
         write(make_splash_billboard(w, h, portrait=False), path)
+
+
+def regenerate_web_icons() -> None:
+    """Keep website favicon and platform icons aligned with mobile branding."""
+    folder = os.path.join(ROOT, "apps", "web", "public", "icons")
+    for fn in sorted(os.listdir(folder)):
+        if not fn.endswith(".png"):
+            continue
+        path = os.path.join(folder, fn)
+        old = Image.open(path)
+        if old.width != old.height:
+            raise ValueError(f"non-square web icon {fn}")
+        write(make_icon(old.width, with_tile=True), path)
+
+    favicon = os.path.join(ROOT, "apps", "web", "public", "favicon.ico")
+    icons = [make_icon(n, with_tile=True).convert("RGBA") for n in (16, 32, 48)]
+    icons[-1].save(favicon, format="ICO", sizes=[(16, 16), (32, 32), (48, 48)])
+    print("wrote", os.path.relpath(favicon, ROOT))
 
 
 if __name__ == "__main__":
