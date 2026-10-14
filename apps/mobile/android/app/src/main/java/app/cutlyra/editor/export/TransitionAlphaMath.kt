@@ -12,27 +12,32 @@ package app.cutlyra.editor.export
  * `VideoCompositorSettings`) is a thin adapter that cannot itself be
  * unit-tested without a GL context — see that file's doc comment.
  *
- * The compositing model (matches Media3's own `OverlaySettings.alphaScale` /
- * `DefaultVideoCompositor` semantics — index 0 is the opaque "primary"
- * background, every other registered index is alpha-blended on top of it
- * with the standard `src-over` operator: `out = overlay*alpha +
- * primary*(1-alpha)`):
+ * The compositing model (CORRECTED in Stage 18 — the original assumption
+ * was backwards and shipped invisible cross-fades: media3 1.11.0's
+ * `DefaultVideoCompositor` draws frames "back to front", ending with the
+ * PRIMARY input last, i.e. **input 0 is the TOP layer**, with standard
+ * `src-over`: `out = primary*alphaP + behind*(1-alphaP)`):
  *
- *   base sequence (index 0): every main-track clip, hard-cut, in order —
- *     this is the "no transitions" render and is ALWAYS fully opaque.
+ *   base sequence (index 0, primary, painted LAST/on top): every
+ *     main-track clip, hard-cut, on the COMPRESSED timeline
+ *     (`MainTrackPlacements`). Its `alphaScale` ramps 1 -> 0 linearly
+ *     across each transition window and is 1 everywhere else.
  *   one short overlay sequence per transition (index 1..N): just the head
- *     of the INCOMING clip, trimmed to the transition's duration, positioned
- *     (via a leading gap) so it plays exactly across the transition window,
- *     with `alphaScale` ramping 0 -> 1 linearly across that window.
+ *     of the INCOMING clip, trimmed to the transition's duration,
+ *     positioned (via a leading gap) so it plays exactly across the
+ *     transition window, painted BENEATH the base at FULL opacity.
  *
- * At window-start the overlay is invisible (base clip A shows through
- * untouched); at window-end alpha=1 exactly when the base sequence's clip A
- * -> clip B hard cut happens underneath, so the seam is fully covered by the
- * incoming clip B at full opacity — no visible cut, no double-exposure past
- * the window edges. This is the standard `src-over` crossfade identity,
- * expressed with primitives Media3 documents as public API (`08` §8's own
- * framing: "manually cross-fading alpha via a custom OverlayEffect/shader
- * across the transition window") rather than a hand-rolled GLSL blend pass.
+ * During the window the fading base reveals the head beneath:
+ * `out = (1-a)*A + a*head`. At window-end the base is fully opaque again
+ * and has hard-cut to the incoming clip — whose first frames are exactly
+ * the content the head just finished playing, because
+ * `MainTrackPlacements` front-trims that base clip by the same overlap.
+ * So the seam is continuous: no visible cut, no double-exposure, no
+ * content rewind past the window edges. This is the standard `src-over`
+ * crossfade identity, expressed with primitives Media3 documents as public
+ * API (`08` §8's own framing: "manually cross-fading alpha via a custom
+ * OverlayEffect/shader across the transition window") rather than a
+ * hand-rolled GLSL blend pass.
  */
 object TransitionAlphaMath {
     /** `startUs`/`endUs` are the transition window on the OUTPUT timeline (in
