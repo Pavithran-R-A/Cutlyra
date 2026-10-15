@@ -11,6 +11,7 @@ export { BottomToolbar } from "./components/bottom-toolbar";
 export { SubToolbar } from "./components/sub-toolbar";
 export { TabBar, type TabDef } from "./components/tab-bar";
 export { PanelSheet } from "./components/panel-sheet";
+export { handleSystemBack, openSheetCount, registerSheet, type SystemBackResult } from "./lib/sheet-registry";
 export { SheetHeader } from "./components/sheet-header";
 export { ChipRow, type ChipDef } from "./components/chip-row";
 export { ThumbnailGrid, type ThumbnailDef } from "./components/thumbnail-grid";

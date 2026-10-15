@@ -720,8 +720,8 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 
 function PanelSelectPrompt({ onClose, message }: { onClose: () => void; message?: string }) {
 	return (
-		<div className="cc-sheet-scrim" onClick={onClose} aria-hidden="true">
+		<PanelSheet onScrimClick={onClose}>
 			<p className="cc-panel-note">{message ?? "Select a text, sticker, or overlay element first."}</p>
-		</div>
+		</PanelSheet>
 	);
 }

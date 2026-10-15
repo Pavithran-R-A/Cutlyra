@@ -82,6 +82,7 @@ import {
 	Capacitor,
 	type PluginListenerHandle,
 } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { detectGpuBackend } from "./gpu-detect";
 import { probeCodecs } from "./codec-detect";
 import { subscribeToEvents } from "./event-generator";
@@ -438,6 +439,15 @@ export function createCapacitorBridge({
 	return {
 		platform,
 		toPlaybackUri,
+		async onBackButton({ onBack }: { onBack: () => boolean }): Promise<{ remove: () => Promise<void> }> {
+			if (platform !== "android") return { remove: async () => {} };
+			const handle = await App.addListener("backButton", () => {
+				// App plugin intercepts native Back while this listener exists.
+				if (!onBack()) void App.exitApp();
+			});
+			return { remove: () => handle.remove() };
+		},
+
 
 		async getMediaRoot(): Promise<string | null> {
 			try {

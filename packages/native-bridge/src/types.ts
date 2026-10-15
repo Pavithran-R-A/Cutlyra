@@ -268,6 +268,8 @@ export class NativeBridgeError extends Error {
  */
 export interface NativeBridge {
 	readonly platform: Platform;
+	/** Subscribe to Android hardware Back; returning false delegates to native exit. */
+	onBackButton(params: { onBack: () => boolean }): Promise<{ remove: () => Promise<void> }>;
 	/**
 	 * Converts a `MediaHandle.uri` / `ProxyProgress.proxyUri` /
 	 * `ProxyProgress.thumbnailUris[n]` (a native handle — an app-sandbox

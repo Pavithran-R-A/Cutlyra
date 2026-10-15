@@ -155,6 +155,7 @@ let nextHandleId = 0;
 export function createWebFallbackBridge(): NativeBridge {
 	return {
 		platform: "web",
+		onBackButton: async () => ({ remove: async () => {} }),
 
 		// The web fallback's `uri`s are already `blob:` object URLs (see
 		// `probeFile` below) — directly webview/browser-loadable already,
