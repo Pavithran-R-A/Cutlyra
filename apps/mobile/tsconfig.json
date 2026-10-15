@@ -32,5 +32,5 @@
 		"vite.config.ts",
 		"capacitor.config.ts"
 	],
-	"exclude": ["node_modules", "www", "ios", "android", "src/**/__tests__/**"]
+	"exclude": ["node_modules", "www", "ios", "android"]
 }
