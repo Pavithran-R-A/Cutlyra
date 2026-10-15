@@ -45,6 +45,7 @@
       "devDependencies": {
         "@capacitor/cli": "^8.0.0",
         "@cutlyra/editor-core": "workspace:*",
+        "@types/bun": "latest",
         "@types/react": "^19",
         "@types/react-dom": "^19",
         "typescript": "^5.8.3",
