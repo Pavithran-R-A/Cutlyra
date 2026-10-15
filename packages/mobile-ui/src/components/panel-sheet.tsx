@@ -1,10 +1,13 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { registerSheet } from "../lib/sheet-registry";
 import { cn } from "../lib/cn";
 
 interface PanelSheetProps {
 	children: ReactNode;
 	header?: ReactNode;
 	onScrimClick?: () => void;
+	/** A running export must not be hidden by hardware Back. */
+	blocksBack?: boolean;
 	className?: string;
 }
 
@@ -27,7 +30,15 @@ interface PanelSheetProps {
  * Verified in-browser this session — do not "fix" this into
  * `position: absolute` without re-checking that assumption.
  */
-export function PanelSheet({ children, header, onScrimClick, className }: PanelSheetProps) {
+export function PanelSheet({ children, header, onScrimClick, blocksBack = false, className }: PanelSheetProps) {
+	const dismissRef = useRef(onScrimClick);
+	const blocksBackRef = useRef(blocksBack);
+	dismissRef.current = onScrimClick;
+	blocksBackRef.current = blocksBack;
+	useEffect(() => registerSheet({
+		dismiss: () => dismissRef.current,
+		blocksBack: () => blocksBackRef.current,
+	}), []);
 	return (
 		<>
 			<div className="cc-sheet-scrim" onClick={onScrimClick} aria-hidden="true" />
