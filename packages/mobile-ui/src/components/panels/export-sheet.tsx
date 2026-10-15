@@ -337,7 +337,7 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 
 	return (
 		<>
-			<PanelSheet onScrimClick={onClose} header={<SheetHeader onClose={onClose} />}>
+			<PanelSheet onScrimClick={runState === "exporting" ? undefined : onClose} blocksBack={runState === "exporting"} header={<SheetHeader onClose={runState === "exporting" ? () => {} : onClose} />}>
 				<div className="cc-param-row">
 					<div className="cc-param-row__head">
 						<span className="cc-param-row__label">Resolution</span>
