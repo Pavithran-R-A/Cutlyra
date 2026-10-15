@@ -18,7 +18,7 @@
 import "@cutlyra/mobile-ui/tokens.css";
 import "@cutlyra/mobile-ui/components.css";
 import "./app-root.css";
-import { Component, StrictMode, useEffect, useState, type ReactNode } from "react";
+import { Component, StrictMode, useEffect, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import {
 	EditorCore,
@@ -31,6 +31,7 @@ import { getNativeBridge } from "@cutlyra/native-bridge";
 import { loadFontAtlas, loadFonts } from "@cutlyra/editor-core/fonts/local-fonts";
 import { useEditor } from "@cutlyra/editor-core/react";
 import { EditorShell, ensurePreviewGpu } from "@cutlyra/mobile-ui";
+import { installSystemBackNavigation } from "./back-navigation";
 
 const NOOP_BOOTSTRAP = async () => {};
 
@@ -87,31 +88,47 @@ type Screen =
 
 function App() {
 	const [screen, setScreen] = useState<Screen>({ name: "home" });
+	// Native Back callbacks outlive individual React renders; always read the
+	// latest screen from this ref, not a stale subscription-time closure.
+	const screenRef = useRef<Screen["name"]>(screen.name);
+	screenRef.current = screen.name;
+
+	const leaveEditor = () => {
+		void EditorCore.getInstance().project.saveCurrentProject();
+		setScreen({ name: "home" });
+	};
+
+	useEffect(() => {
+		let active = true;
+		let registration: { remove: () => Promise<void> } | null = null;
+		void installSystemBackNavigation({
+			getScreen: () => screenRef.current,
+			onLeaveEditor: () => {
+				void EditorCore.getInstance().project.saveCurrentProject();
+				setScreen({ name: "home" });
+			},
+			onGoHome: () => setScreen({ name: "home" }),
+		}).then((handle) => {
+			if (active) registration = handle;
+			else void handle.remove();
+		}).catch((error: unknown) => {
+			console.error("Cutlyra Android Back handler installation failed:", error);
+		});
+		return () => {
+			active = false;
+			if (registration) void registration.remove();
+		};
+	}, []);
 
 	if (screen.name === "editor") {
-		return (
-			<EditorShell
-				bootstrap={NOOP_BOOTSTRAP}
-				onBack={() => {
-					// Fire-and-forget save: ProjectManager.saveCurrentProject persists
-					// the active project; the home screen re-runs loadAllProjects on
-					// mount, so the refreshed metadata (name/duration/updatedAt) shows
-					// up without waiting here.
-					void EditorCore.getInstance().project.saveCurrentProject();
-					setScreen({ name: "home" });
-				}}
-			/>
-		);
+		return <EditorShell bootstrap={NOOP_BOOTSTRAP} onBack={leaveEditor} />;
 	}
-
 	if (screen.name === "privacy") {
 		return <PrivacyScreen onBack={() => setScreen({ name: "home" })} />;
 	}
-
 	if (screen.name === "legal") {
 		return <LegalNoticesScreen onBack={() => setScreen({ name: "home" })} />;
 	}
-
 	return (
 		<HomeScreen
 			onOpenEditor={() => setScreen({ name: "editor" })}
