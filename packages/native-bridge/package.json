@@ -16,6 +16,7 @@
 		"test": "bun test src"
 	},
 	"dependencies": {
+		"@capacitor/app": "^8.0.0",
 		"@capacitor/core": "^8.0.0",
 		"@cutlyra/editor-core": "workspace:*"
 	},
