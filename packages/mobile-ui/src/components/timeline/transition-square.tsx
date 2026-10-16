@@ -27,7 +27,11 @@ export function TransitionSquare({
 			className={`cc-timeline__transition-square${applied ? " cc-timeline__transition-square--applied" : ""}`}
 			style={{ left: leftPx }}
 			aria-label={applied ? "Edit transition" : "Add transition"}
-			onPointerDown={(event) => {
+			// Avoid parent clip-selection/reorder handling during contact.
+			// Opening a sheet on pointerdown would mount its scrim before the
+			// same touch's compatibility click, immediately dismissing it.
+			onPointerDown={(event) => event.stopPropagation()}
+			onClick={(event) => {
 				event.stopPropagation();
 				onTap({ afterClipId });
 			}}
