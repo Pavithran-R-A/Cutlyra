@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { useEditor } from "@cutlyra/editor-core/react";
 import { mediaTimeToSeconds, type EditorCore } from "@cutlyra/editor-core";
 import type { ElementRef, TimelineElement } from "@cutlyra/editor-core/timeline";
-import { findTrackInSceneTracks, calculateTotalDuration } from "@cutlyra/editor-core/timeline";
+import { findTrackInSceneTracks, getVideoExportBounds } from "@cutlyra/editor-core/timeline";
 
 /** Live `EditorCore` instance, re-rendering the caller on ANY manager
  *  change (selection, timeline, playback, project...). Every M8 panel
@@ -79,12 +79,14 @@ export function useIsPlaying(): boolean {
 	return useEditor((editor) => editor.playback.getIsPlaying());
 }
 
-/** Live total scene duration in seconds, for the playback bar's "/ mm:ss". */
+/** Rendered VIDEO endpoint, not the longer authored text/audio timeline. */
 export function useProjectDurationSeconds(): number {
 	return useEditor((editor) => {
-		const tracks = editor.scenes.getActiveSceneOrNull()?.tracks;
-		if (!tracks) return 0;
-		return mediaTimeToSeconds({ time: calculateTotalDuration({ tracks }) });
+		const scene = editor.scenes.getActiveSceneOrNull();
+		if (!scene) return 0;
+		return mediaTimeToSeconds({
+			time: getVideoExportBounds({ tracks: scene.tracks, transitions: scene.transitions }).visualEnd,
+		});
 	});
 }
 
