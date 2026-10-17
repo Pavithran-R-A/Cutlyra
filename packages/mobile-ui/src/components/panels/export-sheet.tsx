@@ -405,7 +405,7 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 						<button type="button" className="cc-export-sheet__action" onClick={onClose}>Return to editor</button>
 						<button type="button" className="cc-export-sheet__action" onClick={() => void startExport({ acceptTruncation: true })}>Export anyway with truncated text</button>
 					</div>
-				)
+				)}
 				<button
 					type="button"
 					className="cc-export-sheet__action cc-export-sheet__action--primary"
