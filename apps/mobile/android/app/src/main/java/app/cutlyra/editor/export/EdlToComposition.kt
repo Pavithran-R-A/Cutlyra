@@ -101,8 +101,13 @@ object EdlToComposition {
             }
         }
 
-        // Whole frames per second; a still is emitted at the project's own
-        // rate so its frames line up with the video clips around it.
+        // Whole frames per second of the OUTPUT stream, from `edl.output.fps`
+        // (the export sheet's selection; see export-sheet.tsx's FPS_OPTIONS).
+        // Declared per visual item via `setFrameRate` in
+        // `buildEditedMediaItem` — stills are synthesized at exactly this
+        // rate, video is CAPPED at this rate (GitHub #21 / PAV-71; the full
+        // contract, including media3's no-upsample limit, is documented
+        // there).
         val outputFrameRate = Math.round(
             edl.output.fps.numerator.toDouble() / edl.output.fps.denominator.toDouble(),
         ).toInt().coerceAtLeast(1)
@@ -503,6 +508,8 @@ object EdlToComposition {
         canvasHeight: Int,
         removeAudio: Boolean,
         removeVideo: Boolean = false,
+        /** Output frame rate this item must honour (whole fps). See the
+         *  `setFrameRate` contract comment below. */
         frameRate: Int = 30,
         outputWidth: Int = 0,
         outputHeight: Int = 0,
@@ -620,6 +627,35 @@ object EdlToComposition {
 
         if (isImage) {
             builder.setDurationUs(us(clip.durationTicks))
+        }
+        // Output frame-rate contract (GitHub #21 / Linear PAV-71). Declare
+        // `setFrameRate` for EVERY visual item, not only stills:
+        //
+        //  - IMAGE: media3 synthesizes the still's frames at exactly this rate
+        //    (ImageAssetLoader rejects RATE_UNSET with `checkState`), and the
+        //    frame count across the clip's duration is derived from it. Same
+        //    as before — but no longer the only caller.
+        //  - VIDEO: media3 1.11.0 treats this as a MAXIMUM. Verified in its
+        //    source at tag 1.11.0 (`SequenceRenderersFactory.TargetFrameRate-
+        //    Helper`): decoder OUTPUT frames are dropped down to
+        //    `1_000_000 / frameRate` on every API level we support (the SDK 34
+        //    gate there covers only the decoder-INPUT pre-drop optimization,
+        //    not the output drop), so a 60 fps source exported at 24 genuinely
+        //    emits ~24 fps timestamps. The same helper's own comment states
+        //    the other half verbatim: "This algorithm has no impact if the
+        //    target frame rate is greater [than] input frame rate" — media3
+        //    1.11.0 has no frame-DUPLICATION primitive, so 60 selected over
+        //    30 fps footage stays 30 fps. That direction is an honest
+        //    capability limit, disclosed in the export sheet BEFORE the
+        //    export runs (the issue's "warn accurately before export and use
+        //    an explicit supported fallback (not silent 30 FPS)"), not
+        //    something this call can provide.
+        //
+        //  Leaving video items at RATE_UNSET was the PAV-71 defect: the sheet
+        //  and EDL said 24/60 while media3 emitted the source cadence
+        //  untouched. Audio-only items (removeVideo) have no video stream —
+        //  the rate is meaningless there and intentionally not declared.
+        if (!removeVideo) {
             builder.setFrameRate(frameRate)
         }
         if (clip.speed.numerator != clip.speed.denominator) {

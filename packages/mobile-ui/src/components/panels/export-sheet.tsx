@@ -15,7 +15,12 @@ import {
 } from "@cutlyra/editor-core/export/overlay-frames";
 import {
 	buildNativeEdlAssetResolver, setProjectFps, setProjectResolution, toEdlMediaAssets } from "../../editor/actions";
-import type { FrameRate } from "opencut-wasm";
+import {
+	describeFrameRateCapability,
+	FPS_OPTIONS,
+	nearestFpsOptionId,
+	type VideoSourceRate,
+} from "./export-frame-rate";
 
 interface ExportSheetProps {
 	editor: EditorCore;
@@ -29,12 +34,10 @@ const RESOLUTIONS: Array<{ id: string; label: string; height: number }> = [
 	{ id: "4k", label: "4K", height: 2160 },
 ];
 
-const FPS_OPTIONS: Array<{ id: string; label: string; fps: FrameRate }> = [
-	{ id: "24", label: "24", fps: { numerator: 24, denominator: 1 } },
-	{ id: "25", label: "25", fps: { numerator: 25, denominator: 1 } },
-	{ id: "30", label: "30", fps: { numerator: 30, denominator: 1 } },
-	{ id: "60", label: "60", fps: { numerator: 60, denominator: 1 } },
-];
+// FPS options + the frame-rate capability contract moved to
+// ./export-frame-rate.ts (GitHub #21 / PAV-71) so the sheet and its
+// regression tests share ONE definition of what the control offers and what
+// media3 can actually deliver.
 
 const QUALITY_OPTIONS: Array<{ id: ExportQuality; label: string }> = [
 	{ id: "low", label: "Low" },
@@ -145,7 +148,11 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 		)[0];
 		return nearest?.id ?? "1080p";
 	});
-	const [fpsId, setFpsId] = useState("30");
+	// PAV-71: start on the PROJECT's own fps (nearest selectable option), not
+	// a hardcoded 30. `applyFps` persists the selection into project settings,
+	// so a sheet that reopened at "30" over a 60-fps project would silently
+	// export at 30 — the untouched-sheet path of "FPS selection is ignored".
+	const [fpsId, setFpsId] = useState(() => nearestFpsOptionId({ fps: project.settings.fps }));
 	const [quality, setQuality] = useState<ExportQuality>("high");
 	const [format] = useState<ExportFormat>("mp4");
 	const [previewResult, setPreviewResult] = useState<{ fps: string; resolution: string } | null>(null);
@@ -194,6 +201,38 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 		const preset = FPS_OPTIONS.find((f) => f.id === id);
 		if (preset) setProjectFps({ editor, fps: preset.fps });
 	};
+
+	/** PAV-71 honest-capability disclosure: media3 CAPS footage at the
+	 *  selection but cannot synthesize frames above the source rate, so a
+	 *  selection higher than some used clip's effective rate is warned about
+	 *  BEFORE the export runs — the issue's "warn accurately before export
+	 *  and use an explicit supported fallback (not silent 30 FPS)". Effective
+	 *  rate = the asset's probed fps × the clip's retime rate (2x speed emits
+	 *  frames twice as fast). Stills/text/captions are synthesized at the
+	 *  selected rate and never constrain it. */
+	const frameRateNote = (() => {
+		const scene = editor.scenes.getActiveSceneOrNull();
+		if (!scene) return null;
+		const assetsById = new Map(editor.media.getAssets().map((asset) => [asset.id, asset]));
+		const sources: VideoSourceRate[] = [];
+		for (const track of [scene.tracks.main, ...scene.tracks.overlay]) {
+			if (track.type !== "video") continue;
+			for (const element of track.elements) {
+				if (element.type !== "video") continue;
+				sources.push({
+					fps: assetsById.get(element.mediaId)?.fps,
+					retimeRate: element.retime?.rate,
+				});
+			}
+		}
+		const selected = FPS_OPTIONS.find((f) => f.id === fpsId);
+		if (!selected) return null;
+		return describeFrameRateCapability({
+			requested: selected.fps,
+			label: selected.label,
+			sources,
+		});
+	})();
 
 	/** Shared by both "Preview EDL output" and "Export video" — the real
 	 *  export must build the EDL the exact same way the preview claims to,
@@ -371,6 +410,7 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 					</div>
 					<SegmentedControl aria-label="Frame rate" segments={FPS_OPTIONS} activeId={fpsId} onSelect={applyFps} />
 				</div>
+				{frameRateNote && <p className="cc-panel-note">{frameRateNote}</p>}
 				<div className="cc-param-row">
 					<div className="cc-param-row__head">
 						<span className="cc-param-row__label">Quality</span>
