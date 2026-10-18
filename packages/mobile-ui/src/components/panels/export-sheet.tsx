@@ -6,6 +6,8 @@ import { ProgressOverlay } from "../progress-overlay";
 import type { EditorCore } from "@cutlyra/editor-core";
 import { buildEdl, type Edl } from "@cutlyra/editor-core/edl";
 import type { ExportFormat, ExportQuality } from "@cutlyra/editor-core/export";
+import { getVideoExportBounds } from "@cutlyra/editor-core/timeline";
+import { mediaTimeToSeconds } from "@cutlyra/editor-core/wasm";
 import { getNativeBridge, type ExportProgress } from "@cutlyra/native-bridge";
 import {
 	renderOverlayFrames,
@@ -152,6 +154,11 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 	const [runState, setRunState] = useState<ExportRunState>("idle");
 	const [progress, setProgress] = useState<{ stage: ExportProgress["stage"]; fraction: number } | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
+	const [truncationWarning, setTruncationWarning] = useState<{
+		count: number;
+		videoEndSeconds: number;
+		lastTextEndSeconds: number;
+	} | null>(null);
 	const [outputUri, setOutputUri] = useState<string | null>(null);
 	// Holds the in-flight generator ONLY so Cancel can `.return()` it — never
 	// read for anything else. A ref, not state: swapping it must not trigger
@@ -241,7 +248,21 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 		}
 	};
 
-	const startExport = async () => {
+	const startExport = async ({ acceptTruncation = false }: { acceptTruncation?: boolean } = {}) => {
+		// The native video ends at the compressed visual boundary, not at audio
+		// or text tails. Disclose any authored text omission before export.
+		const scene = editor.scenes.getActiveScene();
+		const bounds = getVideoExportBounds({ tracks: scene.tracks, transitions: scene.transitions });
+		if (!acceptTruncation && bounds.visualEnd > 0 && bounds.truncatedTextCount > 0) {
+			setTruncationWarning({
+				count: bounds.truncatedTextCount,
+				videoEndSeconds: mediaTimeToSeconds({ time: bounds.visualEnd }),
+				lastTextEndSeconds: mediaTimeToSeconds({ time: bounds.lastTruncatedTextEnd }),
+			});
+			setRunState("idle");
+			return;
+		}
+		setTruncationWarning(null);
 		setExportError(null);
 		setOutputUri(null);
 		setProgress({ stage: "preparing", fraction: 0 });
@@ -372,6 +393,19 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 					</p>
 				)}
 				{previewError && <p className="cc-panel-note">EDL preview failed: {previewError}</p>}
+				{truncationWarning && (
+					<div role="alert" className="cc-panel-note">
+						<p>
+							{truncationWarning.count} text/caption clip(s) extend past the actual video
+							end at {truncationWarning.videoEndSeconds.toFixed(2)}s
+							(last text ends at {truncationWarning.lastTextEndSeconds.toFixed(2)}s).
+							Content past the video end will NOT appear in the MP4.
+							Extend the video or move/trim text to include it.
+						</p>
+						<button type="button" className="cc-export-sheet__action" onClick={onClose}>Return to editor</button>
+						<button type="button" className="cc-export-sheet__action" onClick={() => void startExport({ acceptTruncation: true })}>Export anyway with truncated text</button>
+					</div>
+				)}
 				<button
 					type="button"
 					className="cc-export-sheet__action cc-export-sheet__action--primary"
