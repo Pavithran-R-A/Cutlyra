@@ -6,7 +6,9 @@ export interface SegmentDef {
 }
 
 interface SegmentedControlProps {
-	segments: SegmentDef[];
+	/** Readonly: callers increasingly share constant option lists (e.g.
+	 *  export-frame-rate.ts's FPS_OPTIONS) that must not be mutated. */
+	segments: readonly SegmentDef[];
 	activeId: string;
 	onSelect: (id: string) => void;
 	className?: string;
