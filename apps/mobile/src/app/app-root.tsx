@@ -326,7 +326,7 @@ function PrivacyScreen({ onBack }: { onBack: () => void }) {
 				<p><strong>Cutlyra is an offline-first video editor.</strong> Your editing media and project data are processed on your device and are not sent to the Cutlyra developer or to advertising, analytics, or cloud services.</p>
 				<h2>Data Cutlyra accesses</h2>
 				<p>When you choose media, Cutlyra accesses only the photos, videos, or audio files you select through Android's system pickers. Selected media is copied into Cutlyra's app-private storage so editing, previews, captions, and export can work locally.</p>
-				<p>If you choose camera capture, Cutlyra requests camera access for that user-initiated capture. Camera media is processed locally. Cutlyra does not request broad photo-library access and does not request microphone access.</p>
+				<p>The v0.1.0 app has no in-app camera capture and does not request camera permission at runtime — media import uses Android's system photo picker and file chooser only. Cutlyra does not request broad photo-library access and does not request microphone access.</p>
 				<h2>Collection and sharing</h2>
 				<p>Cutlyra does not transmit your projects, media, captions, usage activity, identifiers, contacts, location, or other personal data off your device. It contains no advertising SDK, analytics SDK, telemetry service, account system, or cloud sync. No user data is sold or shared.</p>
 				<h2>Storage, retention, and deletion</h2>

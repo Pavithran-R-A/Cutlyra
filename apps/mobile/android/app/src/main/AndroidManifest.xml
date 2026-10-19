@@ -45,7 +45,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Camera is requested only for explicit user-initiated camera capture.
+    <!-- Camera backs the built-but-not-yet-surfaced camera capture path
+         (NativeBridgePlugin pickMedia source="camera" → buildCameraCaptureIntent).
+         v0.1.0's UI exposes only Photo Picker / SAF import, so no code path
+         reaches that branch: CAMERA is DECLARED but never requested at runtime
+         and the privacy policy states there is no in-app camera capture.
          Photo/video import uses Android Photo Picker and audio import uses SAF,
          so no READ_MEDIA_* or legacy storage permission is needed.
          v0.1.0 has no microphone/voiceover recorder, so RECORD_AUDIO is absent. -->
