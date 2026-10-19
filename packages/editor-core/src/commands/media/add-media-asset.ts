@@ -8,6 +8,7 @@ import type { FrameRate } from "opencut-wasm";
 import { hasMediaId } from "@/timeline/element-utils";
 import { frameRatesEqual, getHighestImportedVideoFps } from "@/fps/utils";
 import { UpdateProjectSettingsCommand } from "@/commands/project";
+import type { TCanvasSize } from "@/project/types";
 
 export class AddMediaAssetCommand extends Command {
 	private assetId: string;
@@ -15,6 +16,8 @@ export class AddMediaAssetCommand extends Command {
 	private createdAsset: MediaAsset | null = null;
 	private previousProjectFps: FrameRate | null = null;
 	private appliedProjectFps: FrameRate | null = null;
+	private previousCanvasSize: TCanvasSize | null = null;
+	private appliedCanvasSize: TCanvasSize | null = null;
 
 	constructor({
 		projectId,
@@ -47,6 +50,24 @@ export class AddMediaAssetCommand extends Command {
 		this.previousProjectFps = editor.project.getActiveOrNull()?.settings.fps ?? null;
 		this.appliedProjectFps = editor.project.ratchetFpsForImportedMedia({
 			importedAssets: [this.createdAsset],
+		});
+		// Canvas-aspect adoption, same seam as the fps ratchet above. The
+		// NATIVE (mobile) import path funnels through this command, while the
+		// web path goes through `MediaManager.addMediaAsset` — before this
+		// line the two diverged, and on device a portrait clip imported into
+		// a factory-default project left the canvas at 1920x1080, so the
+		// export cropped the portrait footage to landscape (Stage-4 D-NEW-4).
+		// Reusing the project-manager method means the exact same guards apply
+		// (first visual asset only; untouched factory-default canvas; user
+		// choice always wins), so existing projects are never silently
+		// re-shaped — only a brand-new default project adopting the aspect of
+		// its very first visual import.
+		this.previousCanvasSize = editor.project.getActiveOrNull()?.settings.canvasSize ?? null;
+		this.appliedCanvasSize = editor.project.adoptCanvasAspectForImportedMedia({
+			importedAssets: [this.createdAsset],
+			hadVisualMediaBefore: this.savedAssets.some(
+				(existing) => existing.type === "video" || existing.type === "image",
+			),
 		});
 
 		storageService
@@ -86,6 +107,7 @@ export class AddMediaAssetCommand extends Command {
 				}
 
 				this.restoreProjectFpsAfterFailedSave({ editor });
+				this.restoreCanvasAfterFailedSave({ editor });
 
 				if (storageService.isQuotaExceededError({ error })) {
 					toast.error({
@@ -147,5 +169,27 @@ export class AddMediaAssetCommand extends Command {
 		}
 
 		new UpdateProjectSettingsCommand({ fps: this.previousProjectFps }).execute();
+	}
+
+	private restoreCanvasAfterFailedSave({
+		editor,
+	}: {
+		editor: EditorCore;
+	}): void {
+		if (this.previousCanvasSize === null || this.appliedCanvasSize === null) return;
+
+		const activeProject = editor.project.getActiveOrNull();
+		if (!activeProject) return;
+
+		// Only roll back if the canvas is still exactly what we set — if the
+		// user has since changed it themselves, their intent wins (same rule
+		// as the fps restore above).
+		if (
+			activeProject.settings.canvasSize.width !== this.appliedCanvasSize.width ||
+			activeProject.settings.canvasSize.height !== this.appliedCanvasSize.height
+		)
+			return;
+
+		new UpdateProjectSettingsCommand({ canvasSize: this.previousCanvasSize }).execute();
 	}
 }
