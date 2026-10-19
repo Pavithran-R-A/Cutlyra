@@ -1107,6 +1107,14 @@ export function toEdlMediaAssets({ assets }: { assets: MediaAsset[] }): EdlMedia
 	}));
 }
 
+/** Resolution IS the canvas: there is no separate "export resolution"
+ *  knob in this engine — `buildEdl` renders at the project's canvasSize, so
+ *  writing a new canvasSize here is what changes the export's output
+ *  dimensions. Marked `canvasSizeMode: "preset"` so a later first-import
+ *  canvas adoption (adoptCanvasAspectForImportedMedia) treats a user's
+ *  explicit pick as intentional and never silently re-shapes it. The export
+ *  sheet's Resolution control calls this directly (see export-sheet.tsx's
+ *  header note, which points back here). */
 export function setProjectResolution({
 	editor,
 	canvasSize,
