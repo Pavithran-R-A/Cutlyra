@@ -226,14 +226,19 @@ object EdlToComposition {
                 // here too would double it up during the transition window.
                 removeAudio = true,
             )
-            // A sequence whose FIRST item is a gap has no track to infer its
-            // format from, so Media3 throws "If the first item in the sequence
-            // is a Gap, then forceAudioTrack or forceVideoTrack flag must be
-            // set". This sequence is video-only (`removeAudio = true` above),
-            // so the video track is the one to force — and ONLY when a gap is
-            // actually emitted: forcing a track that the items already supply
-            // makes Media3 generate silence/blank frames alongside the real
-            // samples, which fails later inside the graph rather than here.
+            // Known media3 1.11.0 artifact (Stage 5 defect #20 investigation,
+            // characterized by ExportCrossfadeLuminanceInstrumentedTest): with
+            // a caption overlay pass in the composition, ONE frame near this
+            // sequence's start can composite as the un-faded incoming clip.
+            // Per-frame instrumentation proved this class's settings correct
+            // at every queried PTS, so the artifact is inside Media3's
+            // multi-input handling at secondary-stream start. A leading
+            // FILLER item (stream alive from t=0) was tried as a fix and
+            // measured WORSE on the 400 ms geometry (two glitch frames
+            // instead of one) while fixing the 800 ms one — the timing
+            // sensitivity is not reliably tunable from outside media3, so
+            // the structure is kept as-is and the artifact is characterized,
+            // gated and reported upstream rather than papered over.
             val overlaySeqBuilder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
             if (windowStartUs > 0) {
                 overlaySeqBuilder.addGap(windowStartUs)
