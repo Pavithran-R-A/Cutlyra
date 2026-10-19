@@ -13,7 +13,7 @@ export default function PrivacyPage() {
 			<section className="flex flex-col gap-3">
 				<h2 className="text-2xl font-semibold">Data Cutlyra accesses</h2>
 				<p>When you choose media, Cutlyra accesses only the photos, videos, or audio files you select through Android&apos;s system pickers. Selected media is copied into Cutlyra&apos;s app-private storage so editing, previews, captions, and export can work locally.</p>
-				<p>If you choose camera capture, Cutlyra requests camera access for that user-initiated capture. Camera media is processed locally. Cutlyra does not request broad photo-library access and does not request microphone access in the current Android release.</p>
+				<p>The current Android release has no in-app camera capture and does not request camera permission at runtime; media import uses the system photo picker and file chooser only. Cutlyra does not request broad photo-library access and does not request microphone access.</p>
 			</section>
 			<section className="flex flex-col gap-3">
 				<h2 className="text-2xl font-semibold">Collection and sharing</h2>
