@@ -131,12 +131,38 @@ object Media3Exporter {
         onEvent: (Event) -> Unit,
     ) {
         val encoderFactoryBuilder = DefaultEncoderFactory.Builder(context)
-            // Device/format-specific hardware encoder failures are real
-            // (plan M9 item 3, `08` §8) — let Media3's own fallback search a
-            // supported configuration before this class's own
-            // software-encoder retry kicks in.
-            .setEnableFallback(true)
-            .setEnableFormatFallback(true)
+            // EXACT output geometry (GitHub #19 / Linear PAV-69, Stage-4
+            // D-NEW-1: "1080p export is encoded as 1920×1088").
+            //
+            // Media3 1.11.0's DefaultEncoderFactory, WITH fallback enabled,
+            // routes every video request through
+            // `EncoderUtil.getSupportedResolution`, whose own doc says it
+            // "will be aligned to the encoder's alignment requirement ... [and]
+            // may not preserve the original aspect ratio": it rounds the
+            // requested size UP to the encoder's advertised
+            // VideoCapabilities alignment BEFORE configuring it. On the POCO
+            // M4 Pro that turned a requested 1920×1080 into a CONFIGURED
+            // 1920×1088 (Stage-4 logcat:
+            // `cutlyra-export: overlay frames decoded=0 target=1920x1080`
+            // followed by `[c2.mtk.avc.encoder] ... mWidth 1920 mHeight
+            // 1088`), and the muxer then wrote a 1920×1088 track with
+            // SAR 1:1 — DAR 30:17 on every 1080p-class export. Heights that
+            // are already multiples of 16 (720p, 4K) were unaffected, which
+            // is exactly the defect's observed shape.
+            //
+            // With fallback disabled media3 configures the encoder at the
+            // EXACT requested size; H.264 encoders then signal the padded
+            // coded size with SPS frame-cropping, so the container reports
+            // the geometry the user asked for. The capability filtering
+            // this skips is advisory only (resolution/bitrate/ bitrate-mode
+            // clamps, all with sane defaults) — and if a device encoder
+            // genuinely refuses the requested format, MediaCodec.configure
+            // throws and this class's existing tier-2 software-encoder retry
+            // takes over (software encoders accept arbitrary even sizes), so
+            // genuine incompatibility degrades to a slower exact-size
+            // encode, never to silently wrong geometry.
+            .setEnableFallback(false)
+            .setEnableFormatFallback(false)
         if (useSoftwareEncoder) {
             encoderFactoryBuilder.setVideoEncoderSelector(SoftwareOnlyEncoderSelector())
         }
