@@ -3,6 +3,7 @@ import { EditorCore } from "@/core";
 import { resetNotifier, setNotifier } from "@/core/notifications";
 import type { Notification } from "@/core/notifications";
 import { buildFixtureProject, buildFixtureScene } from "@/edl/__tests__/fixture";
+import { UpdateProjectSettingsCommand } from "@/commands/project";
 import {
 	buildMediaAssetFromNativeImport,
 	importMediaFromNative,
@@ -291,5 +292,111 @@ describe("importMediaFromNative", () => {
 		expect(result.imported).toHaveLength(2);
 		expect(result.imported[0]?.id).not.toBe(result.imported[1]?.id);
 		expect(editor.media.getAssets()).toHaveLength(2);
+	});
+
+	// Regression (Stage-4 D-NEW-4 / defect #22): the native import path
+	// funnels through `AddMediaAssetCommand`, which used to run only the fps
+	// ratchet and NOT the canvas-aspect adoption. On device a portrait clip
+	// imported into a factory-default project left the canvas at 1920x1080,
+	// so the export cropped the portrait footage to landscape. The web path
+	// (`MediaManager.addMediaAsset`) already adopted; this proves the native
+	// path now does too.
+	test("a portrait import into a factory-default project adopts a portrait canvas", async () => {
+		const editor = EditorCore.getInstance();
+		// Put the active project on the untouched factory default: 16:9,
+		// mode "preset" — exactly the state the adoption guards require.
+		editor.command.execute({
+			command: new UpdateProjectSettingsCommand({
+				canvasSize: { width: 1920, height: 1080 },
+				canvasSizeMode: "preset",
+			}),
+		});
+		expect(editor.project.getActiveOrNull()?.settings.canvasSize).toEqual({
+			width: 1920,
+			height: 1080,
+		});
+
+		const portrait = makeHandle("portrait");
+		// Portrait SOURCE dims (sourceWidth/Height carry the true original;
+		// the proxy may be smaller). 1080x1920 source -> portrait canvas.
+		portrait.width = 1080;
+		portrait.height = 1920;
+		const source = fakeSource({
+			async pickMedia() {
+				return [portrait];
+			},
+			async *generateProxy({ handle: h }) {
+				yield {
+					assetId: h.id,
+					stage: "done",
+					fraction: 1,
+					proxyUri: `/sandbox/Proxies/${h.id}.mp4`,
+					proxyWidth: 360,
+					proxyHeight: 640,
+				} satisfies NativeProxyProgress;
+			},
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["video"],
+			allowMultiple: false,
+		});
+
+		expect(result.failed).toHaveLength(0);
+		expect(result.imported).toHaveLength(1);
+		// The canvas must now be portrait, matching the first visual import.
+		const adopted = editor.project.getActiveOrNull()?.settings.canvasSize;
+		expect(adopted?.width).toBeLessThan(adopted?.height ?? 0);
+		// Portrait 1080x1920 normalizes to exactly 1080x1920 (short side 1080).
+		expect(adopted).toEqual({ width: 1080, height: 1920 });
+	});
+
+	test("a landscape import leaves a default 16:9 canvas unchanged", async () => {
+		const editor = EditorCore.getInstance();
+		editor.command.execute({
+			command: new UpdateProjectSettingsCommand({
+				canvasSize: { width: 1920, height: 1080 },
+				canvasSizeMode: "preset",
+			}),
+		});
+
+		const landscape = makeHandle("landscape");
+		// 1080p-class 16:9 source: normalizes to exactly the 1920x1080 default
+		// shape, so adoption is a no-op and the canvas must not move.
+		landscape.width = 1920;
+		landscape.height = 1080;
+		const source = fakeSource({
+			async pickMedia() {
+				return [landscape];
+			},
+			async *generateProxy({ handle: h }) {
+				yield {
+					assetId: h.id,
+					stage: "done",
+					fraction: 1,
+					proxyUri: `/sandbox/Proxies/${h.id}.mp4`,
+					proxyWidth: 320,
+					proxyHeight: 180,
+				} satisfies NativeProxyProgress;
+			},
+		});
+
+		await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["video"],
+			allowMultiple: false,
+		});
+
+		// 16:9 source normalizes to the same 16:9 shape -> adoption returns
+		// null (already exactly the default), canvas untouched.
+		expect(editor.project.getActiveOrNull()?.settings.canvasSize).toEqual({
+			width: 1920,
+			height: 1080,
+		});
 	});
 });
