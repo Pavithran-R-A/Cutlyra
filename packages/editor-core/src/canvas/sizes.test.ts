@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	DEFAULT_CANVAS_SIZE,
+	getAdoptedCanvasSizeForFirstVisualElement,
 	getAdoptedCanvasSizeForImportedMedia,
 } from "./sizes";
 
@@ -117,5 +118,102 @@ describe("getAdoptedCanvasSizeForImportedMedia (first-import aspect adoption)", 
 				importedAssets: [{ type: "image", width: 3000, height: 3000 }],
 			}),
 		).toEqual({ width: 1080, height: 1080 });
+	});
+});
+
+describe("getAdoptedCanvasSizeForFirstVisualElement (GitHub #30 / Linear PAV-81)", () => {
+	const portrait = { type: "video", width: 1080, height: 1920 };
+	const landscape = { type: "video", width: 1920, height: 1080 };
+	const first = {
+		currentSize: { ...DEFAULT_CANVAS_SIZE },
+		currentMode: "preset" as const,
+		isFirstVisualElement: true,
+	};
+
+	it("adopts a portrait canvas for a portrait clip in a factory-default project", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({ ...first, asset: portrait }),
+		).toEqual({ width: 1080, height: 1920 });
+	});
+
+	it("leaves a factory-default landscape canvas alone for a landscape clip", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({ ...first, asset: landscape }),
+		).toBeNull();
+	});
+
+	it("preserves an explicit 1:1 choice", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({
+				...first,
+				currentSize: { width: 1080, height: 1080 },
+				asset: portrait,
+			}),
+		).toBeNull();
+	});
+
+	it("preserves an explicit 9:16 choice", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({
+				...first,
+				currentSize: { width: 1080, height: 1920 },
+				asset: { type: "video", width: 720, height: 1280 },
+			}),
+		).toBeNull();
+	});
+
+	it("preserves an explicit 16:9 choice even when its size differs from the default", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({
+				...first,
+				currentSize: { width: 1280, height: 720 },
+				asset: portrait,
+			}),
+		).toBeNull();
+	});
+
+	it("preserves an explicit custom resolution", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({
+				...first,
+				currentSize: { width: 1440, height: 1080 },
+				currentMode: "custom",
+				asset: portrait,
+			}),
+		).toBeNull();
+	});
+
+	it("does not adopt again once a visual element exists (multiple imports)", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({
+				...first,
+				isFirstVisualElement: false,
+				asset: portrait,
+			}),
+		).toBeNull();
+	});
+
+	it("sizes from the SOURCE dims, not the mobile preview proxy's", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({
+				...first,
+				asset: {
+					type: "video",
+					width: 540,
+					height: 960,
+					sourceWidth: 1080,
+					sourceHeight: 1920,
+				},
+			}),
+		).toEqual({ width: 1080, height: 1920 });
+	});
+
+	it("ignores an asset with no usable dimensions", () => {
+		expect(
+			getAdoptedCanvasSizeForFirstVisualElement({
+				...first,
+				asset: { type: "video", width: 0, height: 0 },
+			}),
+		).toBeNull();
 	});
 });
