@@ -90,6 +90,51 @@ export function getAdoptedCanvasSizeForImportedMedia({
 }
 
 /**
+ * The one decision point for FIRST-VISUAL-ELEMENT adoption, shared by both
+ * seams that can reach it: the media-import seam
+ * (`ProjectManager.adoptCanvasAspectForImportedMedia`) and the timeline
+ * insert command (`InsertElementCommand`).
+ *
+ * GitHub #30 / Linear PAV-81: those two seams used to disagree. The import
+ * seam asked `getAdoptedCanvasSizeForImportedMedia` (which refuses whenever
+ * the project is not an untouched factory default), while the insert command
+ * called `normalizeAdoptedCanvasSize` directly and so OVERWROTE an explicit
+ * user choice — pick 1:1, import a portrait clip, and the canvas silently
+ * became 1080x1920. Routing both through this function makes "a user's
+ * explicit selection always survives an import" a property of one place
+ * instead of two.
+ *
+ * `isFirstVisualElement` is the insert command's own "nothing is on the
+ * timeline yet" test; an audio element already on the timeline does not
+ * establish the project's aspect, so callers must answer it in VISUAL terms
+ * (the import seam passes its own `hadVisualMediaBefore` instead).
+ */
+export function getAdoptedCanvasSizeForFirstVisualElement({
+	currentSize,
+	currentMode,
+	isFirstVisualElement,
+	asset,
+}: {
+	currentSize: TCanvasSize;
+	currentMode: "preset" | "custom" | undefined;
+	isFirstVisualElement: boolean;
+	asset: {
+		type: string;
+		width?: number;
+		height?: number;
+		sourceWidth?: number;
+		sourceHeight?: number;
+	};
+}): TCanvasSize | null {
+	return getAdoptedCanvasSizeForImportedMedia({
+		currentSize,
+		currentMode,
+		hadVisualMediaBefore: !isFirstVisualElement,
+		importedAssets: [asset],
+	});
+}
+
+/**
  * The canonical "canvas from a source's dimensions" rule, shared by every
  * canvas-adoption path (this module's first-import adoption AND
  * InsertElementCommand's first-visual-element adoption — which used to
