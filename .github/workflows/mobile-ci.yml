@@ -352,6 +352,9 @@ jobs:
           bunx cap sync android
         working-directory: apps/mobile
 
+      - name: Device-isolation guard self-test (dry-run only)
+        run: bash apps/mobile/android/scripts/test-device-isolation.sh
+
       - name: Run connected Android instrumentation suite
         # Pinned to the immutable commit behind upstream v2.38.0 (the release
         # commit includes the action's runtime node_modules; a later source

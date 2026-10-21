@@ -278,3 +278,9 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// Fail-closed device isolation: device-touching Gradle tasks
+// (connected/install/uninstall) run only against emulator-only adb
+// inventories. See device-isolation.gradle; self-test:
+//   bash scripts/test-device-isolation.sh
+apply from: 'device-isolation.gradle'
