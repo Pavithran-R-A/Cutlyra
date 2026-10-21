@@ -1,0 +1,155 @@
+// Fail-closed device isolation for device-touching Android Gradle tasks.
+//
+// Why this exists: this module's androidTest target shares its
+// `applicationId` with the production package. The Android Gradle Plugin's
+// connected-test lifecycle (Unified Test Platform + ddmlib) installs the app
+// and the androidTest APK onto EVERY attached adb target, treats any
+// already-installed copy of that package as its own to replace, and removes
+// the package again after the run (`uninstall_after_test`). On a real phone
+// that means an ordinary `./gradlew :app:connectedDebugAndroidTest` can
+// silently uninstall the user's installed app and delete its data.
+//
+// Policy (enforced before any task in the graph executes):
+//   * Any task graph containing a device-touching task (`connected*`,
+//     `install*`, `uninstall*` — all variants, all modules) is inspected.
+//   * The adb inventory is read (`adb devices`, read-only).
+//   * REFUSE when the inventory cannot be read or adb cannot be located.
+//   * REFUSE when any attached target is not in the `device` state
+//     (offline, unauthorized, recovery, sideload, bootloader, ...).
+//   * REFUSE when any PHYSICAL (non-emulator) device is attached.
+//     There is deliberately NO override: hardware is driven only through
+//     explicit, device-scoped `adb -s <serial>` commands, never Gradle.
+//   * Emulator-only (or empty) inventories proceed, and are logged.
+//
+// Self-test: apps/mobile/android/scripts/test-device-isolation.sh exercises
+// every branch with mocked adb inventories using `--dry-run` invocations, so
+// no task ever executes. The `-PCUTLYRA_GUARD_SELFTEST=1` property together
+// with the `CUTLYRA_ADB` environment variable lets the self-test inject a
+// mock adb path; setting `CUTLYRA_ADB` without the property is itself
+// refused, so a spoofed adb cannot silently bypass the guard.
+
+import java.util.concurrent.TimeUnit
+
+def isDeviceTouchingTask = { Task t ->
+    def n = t.name
+    n.startsWith('connected') || n.startsWith('install') || n.startsWith('uninstall')
+}
+
+// Returns ['OK', path] or ['REFUSED', reason].
+def resolveAdbPath = { ->
+    def injected = System.getenv('CUTLYRA_ADB')
+    def selftest = findProperty('CUTLYRA_GUARD_SELFTEST')?.toString() == '1'
+    if (injected) {
+        if (!selftest) {
+            return ['REFUSED', 'CUTLYRA_ADB is set but -PCUTLYRA_GUARD_SELFTEST=1 is absent; refusing to trust an injected adb path.']
+        }
+        return ['OK', injected]
+    }
+    def sdk = System.getenv('ANDROID_SDK_ROOT') ?: System.getenv('ANDROID_HOME')
+    if (!sdk) {
+        def lp = new File(rootDir, 'local.properties')
+        if (lp.exists()) {
+            def props = new Properties()
+            lp.withInputStream { props.load(it) }
+            sdk = props.getProperty('sdk.dir')
+        }
+    }
+    if (!sdk) {
+        return ['REFUSED', 'adb not located (no ANDROID_SDK_ROOT/ANDROID_HOME, no local.properties sdk.dir); device inventory unknown.']
+    }
+    def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+    def adb = new File(sdk, 'platform-tools' + (isWindows ? '/adb.exe' : '/adb'))
+    if (!adb.exists()) {
+        return ['REFUSED', "adb not found at ${adb}; device inventory unknown."]
+    }
+    return ['OK', adb.absolutePath]
+}
+
+// Returns a map of [serial -> state], or null when the inventory could not be
+// read (treated as ambiguity, which is refused).
+def readInventory = { String adbPath ->
+    try {
+        def proc = new ProcessBuilder(adbPath, 'devices').redirectErrorStream(true).start()
+        def text = new StringBuilder()
+        proc.inputStream.eachLine { text.append(it).append('\n') }
+        if (!proc.waitFor(20, TimeUnit.SECONDS)) {
+            proc.destroyForcibly()
+            return null
+        }
+        if (proc.exitValue() != 0) {
+            return null
+        }
+        def inventory = [:]
+        def malformed = false
+        text.toString().split('\n').each { line ->
+            def trimmed = line.trim()
+            if (!trimmed || trimmed.startsWith('*') || trimmed.startsWith('List of devices')) {
+                return
+            }
+            def parts = trimmed.split(/\s+/)
+            if (parts.length < 2) {
+                malformed = true
+                return
+            }
+            inventory[parts[0]] = parts[1]
+        }
+        return malformed ? null : inventory
+    } catch (Exception e) {
+        return null
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def risky = graph.allTasks.findAll { isDeviceTouchingTask(it) }
+    def removedOverride = findProperty('CUTLYRA_DEVICE_ALLOW')
+    if (risky.isEmpty()) {
+        return
+    }
+    logger.lifecycle("Device isolation: task graph contains device-touching task(s): ${risky*.path}")
+    def refuse = { String reason ->
+        throw new GradleException(
+            "DEVICE ISOLATION: refusing to run ${risky*.path}.\n" +
+            "  Reason: ${reason}\n" +
+            "  Device-touching Gradle tasks (connected*/install*/uninstall*) run only\n" +
+            "  when every attached adb target is an emulator. Physical devices must be\n" +
+            "  driven exclusively through explicit, device-scoped adb commands\n" +
+            "  (adb -s <serial> ...), never through Gradle: the androidTest target\n" +
+            "  shares this module's applicationId with the production package, and the\n" +
+            "  test lifecycle installs and uninstalls that package on every target\n" +
+            "  device, destroying user data on hardware.")
+    }
+
+    if (removedOverride != null) {
+        refuse('-PCUTLYRA_DEVICE_ALLOW has been removed; there is no override for device-touching Gradle tasks.')
+    }
+
+    def (status, adbOrReason) = resolveAdbPath()
+    if (status != 'OK') {
+        refuse(adbOrReason)
+    }
+    def adbPath = adbOrReason
+    if (System.getenv('CUTLYRA_ADB')) {
+        logger.warn("DEVICE ISOLATION SELF-TEST MODE: using injected adb path ${adbPath}")
+    }
+
+    def inventory = readInventory(adbPath)
+    if (inventory == null) {
+        refuse("adb device inventory could not be read (adb: ${adbPath}).")
+    }
+
+    def badStates = inventory.findAll { it.value != 'device' }
+    if (!badStates.isEmpty()) {
+        refuse("ambiguous or unusable adb target(s) attached: ${badStates}.")
+    }
+
+    def physical = inventory.keySet().findAll { !it.startsWith('emulator-') }
+    if (!physical.isEmpty()) {
+        refuse("physical (non-emulator) device(s) attached: ${physical}.")
+    }
+
+    if (inventory.isEmpty()) {
+        logger.lifecycle('Device isolation OK: no adb targets attached.')
+    } else {
+        logger.lifecycle("Device isolation OK: emulator-only inventory ${inventory.keySet()}.")
+    }
+}
