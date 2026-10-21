@@ -11,7 +11,10 @@ import { requiresMediaId } from "@/timeline/element-utils";
 import type { MediaAsset } from "@/media/types";
 import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
 import { floatToFrameRate } from "@/fps/utils";
-import { normalizeAdoptedCanvasSize } from "@/canvas/sizes";
+import {
+	DEFAULT_CANVAS_SIZE,
+	getAdoptedCanvasSizeForFirstVisualElement,
+} from "@/canvas/sizes";
 import { graphicsRegistry, registerDefaultGraphics } from "@/graphics";
 import {
 	applyPlacement,
@@ -58,17 +61,22 @@ export class InsertElementCommand extends Command {
 			return;
 		}
 
-		const totalElementsInTimeline =
-			this.savedState.main.elements.length +
-			this.savedState.overlay.reduce(
-				(total, track) => total + track.elements.length,
-				0,
-			) +
-			this.savedState.audio.reduce(
-				(total, track) => total + track.elements.length,
-				0,
+		// Aspect adoption is a FIRST-VISUAL-ELEMENT rule, so "first" is counted
+		// in visual terms: an audio clip already on the timeline does not
+		// establish the project's aspect (matching the import seam's
+		// `hadVisualMediaBefore`).
+		// Typed as `{ type?: unknown }` on purpose: `overlay` is a union of
+		// track shapes whose element arrays are themselves a union, so a
+		// spread of both arrays makes inference collapse to `unknown`.
+		const isVisualElement = (element: { type?: unknown }): boolean =>
+			element.type === "video" || element.type === "image";
+		const hasVisualMediaBefore =
+			this.savedState.main.elements.some(isVisualElement) ||
+			this.savedState.overlay.some((track) =>
+				(track.elements as ReadonlyArray<{ type?: unknown }>).some(
+					isVisualElement,
+				),
 			);
-		const isFirstElement = totalElementsInTimeline === 0;
 
 		const newElement = this.buildElement({ element: this.element });
 		const updateResult = this.applyPlacementResult({
@@ -86,7 +94,7 @@ export class InsertElementCommand extends Command {
 		const isVisualMedia =
 			newElement.type === "video" || newElement.type === "image";
 
-		if (isFirstElement && isVisualMedia) {
+		if (isVisualMedia) {
 			const mediaAssets = editor.media.getAssets();
 			const activeProject = editor.project.getActive();
 			const asset = mediaAssets.find(
@@ -94,25 +102,37 @@ export class InsertElementCommand extends Command {
 			);
 
 			if (asset?.width && asset?.height) {
-				// SOURCE dims when known — on mobile `width`/`height` are the
-				// 540p preview proxy's, and copying them raw made the canvas
-				// (and so every export) proxy-resolution. Normalized to the
-				// 1080p class either way (see normalizeAdoptedCanvasSize).
-				const nextCanvasSize = normalizeAdoptedCanvasSize({
-					width: asset.sourceWidth ?? asset.width,
-					height: asset.sourceHeight ?? asset.height,
-				});
-				const shouldSetOriginalCanvasSize =
-					!activeProject?.settings.originalCanvasSize;
-				editor.project.updateSettings({
-					settings: {
-						canvasSize: nextCanvasSize,
-						...(shouldSetOriginalCanvasSize
-							? { originalCanvasSize: nextCanvasSize }
-							: {}),
+				// ONE decision point for adoption (GitHub #30 / Linear PAV-81).
+				// The previous code called `normalizeAdoptedCanvasSize` directly,
+				// which skipped every guard the import seam applies and so
+				// overwrote an explicit 1:1 / 9:16 / custom canvas the moment the
+				// first clip landed. SOURCE dims are still what gets normalized —
+				// on mobile `width`/`height` are the 540p preview proxy's.
+				const nextCanvasSize = getAdoptedCanvasSizeForFirstVisualElement({
+					currentSize: activeProject?.settings.canvasSize ?? DEFAULT_CANVAS_SIZE,
+					currentMode: activeProject?.settings.canvasSizeMode,
+					isFirstVisualElement: !hasVisualMediaBefore,
+					asset: {
+						type: asset.type,
+						width: asset.width,
+						height: asset.height,
+						sourceWidth: asset.sourceWidth,
+						sourceHeight: asset.sourceHeight,
 					},
-					pushHistory: false,
 				});
+				if (nextCanvasSize) {
+					const shouldSetOriginalCanvasSize =
+						!activeProject?.settings.originalCanvasSize;
+					editor.project.updateSettings({
+						settings: {
+							canvasSize: nextCanvasSize,
+							...(shouldSetOriginalCanvasSize
+								? { originalCanvasSize: nextCanvasSize }
+								: {}),
+						},
+						pushHistory: false,
+					});
+				}
 			}
 
 			if (asset?.type === "video" && asset?.fps) {
