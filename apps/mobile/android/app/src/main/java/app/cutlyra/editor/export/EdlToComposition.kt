@@ -454,24 +454,16 @@ object EdlToComposition {
                 )
             }
 
-        // GitHub #29 / PAV-82: NO composition-level Presentation.
-        //
-        // Every visual item is already normalized to the exact export size by
-        // `buildEditedMediaItem` below, so a second SCALE_TO_FIT pass here can
-        // only ever shrink the picture again — and on devices whose GL/encoder
-        // working frame is macroblock-aligned (the POCO's 1080 -> 1088) that is
-        // exactly what happened: the fit divides 1080 by 1088 and leaves a
-        // ~0.7% black border on all four sides of every export (measured
-        // 7/7/3/3 px at 1920x1080, 5/5/2/2 at 1280x720).
-        //
-        // The pass was originally added to size the encoder and to normalize
-        // the frame the text overlays composite onto. Both jobs are done by the
-        // per-item pass now: it produces output-sized frames BEFORE the
-        // OverlayEffect runs, which is what made preview-rendered overlays a
-        // 1:1 blit instead of a magnified, edge-cropped one. Keeping both
-        // passes is what introduced the inset, so there is exactly one
-        // normalization pass in the graph — a single, exact, per-item scale.
         val compositionVideoEffects = mutableListOf<Effect>()
+        if (edl.output.resolutionWidth > 0 && edl.output.resolutionHeight > 0) {
+            compositionVideoEffects.add(
+                Presentation.createForWidthAndHeight(
+                    edl.output.resolutionWidth,
+                    edl.output.resolutionHeight,
+                    Presentation.LAYOUT_SCALE_TO_FIT,
+                ),
+            )
+        }
         if (textOverlays.isNotEmpty()) {
             compositionVideoEffects.add(OverlayEffect(ImmutableList.copyOf(textOverlays)))
         }
