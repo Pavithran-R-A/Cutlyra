@@ -218,6 +218,17 @@ object EdlToComposition {
                 canvasWidth = edl.meta.canvasWidth,
                 canvasHeight = edl.meta.canvasHeight,
                 frameRate = outputFrameRate,
+                // GitHub #20 / PAV-70 (Stage 7): the head MUST be normalized to
+                // the export resolution exactly like every other visual item.
+                // media3's compositor draws each input scaled by
+                // `textureSize / outputSize` (OverlayMatrixProvider, verified in
+                // the 1.11.0 sources): an item with no Presentation reaches the
+                // compositor at its NATIVE texture size and is painted as a
+                // small centered rectangle instead of filling the frame. Stage-6's
+                // export measured the incoming layer at exactly 960x540 centered
+                // (coverage 0.2500) because the head alone skipped this pass.
+                outputWidth = edl.output.resolutionWidth,
+                outputHeight = edl.output.resolutionHeight,
                 // Audio is a hard cut under a video cross-fade — Media3 has
                 // no mixer-gain-ramp API to crossfade audio the same way
                 // (see TransitionAlphaMath's doc comment); the base
