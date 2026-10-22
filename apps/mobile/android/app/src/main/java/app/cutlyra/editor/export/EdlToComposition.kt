@@ -456,11 +456,43 @@ object EdlToComposition {
 
         val compositionVideoEffects = mutableListOf<Effect>()
         if (edl.output.resolutionWidth > 0 && edl.output.resolutionHeight > 0) {
+            // GitHub #29 / PAV-82 — final output-size pass, CROP not FIT.
+            //
+            // Two measured constraints pin this effect's shape (isolated API-35-
+            // class emulator, 2026-10-22, ExportCrossfadeLuminanceInstrumentedTest
+            // + ExportCrossfadeGeometryProbeInstrumentedTest across three builds):
+            //
+            //  1. It MUST exist. Without any composition-level Presentation, the
+            //     caption/prerendered-overlay crossfades composite the incoming
+            //     clip at FULL opacity across nearly the whole transition window
+            //     (measured = baselineB exactly at a=0.50 and a=0.75 on the
+            //     per-item-only build) — the alpha ramp is lost. With this pass
+            //     present the same fixtures blend pixel-exactly except the one
+            //     characterized media3 frame at window start+100 ms.
+            //  2. It must NOT shrink an already-normalized frame. The per-item
+            //     SCALE_TO_FIT below (GitHub #20/#32) is what fills the frame;
+            //     a second composition-level SCALE_TO_FIT re-fits the
+            //     compositor's macroblock-aligned working frame (1080->1088 on
+            //     the POCO) back into the output box, shrinking the picture
+            //     ~0.7% and leaving the black border #29 was filed about.
+            //
+            // LAYOUT_SCALE_TO_FIT_WITH_CROP satisfies both: when the incoming
+            // frame is already exactly output-sized it is a no-op (`isNoOp`
+            // returns true for equal dimensions), so the picture keeps full
+            // edge coverage; when a device hands the compositor a slightly
+            // larger macroblock-aligned frame (1920x1088 on the POCO) it is
+            // cropped DOWN to the output box instead of letterboxed into it,
+            // so the encoder still receives the exact requested geometry with
+            // no introduced border and no picture shrink. Aspect-ratio
+            // mismatch cannot occur here: every visual item was already fitted
+            // to this exact output size per-item, so crop-vs-fit only ever
+            // differ on the alignment padding, never on content aspect — the
+            // crop removes padding, not picture.
             compositionVideoEffects.add(
                 Presentation.createForWidthAndHeight(
                     edl.output.resolutionWidth,
                     edl.output.resolutionHeight,
-                    Presentation.LAYOUT_SCALE_TO_FIT,
+                    Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP,
                 ),
             )
         }
