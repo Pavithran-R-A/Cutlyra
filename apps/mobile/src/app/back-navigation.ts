@@ -24,7 +24,7 @@
 import { handleSystemBack, type SystemBackResult } from "@cutlyra/mobile-ui";
 import { getNativeBridge, type NativeBridge } from "@cutlyra/native-bridge";
 
-export type BackScreenName = "home" | "editor" | "privacy" | "legal";
+export type BackScreenName = "home" | "editor" | "privacy" | "legal" | "backup";
 
 export type BackPressAction =
 	| "stay"

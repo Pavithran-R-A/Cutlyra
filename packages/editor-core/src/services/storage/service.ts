@@ -231,6 +231,74 @@ class StorageService {
 		await this.projectsAdapter.remove(id);
 	}
 
+	// -----------------------------------------------------------------------
+	// Raw project/media accessors for the backup service (GitHub #35).
+	//
+	// These expose the SERIALIZED record (the exact JSON that goes into an
+	// archive) rather than the hydrated TProject, because a backup must be a
+	// lossless byte-level snapshot of what is persisted — re-serializing a
+	// hydrated project could drift from the stored form. Import writes the
+	// raw record back directly (after ID remapping), never through the
+	// hydrate/re-serialize round trip.
+	// -----------------------------------------------------------------------
+
+	async getSerializedProject({ id }: { id: string }): Promise<SerializedProject | null> {
+		await this.ensureMigrations();
+		return this.projectsAdapter.get(id);
+	}
+
+	async putSerializedProject({
+		project,
+	}: {
+		project: SerializedProject;
+	}): Promise<void> {
+		await this.projectsAdapter.set({
+			key: project.metadata.id,
+			value: project,
+		});
+	}
+
+	async projectExists({ id }: { id: string }): Promise<boolean> {
+		await this.ensureMigrations();
+		return (await this.projectsAdapter.get(id)) !== null;
+	}
+
+	async listMediaAssetData({
+		projectId,
+	}: {
+		projectId: string;
+	}): Promise<MediaAssetData[]> {
+		const { mediaMetadataAdapter } = this.getProjectMediaAdapters({ projectId });
+		return mediaMetadataAdapter.getAll();
+	}
+
+	async putMediaAssetData({
+		projectId,
+		data,
+	}: {
+		projectId: string;
+		data: MediaAssetData;
+	}): Promise<void> {
+		const { mediaMetadataAdapter } = this.getProjectMediaAdapters({ projectId });
+		await mediaMetadataAdapter.set({ key: data.id, value: data });
+	}
+
+	/** Writes the OPFS file for a restored media asset. On web these are the
+	 *  real bytes; on native-custody platforms they are the zero-byte stub
+	 *  (the bytes live in native custody — see MediaAssetData.url). */
+	async putMediaAssetFile({
+		projectId,
+		assetId,
+		file,
+	}: {
+		projectId: string;
+		assetId: string;
+		file: File;
+	}): Promise<void> {
+		const { mediaAssetsAdapter } = this.getProjectMediaAdapters({ projectId });
+		await mediaAssetsAdapter.set({ key: assetId, value: file });
+	}
+
 	async saveMediaAsset({
 		projectId,
 		mediaAsset,

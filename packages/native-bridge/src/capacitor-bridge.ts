@@ -88,6 +88,7 @@ import { probeCodecs } from "./codec-detect";
 import { subscribeToEvents } from "./event-generator";
 import { smoothWordTimings, type RawWordTiming } from "./caption-smoothing";
 import type {
+	BackupMediaDescriptor,
 	DeviceCapabilities,
 	ExportOverlayFrame,
 	ExportProgress,
@@ -101,6 +102,7 @@ import type {
 	Platform,
 	ProxyProgress,
 	ProxySpec,
+	RestoredMediaFile,
 	ThumbnailStrip,
 	ThumbnailStripSpec,
 	TranscribeOptions,
@@ -254,6 +256,24 @@ interface NativeBridgePluginSpec {
 		modelSize: "tiny" | "base";
 		languageHint?: string;
 	}): Promise<NativeTranscribeResult>;
+	// -- Project backup (GitHub #35) ------------------------------------
+	pickArchiveDestination(params: {
+		suggestedName: string;
+	}): Promise<{ uri: string }>;
+	pickArchiveSource(): Promise<{ uri: string }>;
+	exportArchive(params: {
+		destinationUri: string;
+		projectJson: string;
+		media: BackupMediaDescriptor[];
+		appVersion: string;
+	}): Promise<{ manifestJson: string }>;
+	importArchive(params: {
+		sourceUri: string;
+	}): Promise<{
+		manifestJson: string;
+		projectJson: string;
+		restoredFiles: RestoredMediaFile[];
+	}>;
 }
 
 /** `generateProxy` filters its event stream on `handle.id` — a domain
@@ -741,5 +761,105 @@ export function createCapacitorBridge({
 				supportsOnDeviceStt: platform === "ios" || platform === "android",
 			};
 		},
+
+		// -- Project backup (GitHub #35) ---------------------------------
+
+		async pickArchiveDestination({
+			suggestedName,
+		}: {
+			suggestedName: string;
+		}): Promise<{ uri: string } | null> {
+			try {
+				const { uri } = await plugin.pickArchiveDestination({ suggestedName });
+				return uri ? { uri } : null;
+			} catch (err) {
+				// A user backing out of the SAF picker is not an error — map it
+				// to the null the caller already treats as "cancelled".
+				if (isCancel(err)) return null;
+				throw toNativeBridgeError({ err, method: "pickArchiveDestination" });
+			}
+		},
+
+		async pickArchiveSource(): Promise<{ uri: string } | null> {
+			try {
+				const { uri } = await plugin.pickArchiveSource();
+				return uri ? { uri } : null;
+			} catch (err) {
+				if (isCancel(err)) return null;
+				throw toNativeBridgeError({ err, method: "pickArchiveSource" });
+			}
+		},
+
+		async exportArchive({
+			destinationUri,
+			projectJson,
+			media,
+			appVersion,
+		}: {
+			destinationUri: string;
+			projectJson: string;
+			media: BackupMediaDescriptor[];
+			appVersion: string;
+		}): Promise<{ manifestJson: string }> {
+			try {
+				return await plugin.exportArchive({
+					destinationUri,
+					projectJson,
+					media,
+					appVersion,
+				});
+			} catch (err) {
+				if (isCancel(err)) {
+					throw new NativeBridgeError({
+						code: "USER_CANCELLED",
+						message: "Archive export was cancelled",
+					});
+				}
+				throw toNativeBridgeError({ err, method: "exportArchive" });
+			}
+		},
+
+		async importArchive({
+			sourceUri,
+		}: {
+			sourceUri: string;
+		}): Promise<{
+			manifestJson: string;
+			projectJson: string;
+			restoredFiles: RestoredMediaFile[];
+		}> {
+			try {
+				return await plugin.importArchive({ sourceUri });
+			} catch (err) {
+				if (isCancel(err)) {
+					throw new NativeBridgeError({
+						code: "USER_CANCELLED",
+						message: "Archive import was cancelled",
+					});
+				}
+				throw toNativeBridgeError({ err, method: "importArchive" });
+			}
+		},
 	};
+}
+
+/** True when a rejection is Capacitor's USER_CANCELLED (or an equivalent
+ *  native "user backed out" signal), so the pickers above can return null
+ *  rather than throwing. */
+function isCancel(err: unknown): boolean {
+	if (err instanceof NativeBridgeError) return err.code === "USER_CANCELLED";
+	// Guard (never assert): a plugin may reject with a plain serialized
+	// object rather than a NativeBridgeError instance.
+	return isCancelShaped(err);
+}
+
+function isCancelShaped(value: unknown): boolean {
+	// The `in` check narrows `value` to include a `code` property, so no
+	// type assertion is needed to read it.
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"code" in value &&
+		value.code === "USER_CANCELLED"
+	);
 }

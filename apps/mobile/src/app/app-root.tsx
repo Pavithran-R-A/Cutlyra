@@ -32,6 +32,13 @@ import { loadFontAtlas, loadFonts } from "@cutlyra/editor-core/fonts/local-fonts
 import { useEditor } from "@cutlyra/editor-core/react";
 import { EditorShell, ensurePreviewGpu } from "@cutlyra/mobile-ui";
 import { installSystemBackNavigation } from "./back-navigation";
+import {
+	archiveFileName,
+	describeBackupError,
+	runBackupProject,
+	runRestoreProject,
+	toBackupError,
+} from "./backup";
 
 const NOOP_BOOTSTRAP = async () => {};
 
@@ -84,7 +91,8 @@ type Screen =
 	| { name: "home" }
 	| { name: "editor" }
 	| { name: "privacy" }
-	| { name: "legal" };
+	| { name: "legal" }
+	| { name: "backup" };
 
 function App() {
 	const [screen, setScreen] = useState<Screen>({ name: "home" });
@@ -129,11 +137,15 @@ function App() {
 	if (screen.name === "legal") {
 		return <LegalNoticesScreen onBack={() => setScreen({ name: "home" })} />;
 	}
+	if (screen.name === "backup") {
+		return <BackupRestoreScreen onBack={() => setScreen({ name: "home" })} />;
+	}
 	return (
 		<HomeScreen
 			onOpenEditor={() => setScreen({ name: "editor" })}
 			onOpenPrivacy={() => setScreen({ name: "privacy" })}
 			onOpenLegal={() => setScreen({ name: "legal" })}
+			onOpenBackup={() => setScreen({ name: "backup" })}
 		/>
 	);
 }
@@ -142,10 +154,12 @@ function HomeScreen({
 	onOpenEditor,
 	onOpenPrivacy,
 	onOpenLegal,
+	onOpenBackup,
 }: {
 	onOpenEditor: () => void;
 	onOpenPrivacy: () => void;
 	onOpenLegal: () => void;
+	onOpenBackup: () => void;
 }) {
 	const editor = useEditor();
 	// CRITICAL finding #2 of the 2026-08-18 test sweep ("saved projects never
@@ -229,6 +243,10 @@ function HomeScreen({
 				</ul>
 			)}
 			<footer className="kc-home__footer">
+				<button type="button" className="kc-home__legal-link" onClick={onOpenBackup}>
+					Backup &amp; restore
+				</button>
+				<span aria-hidden="true">•</span>
 				<button type="button" className="kc-home__legal-link" onClick={onOpenPrivacy}>
 					Privacy
 				</button>
@@ -340,6 +358,181 @@ function PrivacyScreen({ onBack }: { onBack: () => void }) {
 				<h2>Privacy inquiries</h2>
 				<p>Use the verified developer/support email on Cutlyra's official Google Play listing for privacy inquiries.</p>
 				<p className="kc-privacy__updated">Last updated: 4 October 2026</p>
+			</div>
+		</main>
+	);
+}
+
+/**
+ * Backup / Restore (GitHub #35 / PAV-51).
+ *
+ * Two jobs, one honest surface:
+ *  - Back up a project to a `.cutlyra-backup` file the user chooses via the
+ *    system document picker (SAF) — i.e. OUTSIDE app-private storage.
+ *  - Restore one back, verifying integrity first, remapping a duplicate
+ *    project ID instead of overwriting.
+ *
+ * The copy makes the non-negotiable point explicit: an archive living
+ * INSIDE the app's own storage is not a backup, because uninstalling or
+ * clearing app data takes it too (the exact failure this feature exists to
+ * prevent — nine projects were already lost that way).
+ */
+function BackupRestoreScreen({ onBack }: { onBack: () => void }) {
+	const editor = useEditor();
+	const projects = useEditor((e) => e.project.getSavedProjects());
+	const [busy, setBusy] = useState<"backup" | "restore" | null>(null);
+	const [stage, setStage] = useState<string | null>(null);
+	const [result, setResult] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+
+	useEffect(() => {
+		// Same singleton-stable pattern as HomeScreen's mount load.
+		void editor.project.loadAllProjects();
+	}, []);
+
+	const backup = async (projectId: string, projectName: string) => {
+		if (busy) return;
+		setBusy("backup");
+		setResult(null);
+		try {
+			await runBackupProject({
+				projectId,
+				projectName,
+				handlers: {
+					onStage: setStage,
+					onProgress: (p) =>
+						setStage(
+							p.stage === "hashing"
+								? `Hashing media… ${Math.round(p.fraction * 100)}%`
+								: p.stage === "writing"
+									? "Writing archive…"
+									: null,
+					),
+			},
+		});
+		const name = archiveFileName({ projectName });
+		setResult({
+			kind: "ok",
+			text:
+				`“${name}” saved. Move or keep a copy somewhere outside Cutlyra — ` +
+				"a computer, SD card, or cloud drive you control. An archive kept only " +
+				"inside the app is lost if the app or its data is removed.",
+		});
+	} catch (error) {
+		const backupError = toBackupError(error);
+		setResult({
+			kind: backupError.code === "USER_CANCELLED" ? "ok" : "error",
+			text: describeBackupError(backupError),
+		});
+	} finally {
+		setBusy(null);
+		setStage(null);
+	}
+	};
+
+	const restore = async () => {
+		if (busy) return;
+		setBusy("restore");
+		setResult(null);
+		try {
+			const restored = await runRestoreProject({ handlers: { onStage: setStage } });
+			// Refresh the home list so the restored project is immediately visible.
+			await editor.project.loadAllProjects();
+			setResult({
+				kind: "ok",
+				text: restored.remapped
+					? "Restored as a NEW project with a fresh ID — your existing projects were left untouched."
+					: "Project restored successfully.",
+			});
+		} catch (error) {
+			const backupError = toBackupError(error);
+			setResult({
+				kind: backupError.code === "USER_CANCELLED" ? "ok" : "error",
+				text: describeBackupError(backupError),
+			});
+		} finally {
+			setBusy(null);
+			setStage(null);
+		}
+	};
+
+	return (
+		<main className="kc-privacy kc-backup" data-cutlyra-theme="cutlyra-dark">
+			<header className="kc-privacy__header">
+				<button type="button" className="kc-privacy__back" onClick={onBack} aria-label="Back to projects">←</button>
+				<h1>Backup &amp; restore</h1>
+			</header>
+			<div className="kc-privacy__body">
+				<div className="kc-backup__notice">
+					<strong>Keep every archive outside Cutlyra.</strong>
+					<p>
+						A backup is only real if it survives losing the app. Save the
+						<code>.cutlyra-backup</code> file to your computer, an SD card,
+						USB drive, or cloud storage you control — <em>not</em> only inside
+						Cutlyra&apos;s own storage, which is deleted if the app is
+						uninstalled or its data is cleared. Keep at least one copy the
+						app cannot touch.
+					</p>
+				</div>
+
+				<section className="kc-backup__section">
+					<h2>Back up a project</h2>
+					<p>
+						Saves one project — edits, settings, and its media — into a single
+						archive file, and asks you where to put it.
+					</p>
+					{projects.length === 0 ? (
+						<p className="kc-backup__hint">No projects yet.</p>
+					) : (
+						<ul className="kc-backup__projects">
+							{projects.map((p) => (
+								<li key={p.id}>
+									<span className="kc-backup__project-name">{p.name}</span>
+									<button
+										type="button"
+										className="kc-backup__action"
+										disabled={busy !== null}
+										onClick={() => void backup(p.id, p.name)}
+									>
+										Back up
+									</button>
+								</li>
+							))}
+						</ul>
+					)}
+				</section>
+
+				<section className="kc-backup__section">
+					<h2>Restore from an archive</h2>
+					<p>
+						Picks a <code>.cutlyra-backup</code> file and checks it for damage
+						before restoring. If a project with the same ID already exists, the
+						restore is added alongside it under a new ID — existing projects are
+						never overwritten.
+					</p>
+					<button
+						type="button"
+						className="kc-backup__action kc-backup__action--restore"
+						disabled={busy !== null}
+						onClick={() => void restore()}
+					>
+						Restore archive…
+					</button>
+				</section>
+
+				{stage && (
+					<p className="kc-backup__stage" role="status" aria-live="polite">
+						{stage}
+					</p>
+				)}
+				{result && (
+					<p
+						className={result.kind === "ok" ? "kc-backup__ok" : "kc-home__error"}
+						role="status"
+						aria-live="polite"
+					>
+						{result.text}
+					</p>
+				)}
 			</div>
 		</main>
 	);

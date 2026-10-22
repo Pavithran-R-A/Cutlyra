@@ -44,7 +44,12 @@
 		"./services/waveform-cache": "./src/services/waveform-cache/service.ts",
 		"./media/native-paths": "./src/media/native-paths.ts",
 		"./text/typography": "./src/text/typography.ts",
-		"./export/overlay-frames": "./src/export/overlay-frames.ts"
+		"./export/overlay-frames": "./src/export/overlay-frames.ts",
+		"./services/storage/service": "./src/services/storage/service.ts",
+		"./services/storage/types": "./src/services/storage/types.ts",
+		"./services/backup/backup-service": "./src/services/backup/backup-service.ts",
+		"./services/backup/types": "./src/services/backup/types.ts",
+		"./services/backup/archive-format": "./src/services/backup/archive-format.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --project tsconfig.json --noEmit",

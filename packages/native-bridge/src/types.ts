@@ -227,12 +227,59 @@ export interface DeviceCapabilities {
 	supportsOnDeviceStt: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Project backup archives (GitHub #35 / Linear PAV-51)
+//
+// On native platforms the archive's media BYTES live in native custody and
+// must never cross the bridge (plan §2.2). So the wire contract here is
+// entirely JSON: JS hands native a RECIPE (the SerializedProject JSON + a
+// descriptor per media file with its custody-relative path), native streams
+// the real bytes into a ZIP at a SAF destination while hashing them, and
+// returns the authoritative manifest. Restore is the mirror. Every shape
+// below is plain JSON for exactly the reason `MediaHandle` is.
+// ---------------------------------------------------------------------------
+
+/** Descriptor for one media file in the export recipe. `*Path` values are
+ *  custody-ROOT-relative (e.g. `Media/<id>.mp4`), resolved by native against
+ *  `getMediaRoot()`. Null when that role does not exist for the asset. */
+export interface BackupMediaDescriptor {
+	assetId: string;
+	proxyPath: string | null;
+	sourcePath: string | null;
+	thumbnailPath: string | null;
+	name: string;
+	type: "video" | "audio" | "image";
+	sizeBytes: number;
+	lastModified: number;
+	width?: number;
+	height?: number;
+	duration?: number;
+	fps?: number;
+	hasAudio?: boolean;
+	sourceRotationDegrees?: 0 | 90 | 180 | 270;
+	sourceWidth?: number;
+	sourceHeight?: number;
+}
+
+/** One media file as native restored it into custody under a FRESH path. */
+export interface RestoredMediaFile {
+	assetId: string;
+	role: "proxy" | "source" | "thumbnail";
+	newPath: string;
+	sha256: string;
+}
+
 export const NATIVE_BRIDGE_ERROR_CODES = [
 	"NOT_IMPLEMENTED",
 	"PERMISSION_DENIED",
 	"USER_CANCELLED",
 	"UNSUPPORTED",
 	"IO_ERROR",
+	// Backup-archive integrity/ capacity failures (GitHub #35). A corrupt or
+	// tampered archive, and a restore that cannot fit, are meaningfully
+	// different from a generic I/O error and the UI must say so plainly.
+	"CORRUPT_ARCHIVE",
+	"INSUFFICIENT_STORAGE",
 ] as const;
 export type NativeBridgeErrorCode = (typeof NATIVE_BRIDGE_ERROR_CODES)[number];
 
@@ -351,4 +398,49 @@ export interface NativeBridge {
 		spec: ThumbnailStripSpec;
 	}): Promise<ThumbnailStrip>;
 	capabilities(): Promise<DeviceCapabilities>;
+
+	// -- Project backup (GitHub #35) ------------------------------------
+	/**
+	 * Launches a SAF `ACTION_CREATE_DOCUMENT` picker for a NEW archive at
+	 * `suggestedName`. Resolves with a `content://` destination URI the
+	 * caller passes to `exportArchive`, or null when the user cancelled.
+	 * On web this is a no-op returning null (the JS path triggers a download
+	 * directly — see `createWebFallbackBridge`).
+	 */
+	pickArchiveDestination(params: {
+		suggestedName: string;
+	}): Promise<{ uri: string } | null>;
+	/**
+	 * Launches a SAF `ACTION_OPEN_DOCUMENT` picker for an existing archive.
+	 * Resolves with a `content://` source URI for `importArchive`, or null
+	 * when the user cancelled. Web: null.
+	 */
+	pickArchiveSource(): Promise<{ uri: string } | null>;
+	/**
+	 * Native archive assembly: reads the real media bytes from custody by the
+	 * recipe's relative paths, SHA-256-hashes each, streams them into a STORE
+	 * ZIP at `destinationUri`, and resolves with the authoritative manifest
+	 * (hashes native computed). Rejects `IO_ERROR` on write failure, leaving
+	 * no committed archive (native writes to a temp doc and renames).
+	 */
+	exportArchive(params: {
+		destinationUri: string;
+		projectJson: string;
+		media: BackupMediaDescriptor[];
+		appVersion: string;
+	}): Promise<{ manifestJson: string }>;
+	/**
+	 * Native archive import: reads the ZIP from `sourceUri`, verifies every
+	 * entry's SHA-256 against the manifest, extracts media to FRESH custody
+	 * paths (staging then atomic move), and resolves with the manifest +
+	 * project JSON + the fresh-path restore map. Rejects `CORRUPT_ARCHIVE`
+	 * (added to the error codes) on any integrity failure, committing nothing.
+	 */
+	importArchive(params: {
+		sourceUri: string;
+	}): Promise<{
+		manifestJson: string;
+		projectJson: string;
+		restoredFiles: RestoredMediaFile[];
+	}>;
 }
