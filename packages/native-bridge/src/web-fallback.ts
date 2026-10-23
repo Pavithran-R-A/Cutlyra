@@ -305,5 +305,19 @@ export function createWebFallbackBridge(): NativeBridge {
 				message: "Native archive extraction requires a native shell.",
 			});
 		},
+		// GitHub #37 — there is no SAF document to leave behind on web (the
+		// browser download is all-or-nothing and JS fails before triggering it),
+		// so this reports "nothing to remove" rather than pretending to delete.
+		async discardArchiveDestination(): Promise<{
+			deleted: boolean;
+			outcome: string;
+			message: string;
+		}> {
+			return {
+				deleted: true,
+				outcome: "not-applicable",
+				message: "No document was created on this platform.",
+			};
+		},
 	};
 }
