@@ -38,9 +38,27 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa
-        with:
-          version: latest
+        # jetli/wasm-pack-action extracts to /tmp and then renames the
+        # binary into ~/.cargo/bin; the current ubuntu-latest image puts
+        # /tmp on a separate filesystem, so that rename dies with
+        # "EXDEV: cross-device link not permitted" and every invariants
+        # job on every branch goes red. Extract straight into the cargo
+        # bin directory instead (tar writes in place, no cross-device
+        # rename) and pin the version for reproducibility.
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=0.15.0
+          case "${{ runner.os }}-${{ runner.arch }}" in
+            Linux-X64)   target=x86_64-unknown-linux-musl ;;
+            Windows-X64) target=x86_64-pc-windows-msvc ;;
+            macOS-ARM64) target=aarch64-apple-darwin ;;
+            macOS-X64)   target=x86_64-apple-darwin ;;
+            *) echo "unsupported runner: ${RUNNER_OS}-${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+          mkdir -p "$HOME/.cargo/bin"
+          curl -fsSL "https://github.com/rustwasm/wasm-pack/releases/download/v${version}/wasm-pack-v${version}-${target}.tar.gz" | tar -xz -C "$HOME/.cargo/bin" --strip-components=1
+          wasm-pack --version
 
       - name: Cache Rust build artifacts
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
