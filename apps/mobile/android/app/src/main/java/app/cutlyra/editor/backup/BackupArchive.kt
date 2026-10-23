@@ -3,9 +3,12 @@ package app.cutlyra.editor.backup
 import android.content.Context
 import android.net.Uri
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
+import java.io.EOFException
 import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
@@ -208,10 +211,13 @@ object BackupArchive {
 			verifyEntry(entries, projectEntry.getString("path"), projectEntry.getString("sha256"), projectEntry.getLong("sizeBytes"))
 			val projectJson = String(entries[projectEntry.getString("path")]!!, Charsets.UTF_8)
 
-			// Extract media to staging under FRESH names, then move to media/.
+			// Extract media to staging under FRESH names. Nothing is moved into
+			// final custody until EVERY entry has verified, so a failure on a
+			// later entry cannot leave orphan media behind.
 			val mediaDir = File(custodyRoot, "media")
 			if (!mediaDir.exists()) mediaDir.mkdirs()
 			val restored = mutableListOf<RestoredFile>()
+			val pendingMoves = mutableListOf<Pair<File, File>>()
 			val assets = project.getJSONArray("assets")
 			for (i in 0 until assets.length()) {
 				val asset = assets.getJSONObject(i)
@@ -227,22 +233,36 @@ object BackupArchive {
 					val newFileName = "${UUID.randomUUID()}$ext"
 					val staged = File(staging, newFileName)
 					staged.writeBytes(bytes)
-					val dest = File(mediaDir, newFileName)
-					// Atomic-ish move into final custody.
-					if (!staged.renameTo(dest)) {
-						staged.copyTo(dest, overwrite = true)
-						staged.delete()
-					}
+					pendingMoves.add(staged to File(mediaDir, newFileName))
 					val relPath = "media/$newFileName"
 					restored.add(RestoredFile(assetId, role, relPath, f.getString("sha256")))
+				}
+			}
+
+			// Every hash verified: commit the extracted media into custody.
+			for ((staged, dest) in pendingMoves) {
+				if (!staged.renameTo(dest)) {
+					staged.copyTo(dest, overwrite = true)
+					staged.delete()
 				}
 			}
 
 			return ImportResult(manifest, projectJson, restored)
 		} catch (e: ArchiveException) {
 			throw e
+		} catch (e: java.util.zip.ZipException) {
+			// A damaged/tampered container surfaces as an inflate or entry-name
+			// failure; report it as damage rather than an I/O fault, and never
+			// echo the raw decoder message to the user.
+			throw ArchiveException("CORRUPT_ARCHIVE", "Archive is damaged and could not be read", e)
+		} catch (e: EOFException) {
+			throw ArchiveException("CORRUPT_ARCHIVE", "Archive is truncated and could not be read", e)
+		} catch (e: JSONException) {
+			throw ArchiveException("CORRUPT_ARCHIVE", "Archive manifest is not valid JSON", e)
+		} catch (e: IOException) {
+			throw ArchiveException("IO_ERROR", "Archive could not be read from or written to storage", e)
 		} catch (e: Exception) {
-			throw ArchiveException("IO_ERROR", "Archive import failed: ${e.message}", e)
+			throw ArchiveException("IO_ERROR", "Archive import failed", e)
 		} finally {
 			staging.deleteRecursively()
 			// Best-effort cleanup of any orphaned staging dirs from a prior crash.

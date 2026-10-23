@@ -273,7 +273,7 @@ export function describeBackupError(error: BackupError): string {
 		case "INSUFFICIENT_STORAGE":
 			return `There is not enough free storage to restore this archive. ${error.message}`;
 		case "IO_ERROR":
-			return `The backup could not be completed. ${error.message}`;
+			return `The archive could not be read or written. ${error.message}`;
 		case "PERMISSION_DENIED":
 			return `Permission to read or write the archive was denied. ${error.message}`;
 		case "UNSUPPORTED":
