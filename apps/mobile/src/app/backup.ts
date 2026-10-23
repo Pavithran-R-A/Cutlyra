@@ -129,16 +129,34 @@ function webContext(handlers: BackupRunHandlers): BackupContext {
  * Web: JS assembly + browser download. Resolves `{ saved: true }` on success;
  * throws `BackupError` (USER_CANCELLED when the picker was dismissed).
  */
+/**
+ * Injectable seams for [runBackupProject] (GitHub #37). Production callers
+ * pass nothing: the real bridge is fetched and the real recipe builder runs.
+ *
+ * They exist so the SUCCESS path — which ownership evidence is forwarded to
+ * `exportArchive` — is testable without `mock.module`. That matters because
+ * bun's module doubles are process-global (CI runs every suite in one
+ * process), and doubling `@cutlyra/editor-core/...` from a mobile test
+ * silently breaks editor-core's own suites. Passing dependencies is
+ * containment rather than contamination: nothing global changes.
+ */
+export interface BackupRunDeps {
+	bridge?: Awaited<ReturnType<typeof getNativeBridge>>;
+	buildRecipe?: typeof buildExportRecipe;
+}
+
 export async function runBackupProject({
 	projectId,
 	projectName,
 	handlers = {},
+	deps = {},
 }: {
 	projectId: string;
 	projectName: string;
 	handlers?: BackupRunHandlers;
+	deps?: BackupRunDeps;
 }): Promise<void> {
-	const bridge = await getNativeBridge();
+	const bridge = deps.bridge ?? (await getNativeBridge());
 
 	if (bridge.platform === "web") {
 		handlers.onStage?.("Building archive…");
@@ -159,9 +177,22 @@ export async function runBackupProject({
 		throw new BackupError({ code: "USER_CANCELLED", message: "Backup cancelled" });
 	}
 	handlers.onStage?.("Saving archive…");
-	const recipe = await buildExportRecipe({ projectId, storage: storageService });
+
+	// GitHub #37: the SAF document already EXISTS (created empty by the
+	// picker) from the moment we hold its URI, so a failure before the native
+	// write has to remove it again or the user is left with a 0-byte archive
+	// sitting next to their real ones. Native owns cleanup for every failure
+	// inside `exportArchive`; this catches the ones JS owns — building the
+	// recipe — so the two paths never clean up the same file twice.
+	let recipe: Awaited<ReturnType<typeof buildExportRecipe>>;
+	try {
+		recipe = await (deps.buildRecipe ?? buildExportRecipe)({ projectId, storage: storageService });
+	} catch (error) {
+		throw await discardUnwrittenDestination({ destination, error, bridge });
+	}
 	await bridge.exportArchive({
 		destinationUri: destination.uri,
+		sizeBytesAtPick: destination.sizeBytesAtPick,
 		projectJson: recipe.projectJson,
 		media: recipe.media.map((m) => ({
 			assetId: m.assetId,
@@ -184,10 +215,67 @@ export async function runBackupProject({
 		appVersion: APP_VERSION,
 	});
 	handlers.onStage?.("Done");
+}/**
+ * GitHub #37 — what to say (and do) when a backup fails after the picker
+ * already created its destination but before any bytes were written.
+ *
+ * Three cases, told apart by the size the provider reported at pick time:
+ *
+ *  - `0` (provably ours): ask native to delete it. Whether the delete lands is
+ *    reported verbatim — "the file was removed" vs "the file is still there,
+ *    delete it yourself" — never as a quiet success.
+ *  - `> 0` (an existing file the user pointed at): we never opened it, so it
+ *    is untouched and the original error stands alone.
+ *  - unknown (`-1`): we cannot prove the file is ours, so nothing is deleted
+ *    and the user is told an empty file may be left behind.
+ *
+ * A cleanup that itself throws still returns the ORIGINAL failure — cleanup
+ * must never mask what went wrong, nor claim a clean result it didn't get.
+ */
+/** Resolved shape of the bridge instance (shared by the helpers below). */
+type NativeBridge = Awaited<ReturnType<typeof getNativeBridge>>;
+/** What `pickArchiveDestination` hands back when the user did not cancel. */
+type ArchiveDestinationPick = NonNullable<Awaited<ReturnType<NativeBridge["pickArchiveDestination"]>>>;
+
+export async function discardUnwrittenDestination({
+	destination,
+	error,
+	bridge,
+}: {
+	destination: ArchiveDestinationPick;
+	error: unknown;
+	bridge: NativeBridge;
+}): Promise<BackupError> {
+	const cause = toBackupError(error);
+
+	if (destination.sizeBytesAtPick > 0) {
+		// An existing file we never wrote to: nothing was left behind.
+		return cause;
+	}
+
+	if (destination.sizeBytesAtPick < 0) {
+		return new BackupError({
+			code: cause.code,
+			message: `${cause.message} The storage location would not confirm whether it was a new empty file, so an empty file may remain there.`,
+		});
+	}
+
+	try {
+		const discard = await bridge.discardArchiveDestination({
+			uri: destination.uri,
+			sizeBytesAtPick: destination.sizeBytesAtPick,
+		});
+		return new BackupError({ code: cause.code, message: `${cause.message} ${discard.message}` });
+	} catch {
+		return new BackupError({
+			code: cause.code,
+			message: `${cause.message} The location could not be cleaned up, so an empty file may remain there.`,
+		});
+	}
 }
 
 /** Preview of what an archive contains (project name, created, counts) so
- *  the restore screen can confirm before committing. */
+ * the restore screen can confirm before committing. */
 export interface RestorePreview {
 	projectName: string;
 	createdAt: string;
@@ -267,7 +355,9 @@ export function describeBackupError(error: BackupError): string {
 		case "USER_CANCELLED":
 			return "Cancelled — nothing was changed.";
 		case "CORRUPT_ARCHIVE":
-			return `This archive is damaged or incomplete and was not restored. ${error.message}`;
+			// Direction-neutral on purpose: this code also fires while BUILDING
+			// an archive (a project whose JSON is unusable), not only on restore.
+			return `This archive is damaged or incomplete and cannot be used. ${error.message}`;
 		case "UNSUPPORTED_FORMAT":
 			return `This archive was made by a newer version of Cutlyra and cannot be restored here. ${error.message}`;
 		case "INSUFFICIENT_STORAGE":

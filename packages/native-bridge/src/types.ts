@@ -406,10 +406,22 @@ export interface NativeBridge {
 	 * caller passes to `exportArchive`, or null when the user cancelled.
 	 * On web this is a no-op returning null (the JS path triggers a download
 	 * directly — see `createWebFallbackBridge`).
+	 *
+	 * `sizeBytesAtPick` is the provider's size for that document read the
+	 * instant the picker returned, BEFORE any of our bytes were written — 0
+	 * means the system just created it (so a failed export may delete it
+	 * again, see `discardArchiveDestination`), a non-zero value means the user
+	 * pointed us at a file that already existed (never deleted), and -1 means
+	 * the provider would not say (also never deleted).
 	 */
 	pickArchiveDestination(params: {
 		suggestedName: string;
-	}): Promise<{ uri: string } | null>;
+	}): Promise<{
+		uri: string;
+		sizeBytesAtPick: number;
+		isNewlyCreated: boolean;
+		displayName?: string;
+	} | null>;
 	/**
 	 * Launches a SAF `ACTION_OPEN_DOCUMENT` picker for an existing archive.
 	 * Resolves with a `content://` source URI for `importArchive`, or null
@@ -425,10 +437,26 @@ export interface NativeBridge {
 	 */
 	exportArchive(params: {
 		destinationUri: string;
+		/** Replayed from `pickArchiveDestination` — the ownership evidence a
+		 *  failed write needs before it may remove the document. */
+		sizeBytesAtPick: number;
 		projectJson: string;
 		media: BackupMediaDescriptor[];
 		appVersion: string;
 	}): Promise<{ manifestJson: string }>;
+	/**
+	 * Removes an archive destination that was created empty by this operation
+	 * but never written (the failure happened before `exportArchive`, e.g.
+	 * while building the recipe).
+	 *
+	 * Always resolves: `deleted:false` with `outcome:"refused"` is a normal
+	 * answer from a provider that will not let us delete, and the caller must
+	 * report that leftover file honestly instead of claiming a clean failure.
+	 */
+	discardArchiveDestination(params: {
+		uri: string;
+		sizeBytesAtPick: number;
+	}): Promise<{ deleted: boolean; outcome: string; message: string }>;
 	/**
 	 * Native archive import: reads the ZIP from `sourceUri`, verifies every
 	 * entry's SHA-256 against the manifest, extracts media to FRESH custody

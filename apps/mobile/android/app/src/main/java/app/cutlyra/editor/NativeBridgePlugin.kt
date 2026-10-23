@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import androidx.activity.result.ActivityResult
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -19,6 +20,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
+import app.cutlyra.editor.backup.ArchiveDestination
 import app.cutlyra.editor.backup.BackupArchive
 import app.cutlyra.editor.edl.EdlParseException
 import app.cutlyra.editor.edl.EdlParser
@@ -704,6 +706,18 @@ class NativeBridgePlugin : Plugin() {
 	 *  expose its own method name, so the mode is tracked here. */
 	private var pendingArchivePickIsDestination = false
 
+	/** GitHub #37 — the ownership evidence NATIVE itself recorded at pick
+	 *  time: the document our CREATE pick probed and the size it reported
+	 *  before any byte was written. Cleanup decisions read ONLY this, never a
+	 *  value echoed back through the web view, so a tampered JS layer cannot
+	 *  talk the plugin into deleting a file it does not own. A single slot is
+	 *  enough because at most one archive pick can be in flight. */
+	@Volatile
+	private var lastDestinationProbeUri: String? = null
+
+	@Volatile
+	private var lastDestinationProbeSize: Long = ArchiveDestination.SIZE_UNKNOWN
+
 	/** SAF `ACTION_CREATE_DOCUMENT` for a NEW archive. Resolves with
 	 *  `{uri}` (a `content://` the caller passes straight to
 	 *  `exportArchive`) or rejects `USER_CANCELLED` when the user backs out —
@@ -774,9 +788,98 @@ class NativeBridgePlugin : Plugin() {
 			// Some providers don't offer persistable grants; the ephemeral one
 			// is still valid for the immediate call below.
 		}
+
+		// GitHub #37: capture the destination's size NOW, before any of our
+		// bytes are written. A CREATE pick that reports 0 is a document this
+		// operation just created, so a failed export may delete it again; a
+		// non-zero size means the user pointed us at an existing file, which we
+		// must never delete. Reading the provider can block (cloud providers),
+		// so it happens off the main thread before resolving.
+		Thread {
+			val ret = JSObject()
+			ret.put("uri", uri.toString())
+			if (isDestination) {
+				val (size, name) = probeDestination(context.contentResolver, uri)
+				// Record the evidence HERE, in native memory, before JS learns
+				// the URI — see lastDestinationProbeUri. The echoed copy in the
+				// pick result is convenience for the UI, not evidence.
+				lastDestinationProbeUri = uri.toString()
+				lastDestinationProbeSize = size
+				ret.put("sizeBytesAtPick", size)
+				ret.put("displayName", name)
+				ret.put("isNewlyCreated", ArchiveDestination.ownership(size, true) == ArchiveDestination.Ownership.NEWLY_CREATED)
+			}
+			call.resolve(ret)
+		}.start()
+	}
+
+	/** Reads `OpenableColumns.SIZE` / `DISPLAY_NAME` for a picked document.
+	 *  SIZE returns [ArchiveDestination.SIZE_UNKNOWN] when the provider will not
+	 *  answer — which (deliberately) makes the destination not provably ours. */
+	private fun probeDestination(resolver: android.content.ContentResolver, uri: android.net.Uri): Pair<Long, String?> {
+		return try {
+			var size = ArchiveDestination.SIZE_UNKNOWN
+			var name: String? = null
+			resolver.query(uri, arrayOf(OpenableColumns.SIZE, OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+				if (c.moveToFirst()) {
+					val sizeIdx = c.getColumnIndex(OpenableColumns.SIZE)
+					if (sizeIdx >= 0 && !c.isNull(sizeIdx)) size = c.getLong(sizeIdx)
+					val nameIdx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+					if (nameIdx >= 0 && !c.isNull(nameIdx)) name = c.getString(nameIdx)
+				}
+			}
+			size to name
+		} catch (_: Exception) {
+			// Unknown is safe: it just means we will not delete on failure.
+			ArchiveDestination.SIZE_UNKNOWN to null
+		}
+	}
+
+	/**
+	 * GitHub #37: removes an archive destination that was created empty by this
+	 * operation but never got written (the JS side failed before reaching
+	 * `exportArchive`, e.g. building the recipe threw).
+	 *
+	 * Always resolves — a provider that declines to delete is a normal answer,
+	 * not an exception, because the caller must be able to report "the empty
+	 * file is still there" honestly rather than claim a clean failure.
+	 */
+	@PluginMethod
+	fun discardArchiveDestination(call: PluginCall) {
+		val uri = call.getString("uri")
+		if (uri == null) {
+			call.reject("discardArchiveDestination requires {uri}", "IO_ERROR")
+			return
+		}
+		// Ownership comes from the probe NATIVE recorded, matched against the
+		// exact URI being discarded — the client-sent sizeBytesAtPick is
+		// deliberately ignored (see lastDestinationProbeUri).
+		val ownership = ArchiveDestination.ownershipForPick(
+			recordedUri = lastDestinationProbeUri,
+			recordedSize = lastDestinationProbeSize,
+			requestUri = uri,
+		)
+		val outcome = ArchiveDestination.cleanup(
+			uri = uri,
+			ownership = ownership,
+			ops = object : ArchiveDestination.DocumentOps {
+				override fun deleteDocument(target: String): Boolean =
+					android.provider.DocumentsContract.deleteDocument(context.contentResolver, android.net.Uri.parse(target))
+			},
+		)
 		val ret = JSObject()
-		ret.put("uri", uri.toString())
+		ret.put("deleted", outcome is ArchiveDestination.CleanupOutcome.Removed)
+		ret.put("outcome", outcomeLabel(outcome))
+		// Just the "what is left on disk" sentence: JS prefixes the original
+		// failure itself, so the wording lives in exactly one place.
+		ret.put("message", ArchiveDestination.cleanupSuffix(ownership, outcome))
 		call.resolve(ret)
+	}
+
+	private fun outcomeLabel(outcome: ArchiveDestination.CleanupOutcome): String = when (outcome) {
+		is ArchiveDestination.CleanupOutcome.Removed -> "removed"
+		is ArchiveDestination.CleanupOutcome.Refused -> "refused"
+		ArchiveDestination.CleanupOutcome.NotAttempted -> "not-attempted"
 	}
 
 	/** Native archive assembly: reads real media bytes from custody, hashes
@@ -799,6 +902,13 @@ class NativeBridgePlugin : Plugin() {
 			call.reject("Invalid media descriptors: ${e.message}", "IO_ERROR")
 			return
 		}
+		// GitHub #37 — ownership evidence is the native probe of THIS pick,
+		// matched to the destination URI. The client-echoed size is ignored.
+		val ownership = ArchiveDestination.ownershipForPick(
+			recordedUri = lastDestinationProbeUri,
+			recordedSize = lastDestinationProbeSize,
+			requestUri = destinationUri,
+		)
 		Thread {
 			try {
 				val manifest = BackupArchive.export(
@@ -807,6 +917,7 @@ class NativeBridgePlugin : Plugin() {
 					projectJson,
 					media,
 					appVersion,
+					destinationOwnership = ownership,
 				)
 				val ret = JSObject()
 				ret.put("manifestJson", manifest.toString())

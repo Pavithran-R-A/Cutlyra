@@ -259,14 +259,20 @@ interface NativeBridgePluginSpec {
 	// -- Project backup (GitHub #35) ------------------------------------
 	pickArchiveDestination(params: {
 		suggestedName: string;
-	}): Promise<{ uri: string }>;
+	}): Promise<{ uri: string; sizeBytesAtPick?: number; displayName?: string }>;
 	pickArchiveSource(): Promise<{ uri: string }>;
 	exportArchive(params: {
 		destinationUri: string;
+		sizeBytesAtPick: number;
 		projectJson: string;
 		media: BackupMediaDescriptor[];
 		appVersion: string;
 	}): Promise<{ manifestJson: string }>;
+	discardArchiveDestination(params: {
+		uri: string;
+		sizeBytesAtPick: number;
+		displayName?: string;
+	}): Promise<{ deleted: boolean; outcome: string; message: string }>;
 	importArchive(params: {
 		sourceUri: string;
 	}): Promise<{
@@ -768,10 +774,25 @@ export function createCapacitorBridge({
 			suggestedName,
 		}: {
 			suggestedName: string;
-		}): Promise<{ uri: string } | null> {
+		}): Promise<{
+			uri: string;
+			sizeBytesAtPick: number;
+			isNewlyCreated: boolean;
+			displayName?: string;
+		} | null> {
 			try {
-				const { uri } = await plugin.pickArchiveDestination({ suggestedName });
-				return uri ? { uri } : null;
+				const picked = await plugin.pickArchiveDestination({ suggestedName });
+				if (!picked?.uri) return null;
+				// Older native builds (or a provider that refused the size query)
+				// omit the size: -1 means "unknown", which by construction means
+				// "not provably ours" — cleanup will simply decline to delete.
+				const sizeBytesAtPick = picked.sizeBytesAtPick ?? -1;
+				return {
+					uri: picked.uri,
+					sizeBytesAtPick,
+					isNewlyCreated: sizeBytesAtPick === 0,
+					displayName: picked.displayName,
+				};
 			} catch (err) {
 				// A user backing out of the SAF picker is not an error — map it
 				// to the null the caller already treats as "cancelled".
@@ -792,11 +813,13 @@ export function createCapacitorBridge({
 
 		async exportArchive({
 			destinationUri,
+			sizeBytesAtPick,
 			projectJson,
 			media,
 			appVersion,
 		}: {
 			destinationUri: string;
+			sizeBytesAtPick: number;
 			projectJson: string;
 			media: BackupMediaDescriptor[];
 			appVersion: string;
@@ -804,6 +827,7 @@ export function createCapacitorBridge({
 			try {
 				return await plugin.exportArchive({
 					destinationUri,
+					sizeBytesAtPick,
 					projectJson,
 					media,
 					appVersion,
@@ -816,6 +840,40 @@ export function createCapacitorBridge({
 					});
 				}
 				throw toNativeBridgeError({ err, method: "exportArchive" });
+			}
+		},
+
+		/**
+		 * GitHub #37 — removes an empty destination this operation created but
+		 * never wrote to. Never throws: a provider refusing the delete answers
+		 * `deleted:false` so the caller can tell the user the file is still
+		 * there, instead of collapsing into an unrelated bridge error.
+		 */
+		async discardArchiveDestination({
+			uri,
+			sizeBytesAtPick,
+			displayName,
+		}: {
+			uri: string;
+			sizeBytesAtPick: number;
+			displayName?: string;
+		}): Promise<{ deleted: boolean; outcome: string; message: string }> {
+			try {
+				return await plugin.discardArchiveDestination({
+					uri,
+					sizeBytesAtPick,
+					displayName,
+				});
+			} catch (err) {
+				if (isCancel(err)) {
+					return { deleted: false, outcome: "refused", message: "Archive cleanup was cancelled" };
+				}
+				// Anything unexpected still must not read as a clean failure.
+				return {
+					deleted: false,
+					outcome: "refused",
+					message: `Archive cleanup failed: ${err instanceof Error ? err.message : String(err)}`,
+				};
 			}
 		},
 

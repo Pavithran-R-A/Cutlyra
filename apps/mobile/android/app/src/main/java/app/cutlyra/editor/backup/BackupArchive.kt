@@ -41,6 +41,13 @@ import java.util.zip.ZipOutputStream
  * `restore-staging/` dir and only moves files into `media/` after every hash
  * verifies. A crash mid-operation leaves at worst a temp/staging dir that the
  * next import cleans up — never a half-written archive the app would accept.
+ *
+ * The SAF document itself is created by the system picker BEFORE we write a
+ * single byte, so a failed export used to strand a 0-byte (or half-copied)
+ * `.cutlyra-backup` in the user's folder. GitHub #37: on failure the
+ * destination is deleted when [ArchiveDestination] can prove it was created
+ * empty by this operation's picker, and the thrown message states plainly
+ * whether that file was removed or is still there.
  */
 object BackupArchive {
 
@@ -82,6 +89,12 @@ object BackupArchive {
 	 * the authoritative manifest JSON (with the SHA-256 values computed here).
 	 * Throws [ArchiveException] with code `IO_ERROR` on any read/write failure
 	 * — the caller (NativeBridgePlugin) maps it to a Capacitor rejection.
+	 *
+	 * GitHub #37: [destinationOwnership] records whether the SAF document was
+	 * created empty by this operation's picker. On any failure the destination
+	 * is cleaned up when that ownership is proven (and only then), and the
+	 * thrown message says plainly whether the leftover file was removed or is
+	 * still sitting in the user's folder.
 	 */
 	fun export(
 		context: Context,
@@ -89,6 +102,7 @@ object BackupArchive {
 		projectJson: String,
 		media: List<MediaDescriptor>,
 		appVersion: String,
+		destinationOwnership: ArchiveDestination.Ownership = ArchiveDestination.Ownership.UNKNOWN,
 	): JSONObject {
 		val custodyRoot = context.noBackupFilesDir
 		val projectId = readProjectId(projectJson)
@@ -146,7 +160,8 @@ object BackupArchive {
 
 			// Copy the finished ZIP to the SAF destination. A failure here
 			// leaves the temp file (cleaned below) and never a partial SAF doc
-			// the app would later accept.
+			// the app would later accept — and because the SAF document itself
+			// was created empty by the picker, it is removed in the catch below.
 			tmpFile.inputStream().use { input ->
 				context.contentResolver.openOutputStream(destinationUri, "wt")?.use { out ->
 					copy(input, out)
@@ -154,9 +169,43 @@ object BackupArchive {
 			}
 
 			return manifest
+		} catch (e: ArchiveException) {
+			throw withDestinationCleanup(e, context, destinationUri, destinationOwnership)
+		} catch (e: Exception) {
+			val wrapped = ArchiveException("IO_ERROR", "Archive export failed", e)
+			throw withDestinationCleanup(wrapped, context, destinationUri, destinationOwnership)
 		} finally {
 			tmpFile.delete()
 		}
+	}
+
+	/**
+	 * Runs destination cleanup for a failed export and rewrites the message so
+	 * the caller learns what was left behind. Never converts a failure into a
+	 * success and never swallows the original cause or its error code.
+	 */
+	private fun withDestinationCleanup(
+		failure: ArchiveException,
+		context: Context,
+		destinationUri: Uri,
+		ownership: ArchiveDestination.Ownership,
+	): ArchiveException {
+		val outcome = ArchiveDestination.cleanup(
+			uri = destinationUri.toString(),
+			ownership = ownership,
+			ops = ContentResolverDocumentOps(context),
+		)
+		return ArchiveException(
+			failure.code,
+			ArchiveDestination.describeFailure(failure.message ?: "Archive export failed", ownership, outcome),
+			failure,
+		)
+	}
+
+	/** [ArchiveDestination.DocumentOps] over the real SAF provider. */
+	private class ContentResolverDocumentOps(private val context: Context) : ArchiveDestination.DocumentOps {
+		override fun deleteDocument(uri: String): Boolean =
+			android.provider.DocumentsContract.deleteDocument(context.contentResolver, android.net.Uri.parse(uri))
 	}
 
 	// ---------------------------------------------------------------------
