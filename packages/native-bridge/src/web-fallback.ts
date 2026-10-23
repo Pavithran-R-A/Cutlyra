@@ -273,5 +273,37 @@ export function createWebFallbackBridge(): NativeBridge {
 				supportsOnDeviceStt: false,
 			};
 		},
+
+		// -- Project backup (GitHub #35) ---------------------------------
+		// On web the archive is assembled in JS from OPFS bytes and saved via
+		// a browser download — there is no SAF and no native custody. These
+		// four native-only methods therefore report UNSUPPORTED; the web host
+		// bypasses them and drives the editor-core backup service directly.
+		async pickArchiveDestination(): Promise<never> {
+			throw new NativeBridgeError({
+				code: "UNSUPPORTED",
+				message:
+					"SAF document creation requires a native shell. The web build saves archives via a browser download (see the editor-core backup service).",
+			});
+		},
+		async pickArchiveSource(): Promise<never> {
+			throw new NativeBridgeError({
+				code: "UNSUPPORTED",
+				message:
+					"SAF document opening requires a native shell. The web build restores archives via a file input (see the editor-core backup service).",
+			});
+		},
+		async exportArchive(): Promise<never> {
+			throw new NativeBridgeError({
+				code: "UNSUPPORTED",
+				message: "Native archive assembly requires a native shell.",
+			});
+		},
+		async importArchive(): Promise<never> {
+			throw new NativeBridgeError({
+				code: "UNSUPPORTED",
+				message: "Native archive extraction requires a native shell.",
+			});
+		},
 	};
 }

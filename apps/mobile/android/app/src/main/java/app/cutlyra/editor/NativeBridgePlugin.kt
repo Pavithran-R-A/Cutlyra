@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.activity.result.ActivityResult
@@ -18,6 +19,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
+import app.cutlyra.editor.backup.BackupArchive
 import app.cutlyra.editor.edl.EdlParseException
 import app.cutlyra.editor.edl.EdlParser
 import app.cutlyra.editor.export.GalleryExportPublisher
@@ -685,6 +687,200 @@ class NativeBridgePlugin : Plugin() {
 				call.reject("transcribe failed: ${e.message}", "IO_ERROR", e)
 			}
 		}.start()
+	}
+
+	// -- Project backup (GitHub #35 / Linear PAV-51) -------------------------
+
+	/** The `PluginCall` waiting on the SAF create/open-document round trip.
+	 *  Capacitor re-delivers the ORIGINAL call to the `@ActivityCallback`,
+	 *  but the suggested name / pick mode live only in that original call's
+	 *  params — the field exists so at most ONE archive picker is in flight
+	 *  (mirrors `pendingCameraCapture`). */
+	private var pendingArchivePick: PluginCall? = null
+
+	/** True when the in-flight pick is a CREATE (export destination), false
+	 *  for an OPEN (import source) — used to take the right persistable grant
+	 *  flag in the shared result callback. Capacitor's `PluginCall` does not
+	 *  expose its own method name, so the mode is tracked here. */
+	private var pendingArchivePickIsDestination = false
+
+	/** SAF `ACTION_CREATE_DOCUMENT` for a NEW archive. Resolves with
+	 *  `{uri}` (a `content://` the caller passes straight to
+	 *  `exportArchive`) or rejects `USER_CANCELLED` when the user backs out —
+	 *  `capacitor-bridge.ts` turns that rejection into the `null` its
+	 *  "cancelled = not an error" contract expects. */
+	@PluginMethod
+	fun pickArchiveDestination(call: PluginCall) {
+		val suggestedName = call.getString("suggestedName") ?: "cutlyra-backup.cutlyra-backup"
+		if (pendingArchivePick != null) {
+			call.reject("An archive picker is already open", "IO_ERROR")
+			return
+		}
+		val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+			addCategory(Intent.CATEGORY_OPENABLE)
+			type = "application/octet-stream"
+			putExtra(Intent.EXTRA_TITLE, suggestedName)
+		}
+		pendingArchivePick = call
+		pendingArchivePickIsDestination = true
+		startActivityForResult(call, intent, "handleArchivePickResult")
+	}
+
+	/** SAF `ACTION_OPEN_DOCUMENT` for an EXISTING archive. Resolves with
+	 *  `{uri}` or rejects `USER_CANCELLED` (same contract as above). */
+	@PluginMethod
+	fun pickArchiveSource(call: PluginCall) {
+		if (pendingArchivePick != null) {
+			call.reject("An archive picker is already open", "IO_ERROR")
+			return
+		}
+		val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+			addCategory(Intent.CATEGORY_OPENABLE)
+			type = "*/*"
+			putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/zip"))
+		}
+		pendingArchivePick = call
+		pendingArchivePickIsDestination = false
+		startActivityForResult(call, intent, "handleArchivePickResult")
+	}
+
+	@ActivityCallback
+	private fun handleArchivePickResult(call: PluginCall, result: ActivityResult) {
+		val isDestination = pendingArchivePickIsDestination
+		pendingArchivePick = null
+		pendingArchivePickIsDestination = false
+		if (result.resultCode != Activity.RESULT_OK) {
+			call.reject("User cancelled archive selection", "USER_CANCELLED")
+			return
+		}
+		val uri = result.data?.data
+		if (uri == null) {
+			call.reject("No archive location selected", "USER_CANCELLED")
+			return
+		}
+		// Persist the grant so a multi-minute export isn't cut off by a
+		// transient read/write permission — SAF revokes non-persisted grants
+		// when the returning Activity finishes.
+		try {
+			context.contentResolver.takePersistableUriPermission(
+				uri,
+				if (isDestination) {
+					Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+				} else {
+					Intent.FLAG_GRANT_READ_URI_PERMISSION
+				},
+			)
+		} catch (_: SecurityException) {
+			// Some providers don't offer persistable grants; the ephemeral one
+			// is still valid for the immediate call below.
+		}
+		val ret = JSObject()
+		ret.put("uri", uri.toString())
+		call.resolve(ret)
+	}
+
+	/** Native archive assembly: reads real media bytes from custody, hashes
+	 *  them, streams a STORE ZIP to the SAF destination. Runs off the calling
+	 *  thread (disk I/O); resolves with `{manifestJson}` or rejects with
+	 *  `IO_ERROR`/`CORRUPT_ARCHIVE` (see `BackupArchive.ArchiveException`). */
+	@PluginMethod
+	fun exportArchive(call: PluginCall) {
+		val destinationUri = call.getString("destinationUri")
+		val projectJson = call.getString("projectJson")
+		val mediaArr = call.getArray("media")
+		val appVersion = call.getString("appVersion") ?: "0"
+		if (destinationUri == null || projectJson == null || mediaArr == null) {
+			call.reject("exportArchive requires {destinationUri, projectJson, media}", "IO_ERROR")
+			return
+		}
+		val media = try {
+			parseMediaDescriptors(mediaArr)
+		} catch (e: Exception) {
+			call.reject("Invalid media descriptors: ${e.message}", "IO_ERROR")
+			return
+		}
+		Thread {
+			try {
+				val manifest = BackupArchive.export(
+					context,
+					Uri.parse(destinationUri),
+					projectJson,
+					media,
+					appVersion,
+				)
+				val ret = JSObject()
+				ret.put("manifestJson", manifest.toString())
+				call.resolve(ret)
+			} catch (e: BackupArchive.ArchiveException) {
+				call.reject(e.message, e.code, e)
+			} catch (e: Exception) {
+				call.reject("Archive export failed: ${e.message}", "IO_ERROR", e)
+			}
+		}.start()
+	}
+
+	/** Native archive import: verifies EVERY entry's SHA-256, extracts media
+	 *  to fresh custody paths (staging → atomic move), resolves with the
+	 *  manifest + project JSON + fresh-path restore map. Nothing is committed
+	 *  on an integrity failure. */
+	@PluginMethod
+	fun importArchive(call: PluginCall) {
+		val sourceUri = call.getString("sourceUri")
+		if (sourceUri == null) {
+			call.reject("importArchive requires {sourceUri}", "IO_ERROR")
+			return
+		}
+		Thread {
+			try {
+				val result = BackupArchive.import(context, Uri.parse(sourceUri))
+				val ret = JSObject()
+				ret.put("manifestJson", result.manifest.toString())
+				ret.put("projectJson", result.projectJson)
+				val files = JSArray()
+				for (f in result.restoredFiles) {
+					val one = JSObject()
+					one.put("assetId", f.assetId)
+					one.put("role", f.role)
+					one.put("newPath", f.newPath)
+					one.put("sha256", f.sha256)
+					files.put(one)
+				}
+				ret.put("restoredFiles", files)
+				call.resolve(ret)
+			} catch (e: BackupArchive.ArchiveException) {
+				call.reject(e.message, e.code, e)
+			} catch (e: Exception) {
+				call.reject("Archive import failed: ${e.message}", "IO_ERROR", e)
+			}
+		}.start()
+	}
+
+	private fun parseMediaDescriptors(arr: JSArray): List<BackupArchive.MediaDescriptor> {
+		val out = mutableListOf<BackupArchive.MediaDescriptor>()
+		for (i in 0 until arr.length()) {
+			val o = arr.optJSONObject(i) ?: continue
+			out.add(
+				BackupArchive.MediaDescriptor(
+					assetId = o.getString("assetId"),
+					proxyPath = o.optString("proxyPath", "").takeIf { it.isNotEmpty() && it != "null" },
+					sourcePath = o.optString("sourcePath", "").takeIf { it.isNotEmpty() && it != "null" },
+					thumbnailPath = o.optString("thumbnailPath", "").takeIf { it.isNotEmpty() && it != "null" },
+					name = o.optString("name", ""),
+					type = o.optString("type", "video"),
+					sizeBytes = o.optLong("sizeBytes", 0L),
+					lastModified = o.optLong("lastModified", 0L),
+					width = if (o.has("width")) o.optInt("width") else null,
+					height = if (o.has("height")) o.optInt("height") else null,
+					duration = if (o.has("duration")) o.optDouble("duration") else null,
+					fps = if (o.has("fps")) o.optDouble("fps") else null,
+					hasAudio = if (o.has("hasAudio")) o.optBoolean("hasAudio") else null,
+					sourceRotationDegrees = if (o.has("sourceRotationDegrees")) o.optInt("sourceRotationDegrees") else null,
+					sourceWidth = if (o.has("sourceWidth")) o.optInt("sourceWidth") else null,
+					sourceHeight = if (o.has("sourceHeight")) o.optInt("sourceHeight") else null,
+				),
+			)
+		}
+		return out
 	}
 
 	// -- shared -----------------------------------------------------------
