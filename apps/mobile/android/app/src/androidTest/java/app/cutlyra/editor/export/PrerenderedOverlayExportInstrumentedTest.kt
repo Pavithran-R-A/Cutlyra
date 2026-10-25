@@ -258,14 +258,22 @@ class PrerenderedOverlayExportInstrumentedTest {
         )
         val output = runExport(buildEdl(fps = 30L, transitionTicks = 0), frames)
         try {
-            // Page-1 window [0, 0.5s): first, middle, and last in-window frame.
+            // Page-1 window [0, 0.5s): first, middle, and late in-window
+            // frame. NOTE on sample choice: getFrameAtTime(OPTION_CLOSEST)
+            // snaps to the NEAREST encoded frame, so a query only ~10ms
+            // before the window edge (e.g. 490000us) lands on the frame AT
+            // 500000us — correctly outside this half-open window. 450000us
+            // resolves to 466667us (30fps) / 458333us (24fps) / 450000us
+            // (60fps), all strictly inside the window at every tested grid.
             assertOverlayPresent(output, 0L)
             assertOverlayPresent(output, 250_000L)
-            assertOverlayPresent(output, 490_000L)
+            assertOverlayPresent(output, 450_000L)
             // Page-2 window [0.5s, 1.5s): boundary-inclusive at 0.5s.
             assertOverlayPresent(output, 500_000L)
             assertOverlayPresent(output, 1_000_000L)
-            assertOverlayPresent(output, 1_490_000L)
+            // 1450000us resolves to the 1466667us frame — the last frame
+            // inside [0.5, 1.5) on the 30fps grid.
+            assertOverlayPresent(output, 1_450_000L)
             // Outside both windows (the pre-fix symptom was the INVERSE:
             // glyphs only at ~2.56s-ish samples, never over these).
             assertOverlayAbsent(output, 1_600_000L)
@@ -322,7 +330,9 @@ class PrerenderedOverlayExportInstrumentedTest {
             val output = runExport(buildEdl(fps = fps, transitionTicks = 0), frames)
             try {
                 assertOverlayPresent(output, 0L)
-                assertOverlayPresent(output, 490_000L)
+                // Resolves to 458333us (24fps, the last in-window frame) /
+                // 450000us (60fps) — never the 500000us edge frame.
+                assertOverlayPresent(output, 450_000L)
                 // Straddles the 0.5s window edge at every grid >= 12 fps.
                 assertOverlayAbsent(output, 510_000L)
                 assertOverlayAbsent(output, 900_000L)
