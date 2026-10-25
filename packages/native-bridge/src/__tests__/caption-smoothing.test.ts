@@ -34,21 +34,27 @@ function tok(partial: Partial<RawWordTiming> & { text: string }): RawWordTiming 
 	};
 }
 
-describe("smoothWordTimings — synthetic rule coverage", () => {
-	test("rule: monotonically enforce ordering — an overlapping/regressing DTW start is pulled forward", () => {
+describe("smoothWordTimings — synthetic rule coverage", () => {	test("rule: monotonically enforce ordering — an overlapping/regressing start is pulled forward", () => {
 		const { words, stats } = smoothWordTimings({
 			segmentStartMicros: 0,
 			segmentEndMicros: 2_000_000,
 			tokens: [
-				tok({ text: "one", coarseStartMicros: 0, coarseEndMicros: 300_000, dtwStartMicros: 0 }),
-				// DTW claims this word starts BEFORE "one" even ends — a
+				// DTW-null producer (iOS speech engines, or whisper with DTW
+				// disabled): the regressing start comes from the COARSE
+				// timestamps themselves. A regressing DTW start can no longer
+				// reach this pass at all — it would sit outside its own coarse
+				// envelope and be rejected upstream — so stage 2's pull is
+				// pinned with the only input that can still produce it.
+				tok({ text: "one", coarseStartMicros: 0, coarseEndMicros: 300_000, dtwStartMicros: null }),
+				// Coarse claims this word starts BEFORE "one" ends — a
 				// regression the ordering pass must fix.
-				tok({ text: "two", coarseStartMicros: 300_000, coarseEndMicros: 600_000, dtwStartMicros: 100_000 }),
+				tok({ text: "two", coarseStartMicros: 200_000, coarseEndMicros: 600_000, dtwStartMicros: null }),
 			],
 		});
 		expect(words[0].startMicros).toBeLessThanOrEqual(words[0].endMicros);
 		expect(words[1].startMicros).toBeGreaterThanOrEqual(words[0].endMicros);
 		expect(stats.monotonicityFixed).toBe(1);
+		expect(stats.dtwRejectedOutsideCoarseEnvelope).toBe(0);
 	});
 
 	test("rule: clamp implausible gaps — a multi-second inter-word gap is compressed to the ceiling", () => {
@@ -169,6 +175,30 @@ describe("smoothWordTimings — synthetic rule coverage", () => {
 		});
 		expect(words[0].startMicros).toBe(1_100_000);
 		expect(stats.dtwRejectedOutOfSegment).toBe(1);
+	});
+
+	test("rule: a DTW start outside the token's own coarse [t0, t1] envelope is rejected in favor of the coarse start", () => {
+		const { words, stats } = smoothWordTimings({
+			segmentStartMicros: 0,
+			segmentEndMicros: 3_000_000,
+			tokens: [
+				tok({ text: " one", coarseStartMicros: 0, coarseEndMicros: 500_000, dtwStartMicros: 0 }),
+				// Inside the SEGMENT but ~1.8s past this token's own coarse
+				// end — the Stage 12 collapse shape (GitHub #39: every token
+				// of a hallucinated segment sharing one late DTW instant),
+				// which without the per-token gate shrank a caption page from
+				// 2.58s to 80ms.
+				tok({
+					text: " two",
+					coarseStartMicros: 500_000,
+					coarseEndMicros: 1_000_000,
+					dtwStartMicros: 2_800_000,
+				}),
+			],
+		});
+		expect(words[1].startMicros).toBe(500_000);
+		expect(stats.dtwRejectedOutsideCoarseEnvelope).toBe(1);
+		expect(stats.dtwRejectedOutOfSegment).toBe(0);
 	});
 
 	test("output is always non-decreasing and every word has at least MIN_WORD_DURATION_MICROS, across an adversarial mixed batch", () => {

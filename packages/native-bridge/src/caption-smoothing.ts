@@ -88,9 +88,20 @@ export interface SmoothingStats {
 	 *  word-boundary signal whisper gives. */
 	subwordMerged: number;
 	/** Raw DTW starts rejected because they fell outside the segment
-	 * envelope (segment-bounds is the outermost sanity check, applied
-	 * before the ordering pass even runs). */
+	 *  envelope (segment-bounds is the outermost sanity check, applied
+	 *  before the ordering pass even runs). */
 	dtwRejectedOutOfSegment: number;
+	/** Raw DTW starts rejected because they fell outside the TOKEN's own
+	 *  coarse [t0, t1] envelope — the module header's own trust contract
+	 *  ("dtw refines the start within that envelope … discarded in favor of
+	 *  the coarse value otherwise"). Caught live on the POCO/emulator
+	 *  Stage 12 autotest (GitHub #39): whisper's DTW collapsed every token
+	 *  of a hallucinated segment onto ONE instant (2.56 s, i.e.
+	 *  segmentEnd − one 20 ms DTW step), which shrank each generated caption
+	 *  page from its full ~2.58 s authored span to an 80 ms window — glyphs
+	 *  on only encoded frames 77–79 and the second page entirely past the
+	 *  export's end. */
+	dtwRejectedOutsideCoarseEnvelope: number;
 	/** Words whose start had to be pulled forward to preserve non-decreasing
 	 * order against the previous word's end. */
 	monotonicityFixed: number;
@@ -167,6 +178,7 @@ export function smoothWordTimings({
 		punctuationMerged: 0,
 		subwordMerged: 0,
 		dtwRejectedOutOfSegment: 0,
+		dtwRejectedOutsideCoarseEnvelope: 0,
 		monotonicityFixed: 0,
 		gapsClamped: 0,
 		outliersInterpolated: 0,
@@ -187,8 +199,21 @@ export function smoothWordTimings({
 	// to reference a time outside [segmentStartMicros, segmentEndMicros].
 	const resolved = nonEmpty.map((t) => {
 		let start = t.dtwStartMicros ?? t.coarseStartMicros;
+		// Trust contract (EXPERIMENT): dtw refines the start only inside the
+		// token's own coarse envelope AND the segment envelope.
+		const dtwOutsideOwnEnvelope =
+			t.dtwStartMicros !== null &&
+			(t.dtwStartMicros < t.coarseStartMicros ||
+				t.dtwStartMicros > t.coarseEndMicros);
 		if (start < segmentStartMicros || start > segmentEndMicros) {
 			if (t.dtwStartMicros !== null) stats.dtwRejectedOutOfSegment++;
+			start = clamp({
+				value: t.coarseStartMicros,
+				min: segmentStartMicros,
+				max: segmentEndMicros,
+			});
+		} else if (dtwOutsideOwnEnvelope) {
+			stats.dtwRejectedOutsideCoarseEnvelope++;
 			start = clamp({
 				value: t.coarseStartMicros,
 				min: segmentStartMicros,
