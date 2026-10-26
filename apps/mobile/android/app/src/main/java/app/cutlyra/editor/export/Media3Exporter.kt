@@ -88,12 +88,24 @@ object Media3Exporter {
             }
             try {
                 val composition = EdlToComposition.buildComposition(edl, overlayFrames)
+                // GitHub #40 / PAV-104: one bounded line describing exactly
+                // WHAT was requested, so a codec failure's private log tells
+                // the developer the size/profile/fps/bitrate that was asked
+                // for — separate from whatever raw codec diagnostic the
+                // exception chain carries (the sheet translates BOTH for the
+                // customer; see mobile-ui editor/export-errors.ts).
+                val outputParams =
+                    "${edl.output.resolutionWidth}x${edl.output.resolutionHeight}" +
+                        "@${edl.output.fps.numerator}/${edl.output.fps.denominator}fps" +
+                        " br=${edl.output.bitrate} codec=${edl.output.videoCodec}" +
+                        " container=${edl.output.container}"
                 runExport(
                     context = context,
                     composition = composition,
                     outputFile = outputFile,
                     mainHandler = mainHandler,
                     useSoftwareEncoder = false,
+                    outputParams = outputParams,
                     onEvent = onEvent,
                 )
             } catch (e: ExportUnsupportedException) {
@@ -128,6 +140,10 @@ object Media3Exporter {
         outputFile: File,
         mainHandler: Handler,
         useSoftwareEncoder: Boolean,
+        /** Requested output geometry/quality (GitHub #40) — logged on every
+         *  failure path so the private log answers "what did we ask for?"
+         *  without the customer ever seeing it. */
+        outputParams: String,
         onEvent: (Event) -> Unit,
     ) {
         val encoderFactoryBuilder = DefaultEncoderFactory.Builder(context)
@@ -193,6 +209,7 @@ object Media3Exporter {
                     android.util.Log.e(
                         "cutlyra-export",
                         "export failed (softwareEncoder=$useSoftwareEncoder) " +
+                            "requested=$outputParams " +
                             "errorCode=${exportException.errorCode} " +
                             "message=${exportException.message} " +
                             "cause=${exportException.cause}",
@@ -211,6 +228,7 @@ object Media3Exporter {
                             outputFile = outputFile,
                             mainHandler = mainHandler,
                             useSoftwareEncoder = true,
+                            outputParams = outputParams,
                             onEvent = onEvent,
                         )
                     } else {

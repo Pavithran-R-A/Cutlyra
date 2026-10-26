@@ -15,6 +15,7 @@ import {
 } from "@cutlyra/editor-core/export/overlay-frames";
 import {
 	buildNativeEdlAssetResolver, setProjectFps, setProjectResolution, toEdlMediaAssets } from "../../editor/actions";
+import { exportErrorMessage } from "../../editor/export-errors";
 import {
 	describeFrameRateCapability,
 	FPS_OPTIONS,
@@ -83,11 +84,11 @@ function isExportQuality(value: string): value is ExportQuality {
 
 type ExportRunState = "idle" | "exporting" | "done" | "error";
 
-function exportErrorMessage(value: unknown): string {
-	if (typeof value === "string" && value.trim().length > 0) return value.trim();
-	if (value instanceof Error && value.message.trim().length > 0) return value.message.trim();
-	return "The native exporter failed without a diagnostic. Check Cutlyra logs for details.";
-}
+// The consumer-facing failure copy now lives in ../../editor/export-errors
+// (GitHub #40 / PAV-104): codec/encoder diagnostics from native are
+// translated into an accurate, actionable sentence — with the user's chosen
+// resolution as context — instead of leaking raw MediaCodec strings into
+// the dialog. Imported, not re-declared.
 
 /**
  * M8 Export sheet — task scope: "resolution/fps/quality." Resolution and
@@ -312,7 +313,7 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 			edl = buildCurrentEdl();
 		} catch (error) {
 			setRunState("error");
-			setExportError(exportErrorMessage(error));
+			setExportError(exportErrorMessage({ value: error }));
 			return;
 		}
 
@@ -348,7 +349,15 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 				setProgress({ stage: event.stage, fraction: event.fraction });
 				if (event.stage === "error") {
 					setRunState("error");
-					setExportError(exportErrorMessage(event.error));
+					setExportError(
+						exportErrorMessage({
+							value: event.error,
+							resolution: {
+								width: edl.output.resolution.width,
+								height: edl.output.resolution.height,
+							},
+						}),
+					);
 					break;
 				}
 				if (event.stage === "done") {
@@ -366,7 +375,15 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 			// (see captions-actions.ts), surfaced here as plain sheet text
 			// rather than an uncaught rejection.
 			setRunState("error");
-			setExportError(error instanceof Error ? error.message : String(error));
+			setExportError(
+				exportErrorMessage({
+					value: error,
+					resolution: {
+						width: edl.output.resolution.width,
+						height: edl.output.resolution.height,
+					},
+				}),
+			);
 		} finally {
 			activeExportRef.current = null;
 		}
