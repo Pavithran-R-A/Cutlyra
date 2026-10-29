@@ -103,3 +103,47 @@ jobs:
       - name: "invariants.sh: build, typecheck, lint, unit tests, offline audit, bridge-import gate, mouse-event gate"
         shell: bash
         run: bash scripts/invariants.sh
+
+      - name: Verify hosted privacy policy matches committed source
+        # Play Console publishes one absolute URL, and that URL must always
+        # serve byte-for-byte the policy committed in this repository — a
+        # stale or half-synced deployment would put an inaccurate privacy
+        # claim in front of users and reviewers.
+        #
+        # Two independent checks:
+        #
+        #   1. the in-repo hosting bundle's copy must equal the source of
+        #      truth under apps/web, so an edit to the policy cannot be
+        #      deployed with only one of the two copies updated;
+        #   2. the live production URL must serve those same bytes, so a
+        #      drifted or out-of-date deployment fails the build.
+        #
+        # Linux only, because it is the reference runner for this check.
+        # The network call lives here and NOT in scripts/invariants.sh on
+        # purpose: invariants must keep working on a fully offline machine.
+        # No monitoring service and no secret is involved.
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="apps/web/public/privacy-policy.html"
+          BUNDLE="hosting/privacy-policy/public/privacy-policy.html"
+          URL="https://site-dcfc842ddace4944a7faea3dcc59ff84.freebuff.page/privacy-policy"
+
+          # Normalise CRLF so the comparison holds on every checkout flavour
+          # (git's autocrlf can leave one copy CRLF and the other LF).
+          want="$(tr -d '\r' < "$SRC" | sha256sum | awk '{print $1}')"
+          copy="$(tr -d '\r' < "$BUNDLE" | sha256sum | awk '{print $1}')"
+          if [ "$copy" != "$want" ]; then
+            echo "::error::hosting bundle copy drifts from the committed policy ($copy != $want). Re-copy $SRC into $BUNDLE."
+            exit 1
+          fi
+          echo "privacy policy bundle copy OK  sha256=$want"
+
+          live="$(curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors "$URL" | tr -d '\r' | sha256sum | awk '{print $1}')"
+          if [ "$live" != "$want" ]; then
+            echo "::error::hosted privacy policy differs from committed source ($live != $want). Redeploy the Cutlyra privacy-policy site from $BUNDLE."
+            exit 1
+          fi
+          echo "privacy policy host OK  sha256=$live"
+          echo "url=$URL"
