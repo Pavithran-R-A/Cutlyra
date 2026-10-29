@@ -13,9 +13,11 @@ boundary. Nothing here claims more than was actually built and run.
 | compileSdk | **36** (Android 16) |
 
 - **Installable / config-supported baseline: Android 10 (API 29) and newer**,
-  subject to device hardware, ABI, and runtime compatibility (e.g. a
-  camera-less device cannot exercise camera capture; the manifest declares
-  camera/microphone as `required="false"`, so such devices can still install).
+  subject to device hardware, ABI, and runtime compatibility (v0.1.0 has no
+  in-app camera capture, so no camera hardware is required; the manifest
+  declares `android.hardware.camera` as `required="false"` and does not
+  request any runtime dangerous permission, so camera-less devices install
+  normally).
 - targetSdk 36 is a **Play submission property of the build**, not a maximum
   supported Android version.
 - **Runtime emulator actually tested: API 37 / Android 17** (Pixel_10 AVD,

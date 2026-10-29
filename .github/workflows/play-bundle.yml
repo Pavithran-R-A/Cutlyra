@@ -71,6 +71,25 @@ jobs:
             exit 1
           fi
           echo "$PLAY_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/play-upload.keystore"
+      - name: Require release version identity
+        # Non-secret guard: the Play listing, release notes and this build
+        # must agree on what is being shipped. Bumping the app for a new
+        # Play upload means bumping versionCode here first — Play rejects an
+        # upload whose versionCode is not higher than every prior one.
+        run: |
+          set -euo pipefail
+          F=apps/mobile/android/app/build.gradle
+          grep -qE '^\s*versionCode\s+1\s*$' "$F" || {
+            echo "::error::versionCode in build.gradle is no longer 1; update this gate and docs/PLAY_STORE_LISTING.md together." >&2
+            grep -nE 'versionCode|versionName' "$F" >&2
+            exit 1
+          }
+          grep -qE '^\s*versionName\s+"0\.1\.0"\s*$' "$F" || {
+            echo "::error::versionName in build.gradle is no longer \"0.1.0\"; update this gate and docs/PLAY_STORE_LISTING.md together." >&2
+            grep -nE 'versionCode|versionName' "$F" >&2
+            exit 1
+          }
+          echo "Release identity OK: versionCode 1 / versionName 0.1.0"
       - name: Build signed AAB
         env:
           CUTLYRA_RELEASE_KEYSTORE: ${{ runner.temp }}/play-upload.keystore
@@ -85,7 +104,42 @@ jobs:
           AAB="app/build/outputs/bundle/release/app-release.aab"
           test -s "$AAB"
           unzip -t "$AAB" >/dev/null
-          jarsigner -verify "$AAB" >/dev/null
+          # `jarsigner -verify` exits 0 even for an UNSIGNED archive (it only
+          # prints "jar is unsigned."), so a bare verify is not a signature gate.
+          # Require both an actual JAR signature block and a verify output that
+          # does not report the bundle as unsigned. `-strict` alone is not used as
+          # the pass/fail signal because a self-signed upload-key certificate
+          # legitimately returns 4 ("jar verified, with signer errors").
+          unzip -l "$AAB" | grep -qE 'META-INF/[^ ]+\.(RSA|DSA|EC)' || {
+            echo "::error::AAB carries no JAR signature block." >&2
+            exit 1
+          }
+          set +e
+          jarsigner -verify -strict "$AAB" > "$RUNNER_TEMP/jarsigner-verify.txt" 2>&1
+          JSRC=$?
+          set -e
+          cat "$RUNNER_TEMP/jarsigner-verify.txt"
+          if grep -qi 'jar is unsigned' "$RUNNER_TEMP/jarsigner-verify.txt"; then
+            echo "::error::AAB is not signed." >&2
+            exit 1
+          fi
+          if [ "$JSRC" -ne 0 ] && [ "$JSRC" -ne 4 ]; then
+            echo "::error::jarsigner -verify failed (exit $JSRC)." >&2
+            exit 1
+          fi
+          # Never let a Play upload carry the platform's debug certificate.
+          # A plain -verify only reports "jar verified", so a second verbose
+          # pass is written straight to a temp file and only grepped: the
+          # verbose output (which names the signer) is never echoed into the
+          # job log, and the single debug DN we look for is not a secret.
+          set +e
+          jarsigner -verify -strict -verbose "$AAB" > "$RUNNER_TEMP/jarsigner-signers.txt" 2>&1
+          set -e
+          if grep -q 'CN=Android Debug' "$RUNNER_TEMP/jarsigner-signers.txt"; then
+            echo "::error::AAB is signed with the Android debug key, not the Play upload key." >&2
+            exit 1
+          fi
+          echo "Play AAB signature OK (signed, not debug-cert)."
           READELF="$ANDROID_SDK_ROOT/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
           test -x "$READELF"
           rm -rf "$RUNNER_TEMP/cutlyra-elf-aab"
