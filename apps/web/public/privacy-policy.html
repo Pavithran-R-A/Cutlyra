@@ -33,7 +33,8 @@
 
   <h2>Data Cutlyra accesses</h2>
   <p>When you choose media, Cutlyra accesses only the photos, videos, or audio files you select through Android system pickers. Selected media is copied into Cutlyra's app-private storage so editing, previews, captions, and export can work locally.</p>
-  <p>The Android v0.1.0 app has no in-app camera capture and does not request camera permission at runtime; media import uses the system photo picker and file chooser only. It does not request broad photo/video library permissions, microphone permission, location, contacts, SMS, call-log, or phone permissions.</p>
+  <p>The Android v0.1.0 interface offers no camera capture, so no screen in the app lets you record photo or video with a camera. Cutlyra's manifest does declare the Android CAMERA permission, because the release carries a camera-capture code path that the v0.1.0 interface does not expose. Because that path is never used, Cutlyra never requests CAMERA at runtime, Android never shows a camera permission prompt, and no camera data is collected.</p>
+  <p>Media import uses only the system photo picker and the system file chooser. Cutlyra does not request broad photo/video library permissions, microphone permission, location, contacts, SMS, call-log, or phone permissions.</p>
 
   <h2>Collection, use, and sharing</h2>
   <p>Cutlyra does not transmit your projects, imported media, captions, usage activity, advertising identifiers, contacts, or location to Cutlyra servers. Cutlyra does not sell user data and does not share user data for advertising or analytics.</p>
@@ -56,7 +57,7 @@
   <p>This policy may be updated when Cutlyra's data practices or features change. The date at the top identifies the current revision.</p>
 
   <h2>Privacy inquiries</h2>
-  <p>Cutlyra is the app covered by this policy. Privacy inquiries must be sent to the verified developer/support email published on Cutlyra's official Google Play listing. The publisher must keep that contact active and accessible wherever this policy is deployed.</p>
+  <p>Cutlyra is the app covered by this policy. Contact Cutlyra at the verified developer/support email published on Cutlyra's official Google Play listing, or through the support contact shown with that listing. That address is the contact for this policy and is kept active wherever this policy is published.</p>
 </main>
 </body>
 </html>

@@ -102,6 +102,10 @@ the app's *correct actionable error*: that fixture's audio is a sine wave
 - Flags: `DEBUGGABLE` (expected for debug build), no `ALLOW_CLEAR_UID` oddities.
 - Permissions: `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_LOCAL_NETWORK`,
   `CAMERA`, `RECORD_AUDIO`, `WAKE_LOCK` — no location/contacts/telephony.
+  *(Observed permission set of the 2026-09-23 debug artifact above. The
+  merged manifest at `aee28b7` declares only `INTERNET` plus the
+  never-runtime-requested `CAMERA`; it does not declare `RECORD_AUDIO`, and
+  v0.1.0 has no in-app camera capture — see `PLAY_STORE_RELEASE.md`.)*
 - No cleartext config surprises, no analytics/telemetry calls observed in logcat;
   transcription and export ran fully offline (zero network during runs).
 

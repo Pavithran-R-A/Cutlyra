@@ -136,6 +136,52 @@ def make_splash(size: int, dark: bool) -> Image.Image:
     return canvas
 
 
+def make_feature_graphic() -> Image.Image:
+    """Google Play feature graphic: exactly 1024x500, 24-bit RGB, no alpha.
+
+    Composed from the canonical `icon-only.png` this same script writes (which
+    is rendered from cutlyra-mark.svg), so the mark is pixel-identical to the
+    store icon and the graphic needs no second SVG rasterizer. Both share the
+    TILE navy, so the mark square composites seamlessly. Lockup is mark +
+    CUTLYRA wordmark only — no tagline, claim, or inherited OpenCut art.
+    """
+    w, h = 1024, 500
+    margin = 48
+    gap = 56
+    canvas = Image.new("RGB", (w, h), TILE[:3])
+    d = ImageDraw.Draw(canvas)
+
+    # Tight square that exactly contains the mark inside icon-only.png
+    # (make_icon places it at 64% of the side, centered).
+    src = Image.open(os.path.join(BRAND, "icon-only.png")).convert("RGB")
+    inner = int(src.width * 0.64)
+    off = (src.width - inner) // 2
+    mark = src.crop((off, off, off + inner, off + inner))
+
+    mark_side = 320  # fits the 500px height with generous margin
+    m = mark.resize((mark_side, mark_side), Image.LANCZOS)
+
+    text = "CUTLYRA"
+    font_path = find_font()
+    room = w - 2 * margin - mark_side - gap
+    font_size = 120
+    font = ImageFont.truetype(font_path, font_size)
+    while font_size > 48 and d.textlength(text, font=font) > room:
+        font_size -= 2
+        font = ImageFont.truetype(font_path, font_size)
+    tw = d.textlength(text, font=font)
+
+    group = mark_side + gap + tw
+    x0 = (w - group) / 2
+    canvas.paste(m, (round(x0), (h - mark_side) // 2))
+
+    # Center the glyphs themselves, not the font's ascent box.
+    box = font.getbbox(text)
+    ty = (h - (box[3] - box[1])) / 2 - box[1]
+    d.text((x0 + mark_side + gap, ty), text, font=font, fill=WHITE[:3])
+    return canvas
+
+
 def write(img: Image.Image, path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img.save(path)
@@ -152,6 +198,7 @@ def main() -> None:
     write(make_background(1024), os.path.join(BRAND, "icon-background.png"))
     write(make_splash(2732, dark=False), os.path.join(BRAND, "splash.png"))
     write(make_splash(2732, dark=True), os.path.join(BRAND, "splash-dark.png"))
+    write(make_feature_graphic(), os.path.join(BRAND, "feature-graphic-1024x500.png"))
 
     # Android launcher rasters (pre-26 fallback; adaptive uses vectors below).
     for dpi, px in (("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)):

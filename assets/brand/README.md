@@ -25,6 +25,7 @@ Outputs:
 | `icon-background.png` | 1024 adaptive background layer (flat navy) |
 | `splash.png` | 2732 square, mark + CUTLYRA wordmark (canonical splash) |
 | `splash-dark.png` | 2732 square, same on pure black (OLED variant) |
+| `feature-graphic-1024x500.png` | Google Play feature graphic, exactly 1024×500, 24-bit RGB, no alpha — navy field, mark + CUTLYRA wordmark only |
 
 The script also writes platform rasters directly into their res trees:
 
