@@ -41,7 +41,7 @@ export default function PrivacyPage() {
 				<p>Use the verified developer/support email published in Cutlyra&apos;s Google Play listing for privacy inquiries, or the support contact shown with that listing.</p>
 			</section>
 			<Separator />
-			<p className="text-muted-foreground text-sm">Last updated: October 4, 2026</p>
+			<p className="text-muted-foreground text-sm">Last updated: October 29, 2026</p>
 		</BasePage>
 	);
 }
