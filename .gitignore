@@ -32,3 +32,51 @@ rust-migration-notes.md
 # the real copies are GitHub Release assets.
 release-artifacts/
 .gstack/
+
+# ---------------------------------------------------------------------------
+# Signing material. Nothing below may ever enter this repository — the real
+# copies live only in GitHub Actions secrets and the owner's offline backup
+# (see docs/PLAY_STORE_RELEASE.md). Blocking them here means a stray
+# `git add -A` cannot leak an upload key, its password file, or a certificate.
+# Verified 2026-10-29: no file matching these patterns is tracked today.
+# ---------------------------------------------------------------------------
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.der
+*.pem
+keystore.properties
+*.keystore.properties
+*.key
+*.asc
+
+# ---------------------------------------------------------------------------
+# Release binaries and local build output. Play artifacts are produced and
+# hashed by .github/workflows/play-bundle.yml in CI; local copies — including
+# the QA-signed APKs and the exploded `signed-*/` trees left by device QA —
+# are evidence, not source, and are already preserved on disk.
+# ---------------------------------------------------------------------------
+*.apk
+*.aab
+signed-apk/
+signed-final/
+
+# Android UI hierarchy dumps from QA runs (misleading `pk.xml` name — it is
+# a uiautomator dump, not key material).
+pk.xml
+
+# QA screenshots dropped into the web public dir. `public/` is copied verbatim
+# into every build, so these would be published alongside the site. They are
+# evidence and stay on disk; they must never ship.
+apps/web/public/qa-*.png
+
+# ---------------------------------------------------------------------------
+# Parked, never-merged workstreams. `preserved/posthog-workstream/` holds an
+# in-progress PostHog analytics integration that contradicts Cutlyra's
+# verified "no analytics / no telemetry" claims. Keeping it ignored makes it
+# impossible to commit by accident; see its README for hashes and restore
+# steps. Release code must never gain analytics without rewriting the
+# privacy policy, Data Safety declaration and Play listing in the same change.
+# ---------------------------------------------------------------------------
+preserved/
