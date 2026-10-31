@@ -1,4 +1,9 @@
 import type { EffectDefinition } from "@/effects/types";
+import {
+	colorGradeFromFilter,
+	colorGradeUniforms,
+	isNeutralColorGrade,
+} from "@/effects/color-grade";
 
 /**
  * M8 "Filters" panel — corpus `04` §3.7: "categorized [filters], plus...
@@ -13,10 +18,11 @@ import type { EffectDefinition } from "@/effects/types";
  * mobile cannot import custom LUTs," so there is no LUT-import surface to
  * replicate. Zero-cost/local-first: no remote filter packs, no CDN.
  *
- * Same honest scope note as `adjust.ts`: real, persisted, undoable effect
- * state; no Rust WGSL pass exists for any of these presets yet, so
- * `buildPasses` returns `[]` and the preview does not visibly change. UI
- * wiring is fully real; GPU rendering is out of scope for M8.
+ * GitHub #48: presets are no longer a no-op. Each preset is authored as a
+ * `ColorGrade` in `effects/color-grade.ts` (affine adjustments only, so the
+ * same numbers reach Android's native exporter), scaled by `intensity`, and
+ * resolved through the SAME `color-adjust` shader pass the Adjust panel uses.
+ * The panel therefore changes pixels in preview AND in export.
  */
 export const FILTER_EFFECT_TYPE = "filter";
 
@@ -54,6 +60,10 @@ export const filterEffectDefinition: EffectDefinition = {
 	],
 	renderer: {
 		passes: [],
-		buildPasses: () => [],
+		buildPasses: ({ effectParams }) => {
+			const grade = colorGradeFromFilter(effectParams);
+			if (isNeutralColorGrade(grade)) return [];
+			return [{ shader: "color-adjust", uniforms: colorGradeUniforms(grade) }];
+		},
 	},
 };
