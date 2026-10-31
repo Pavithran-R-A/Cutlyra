@@ -51,11 +51,13 @@ import app.cutlyra.editor.edl.EdlTrackType
  * WHAT THIS CLASS DELIBERATELY REFUSES (throws `ExportUnsupportedException`
  * rather than silently degrading — plan §2.3 rule 3's "cut, don't ship
  * inconsistent"): masks, keyframes on anything but `transform.*`/`opacity`
- * (round 47 made those real — `KeyframeEvaluator`), and any non-empty
- * `EdlClip.effects` (generic filter mapping is out of scope for this pass —
- * see the M9 handoff). An asset with `sourceUri == null` is also a hard
- * error: it means M4's media-custody import never ran for that asset, which
- * is a producer bug the exporter should surface immediately, not paper over.
+ * (round 47 made those real — `KeyframeEvaluator`), effect types native
+ * export does not implement, and adjust/filter effects carrying `sharpen` or
+ * `vignette` (GitHub #48 — see `ColorGrade`, which maps the affine subset and
+ * names the params it cannot express). An asset with `sourceUri == null` is
+ * also a hard error: it means M4's media-custody import never ran for that
+ * asset, which is a producer bug the exporter should surface immediately, not
+ * paper over.
  */
 object EdlToComposition {
     fun buildComposition(
@@ -580,12 +582,13 @@ object EdlToComposition {
                     "supports keyframes on transform.* and opacity only (round 47)",
             )
         }
-        if (clip.effects.isNotEmpty()) {
-            throw ExportUnsupportedException(
-                "clip ${clip.clipId} has ${clip.effects.size} filter effect(s); generic filter mapping is not " +
-                    "implemented in this M9 pass (see handoff)",
-            )
-        }
+        // GitHub #48 / PAV-142: effects are MAPPED, not refused. This used
+        // to throw for any non-empty `clip.effects`, which made every export
+        // of a project with a single Adjust slider change fail (the Adjust and
+        // Filters panels write exactly these effects). `combinedMatrixFor`
+        // still throws for effect types or params it cannot express, so an
+        // unsupported edit fails loudly instead of vanishing from the file.
+        val colorGradeMatrix = ColorGrade.combinedMatrixFor(clip)
 
         val sourceUri = requireNotNull(asset.sourceUri) // requireAsset() already guaranteed non-null.
         val isImage = clip.kind == "image" || asset.kind == EdlAssetKind.IMAGE
@@ -624,6 +627,9 @@ object EdlToComposition {
             } else if (clip.opacity != 1.0) {
                 videoEffects.add(AlphaScale(clip.opacity.toFloat()))
             }
+        }
+        if (colorGradeMatrix != null) {
+            videoEffects.add(ColorGradeMatrixEffect(colorGradeMatrix))
         }
 
         // Normalize every visual item to the export resolution HERE, per
