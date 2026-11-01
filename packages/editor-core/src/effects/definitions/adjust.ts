@@ -1,4 +1,9 @@
 import type { EffectDefinition } from "@/effects/types";
+import {
+	colorGradeFromAdjust,
+	colorGradeUniforms,
+	isNeutralColorGrade,
+} from "@/effects/color-grade";
 
 /**
  * M8 "Adjust" panel — plan §8.4: "basic sliders in v1; HSL and curves
@@ -75,47 +80,17 @@ export const adjustEffectDefinition: EffectDefinition = {
 	],
 	renderer: {
 		passes: [],
-		// Round 22: the GPU pass EXISTS now — `color-adjust` in the wgpu
+		// Round 22: the GPU pass EXISTS — `color-adjust` in the wgpu
 		// compositor (rust/crates/effects/src/shaders/color_adjust.wgsl),
-		// one combined color-grade pass for all seven sliders. Mapping
-		// constants mirror the native export's CoreImage chain
-		// (TransitionCompositor.swift's AdjustSettings) so preview and
-		// export agree. Neutral params contribute no pass at all.
+		// one combined color-grade pass for all seven sliders. GitHub #48
+		// moved the mapping constants into `effects/color-grade.ts`, the ONE
+		// place both this preview path and Android's native exporter
+		// (`ColorGrade.kt`) read, so preview and export cannot drift apart.
+		// Neutral params contribute no pass at all.
 		buildPasses: ({ effectParams }) => {
-			const value = (key: string) => {
-				const raw = effectParams[key];
-				return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
-			};
-			const brightness = value("brightness");
-			const contrast = value("contrast");
-			const saturation = value("saturation");
-			const temperature = value("temperature");
-			const tint = value("tint");
-			const sharpen = value("sharpen");
-			const vignette = value("vignette");
-			const neutral =
-				brightness === 0 &&
-				contrast === 0 &&
-				saturation === 0 &&
-				temperature === 0 &&
-				tint === 0 &&
-				sharpen === 0 &&
-				vignette === 0;
-			if (neutral) return [];
-			return [
-				{
-					shader: "color-adjust",
-					uniforms: {
-						u_brightness: (brightness / 100) * 0.35,
-						u_contrast: 1 + (contrast / 100) * 0.6,
-						u_saturation: Math.max(0, 1 + saturation / 100),
-						u_temperature: temperature / 100,
-						u_tint: tint / 100,
-						u_sharpen: sharpen / 100,
-						u_vignette: vignette / 100,
-					},
-				},
-			];
+			const grade = colorGradeFromAdjust(effectParams);
+			if (isNeutralColorGrade(grade)) return [];
+			return [{ shader: "color-adjust", uniforms: colorGradeUniforms(grade) }];
 		},
 	},
 };

@@ -39,23 +39,22 @@ export interface ValidateEdlOptions {
 	strict?: boolean;
 }
 
-/** Effects a v1 native mapper is expected to implement (plan §2.3 rule 4). */
-export const EDL_V1_SUPPORTED_EFFECT_TYPES: readonly string[] = [
-	"brightness",
-	"contrast",
-	"saturation",
-	"exposure",
-	"temperature",
-	"tint",
-	"hue",
-	"vibrance",
-	"gamma",
-	"sharpen",
-	"vignette",
-	"grayscale",
-	"sepia",
-	"invert",
-];
+/**
+ * Effects a v1 native mapper is expected to implement (plan §2.3 rule 4).
+ *
+ * GitHub #48 / PAV-142: these are the two effect TYPES the editor actually
+ * produces (`adjust` with its seven sliders, `filter` with preset +
+ * intensity) — the previous list enumerated individual slider names, which
+ * never appear as an effect type, so every VALID document warned. Android
+ * maps both through `export/ColorGrade.kt` (affine subset; `sharpen` and
+ * `vignette` are refused loudly rather than dropped) and iOS maps `adjust`
+ * through `VideoCompositionBuilder`'s `AdjustSettings`.
+ *
+ * Anything not on this list (e.g. `blur`, or a future effect) must still
+ * warn: a mapper is expected to REFUSE it, never to export as if it were
+ * absent.
+ */
+export const EDL_V1_SUPPORTED_EFFECT_TYPES: readonly string[] = ["adjust", "filter"];
 
 function isInt(value: unknown): value is number {
 	return typeof value === "number" && Number.isInteger(value);
