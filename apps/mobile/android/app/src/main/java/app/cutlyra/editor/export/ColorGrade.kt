@@ -167,28 +167,54 @@ data class ColorGrade(
         }
 
         /**
+         * The params each mapped effect type actually READS. Anything else
+         * sitting on the effect is refused instead of ignored: a param the
+         * exporter never looks at is a visual edit it would silently drop,
+         * which is exactly the bug #48 exists to prevent. (The panels only
+         * ever write these keys — `adjust-panel.tsx` / `filters-panel.tsx` —
+         * so this only bites on a foreign or future param, which is the point.)
+         */
+        private val CONSUMED_PARAMS: Map<String, Set<String>> = mapOf(
+            ADJUST_TYPE to setOf(
+                "brightness", "contrast", "saturation", "temperature", "tint", "sharpen", "vignette",
+            ),
+            FILTER_TYPE to setOf("preset", "intensity"),
+        )
+
+        /**
          * Every non-neutral grade a clip carries, in EDL order (disabled
          * effects skipped, matching how the preview renderer drops them).
          *
          * @throws ExportUnsupportedException for an effect type native export
-         *   does not implement, or for a grade carrying `sharpen`/`vignette`.
-         *   Refusing — rather than skipping — is the whole point: a dropped
-         *   visual edit is a silent data-loss bug.
+         *   does not implement, for a param it does not read, or for a grade
+         *   carrying `sharpen`/`vignette`. Refusing — rather than skipping —
+         *   is the whole point: a dropped visual edit is a silent data-loss
+         *   bug.
          */
         fun gradesFor(clip: EdlClip): List<ColorGrade> = clip.effects
             .filter { it.enabled }
             .map { effect -> gradeFor(clip, effect) }
             .filterNot { it.isNeutral() }
 
-        private fun gradeFor(clip: EdlClip, effect: EdlEffect): ColorGrade = when (effect.type) {
-            ADJUST_TYPE -> fromAdjust(effect.params)
-            FILTER_TYPE -> fromFilter(effect.params)
-            else -> throw ExportUnsupportedException(
-                "clip ${clip.clipId} has effect type \"${effect.type}\"; native export maps " +
-                    "\"$ADJUST_TYPE\" and \"$FILTER_TYPE\" only (GitHub #48) and refuses the rest " +
-                    "rather than silently dropping a visual edit",
-            )
-        }.also { grade ->
+        private fun gradeFor(clip: EdlClip, effect: EdlEffect): ColorGrade {
+            val consumed = CONSUMED_PARAMS[effect.type]
+                ?: throw ExportUnsupportedException(
+                    "clip ${clip.clipId} has effect type \"${effect.type}\"; native export maps " +
+                        "\"$ADJUST_TYPE\" and \"$FILTER_TYPE\" only (GitHub #48) and refuses the rest " +
+                        "rather than silently dropping a visual edit",
+                )
+            val unread = effect.params.keys.filterNot { it in consumed }
+            if (unread.isNotEmpty()) {
+                throw ExportUnsupportedException(
+                    "clip ${clip.clipId} has ${unread.joinToString()} on its \"${effect.type}\" " +
+                        "effect; native export does not read those params yet (GitHub #48) and " +
+                        "refuses them rather than silently dropping a visual edit",
+                )
+            }
+            val grade = when (effect.type) {
+                ADJUST_TYPE -> fromAdjust(effect.params)
+                else -> fromFilter(effect.params)
+            }
             val unsupported = grade.unsupportedParams()
             if (unsupported.isNotEmpty()) {
                 throw ExportUnsupportedException(
@@ -197,6 +223,7 @@ data class ColorGrade(
                         "not implement yet (GitHub #48) and are not silently dropped",
                 )
             }
+            return grade
         }
 
         /**

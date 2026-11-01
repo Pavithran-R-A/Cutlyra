@@ -49,6 +49,27 @@ class ColorGradeMatrixTest {
         assertTrue("$message: expected $expected, was $actual", abs(expected - actual) <= tol)
     }
 
+    /**
+     * Grade equality as NUMBERS, not as a data-class `equals`.
+     *
+     * The fixture is JSON, and JSON has no negative zero: the TypeScript side
+     * computes `-100 * 0 = -0` for e.g. `mono` at intensity 0, serializes it
+     * as `0`, and Kotlin computes `-100f * 0f = -0.0f`. Those are the same
+     * value to every shader and to `==`, but `Float.compare(-0.0f, 0.0f)` is
+     * non-zero, so data-class equality reports a drift that does not exist.
+     * Comparing magnitudes keeps this test about PARITY — the pixels — instead
+     * of about IEEE bit patterns the preview never observes.
+     */
+    private fun assertSameGrade(message: String, expected: ColorGrade, actual: ColorGrade) {
+        assertClose(expected.brightness, actual.brightness, "$message brightness")
+        assertClose(expected.contrast, actual.contrast, "$message contrast")
+        assertClose(expected.saturation, actual.saturation, "$message saturation")
+        assertClose(expected.temperature, actual.temperature, "$message temperature")
+        assertClose(expected.tint, actual.tint, "$message tint")
+        assertClose(expected.sharpen, actual.sharpen, "$message sharpen")
+        assertClose(expected.vignette, actual.vignette, "$message vignette")
+    }
+
     @Test
     fun kotlin_matrix_matches_the_generated_typescript_matrix() {
         val cases = fixture().getJSONArray("cases")
@@ -120,11 +141,7 @@ class ColorGradeMatrixTest {
             val params = mapOf("preset" to p.getString("preset"), "intensity" to p.getInt("intensity"))
             val expected = gradeOf(p.getJSONObject("grade"))
             val actual = ColorGrade.fromFilter(params)
-            assertEquals(
-                "${p.getString("preset")}/${p.getInt("intensity")}",
-                expected,
-                actual,
-            )
+            assertSameGrade("${p.getString("preset")}/${p.getInt("intensity")}", expected, actual)
         }
     }
 
@@ -255,12 +272,28 @@ class ColorGradeMatrixTest {
         val scale = ColorGrade(saturation = -100f).rgbMatrix()
         assertArrayEquals(scale, ColorGrade.multiply(scale, identity), 1e-6f)
         assertArrayEquals(scale, ColorGrade.multiply(identity, scale), 1e-6f)
-        // A * B where B scales first: order must matter for non-commuting pairs.
-        val bright = ColorGrade(brightness = 50f).rgbMatrix()
-        val ab = ColorGrade.multiply(bright, scale)
-        val ba = ColorGrade.multiply(scale, bright)
+        // Order must be observable, so the pair has to genuinely not commute.
+        // (Brightness is the WRONG probe: its offset is neutral gray and the
+        // saturation matrix preserves neutral gray, so those two commute
+        // exactly. Temperature's offset is channel-asymmetric — luma of that
+        // offset is not the offset — so scaling around it does not.)
+        val warm = ColorGrade(temperature = 35f).rgbMatrix()
+        val ab = ColorGrade.multiply(warm, scale)
+        val ba = ColorGrade.multiply(scale, warm)
         var differs = false
         for (i in 0 until 16) if (abs(ab[i] - ba[i]) > 1e-6) differs = true
-        assertTrue("brightness and saturation must not commute (order is observable)", differs)
+        assertTrue("temperature and saturation must not commute (order is observable)", differs)
+
+        // And the direction: multiply(warm, scale) must equal "apply scale,
+        // then warm" on a real colour, not the other way round.
+        val colour = floatArrayOf(0.9f, 0.35f, 0.2f)
+        fun apply(m: FloatArray, c: FloatArray) = floatArrayOf(
+            m[0] * c[0] + m[4] * c[1] + m[8] * c[2] + m[12],
+            m[1] * c[0] + m[5] * c[1] + m[9] * c[2] + m[13],
+            m[2] * c[0] + m[6] * c[1] + m[10] * c[2] + m[14],
+        )
+        val expected = apply(warm, apply(scale, colour))
+        val got = apply(ColorGrade.multiply(warm, scale), colour)
+        for (i in 0 until 3) assertClose(expected[i], got[i], "rhs-first composition channel $i", 1e-5f)
     }
 }
