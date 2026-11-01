@@ -7,14 +7,14 @@
 
 Disposition vocabulary (exact): `PASS` · `FIXED_THEN_PASS` · `INTENTIONALLY_DISABLED` · `NOT_APPLICABLE` · `BLOCKED`.
 
-## 1. Primary toolbar (13 items — `toolbar-defs.ts`, order = CapCut capture)
+## 1. Primary toolbar (shipping `toolbar-defs.ts` now has 12 items — Filters + Adjust exposed by GitHub #48; the 13-row table below is the Stage 11C record, which still counted Effects)
 
 | # | Control | Disposition | Evidence |
 |---|---------|-------------|----------|
 | 1 | Edit | PASS | Panel opens for video/audio/caption/text selections; verbs in §3. |
 | 2 | Audio | PASS | Files import (Stage 11 + P15 this session) and library sounds (Soft Chime inserted, P15). |
 | 3 | Text | PASS | Stage 11: add, edit content, style params. |
-| 4 | Effects | PASS | Stage 11: real catalog, apply/toggle/remove/params (source re-verified 11C). |
+| 4 | Effects | PASS | Stage 11: real catalog, apply/toggle/remove/params (source re-verified 11C). **Since Stage 11 it is no longer on the shipping toolbar** — its non-affine params (sharpen/vignette) have no native export mapping, and preview-only tools stay hidden (GitHub #48 mapped filters/adjust only). |
 | 5 | Overlay | PASS | Stage 11: opacity + blend; PiP stage gestures. |
 | 6 | Captions | PASS | Full pipeline physically re-run 11C (§8). |
 | 7 | Filters | PASS | Stage 11: `FILTER_PRESETS` from editor-core. |
