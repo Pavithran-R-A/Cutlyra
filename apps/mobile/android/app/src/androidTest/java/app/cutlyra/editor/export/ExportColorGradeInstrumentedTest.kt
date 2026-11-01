@@ -217,6 +217,52 @@ class ExportColorGradeInstrumentedTest {
     )
 
     /**
+     * The mean the graded export must decode to, computed by running [matrix]
+     * over every BASELINE pixel and clamping each result to 0..1.
+     *
+     * The clamp is the whole point: an affine grade only preserves the mean
+     * while no channel leaves [0,1]. This clip has large near-white regions,
+     * so a `+0.175` brightness (slider 50) pushes a sizeable share of pixels
+     * past white, and the encoder dutifully clips them — measured on the real
+     * asset, the naive `matrix x meanBaseline` expectation overshoots the
+     * decoded file by ~0.078, while this per-pixel model lands within codec
+     * noise (~0.002). Asserting against the unclipped product would have
+     * failed a CORRECT exporter.
+     */
+    private fun expectedMean(baseline: File, atUs: Long, matrix: FloatArray): FloatArray {
+        val retriever = MediaMetadataRetriever()
+        val frame = try {
+            retriever.setDataSource(baseline.absolutePath)
+            retriever.getFrameAtTime(atUs, MediaMetadataRetriever.OPTION_CLOSEST)
+        } finally {
+            retriever.release()
+        }
+        assertNotNull("baseline has no decodable frame at ${atUs}us", frame)
+        val bitmap = frame!!
+        var r = 0.0
+        var g = 0.0
+        var b = 0.0
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                val c = bitmap.getPixel(x, y)
+                val out = apply(
+                    matrix,
+                    floatArrayOf(
+                        ((c shr 16) and 0xff) / 255f,
+                        ((c shr 8) and 0xff) / 255f,
+                        (c and 0xff) / 255f,
+                    ),
+                )
+                r += out[0].coerceIn(0f, 1f).toDouble()
+                g += out[1].coerceIn(0f, 1f).toDouble()
+                b += out[2].coerceIn(0f, 1f).toDouble()
+            }
+        }
+        val n = (bitmap.width * bitmap.height).toDouble()
+        return floatArrayOf((r / n).toFloat(), (g / n).toFloat(), (b / n).toFloat())
+    }
+
+    /**
      * THE #48 regression: an effect-bearing clip must export, the grade must
      * be visible, and it must be the SAME grade the preview renders.
      */
@@ -246,10 +292,10 @@ class ExportColorGradeInstrumentedTest {
                 )
 
                 // Parity: the decoded means must satisfy the SAME matrix the
-                // preview's color-adjust pass uses. An affine transform
-                // preserves means, so this is exact modulo codec noise.
+                // preview's color-adjust pass uses, evaluated per pixel on
+                // the baseline frame (clamping included — see expectedMean).
                 val matrix = ColorGrade.fromAdjust(mapOf("brightness" to 50)).rgbMatrix()
-                val expected = apply(matrix, base)
+                val expected = expectedMean(baseline, atUs, matrix)
                 for (i in 0 until 3) {
                     assertTrue(
                         "channel $i of the exported grade must match the preview matrix: " +
@@ -282,7 +328,7 @@ class ExportColorGradeInstrumentedTest {
                     val monoMatrix =
                         ColorGrade.fromFilter(mapOf("preset" to "mono", "intensity" to 100))
                             .rgbMatrix()
-                    val monoExpected = apply(monoMatrix, base)
+                    val monoExpected = expectedMean(baseline, atUs, monoMatrix)
                     for (i in 0 until 3) {
                         assertTrue(
                             "mono channel $i: expected ${monoExpected[i]}, decoded ${monoRgb[i]}",
