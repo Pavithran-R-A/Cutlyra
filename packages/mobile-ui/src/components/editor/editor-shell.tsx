@@ -17,6 +17,8 @@ import { TextPanel } from "../panels/text-panel";
 import { StickersPanel } from "../panels/stickers-panel";
 import { OverlayPanel } from "../panels/overlay-panel";
 import { CaptionsPanel } from "../panels/captions-panel";
+import { FiltersPanel } from "../panels/filters-panel";
+import { AdjustPanel } from "../panels/adjust-panel";
 import { ExportSheet } from "../panels/export-sheet";
 import { KeyframeGraphSheet } from "../panels/keyframe-graph-sheet";
 import { KeyframeControl } from "../timeline/keyframe-control";
@@ -627,6 +629,34 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 			{activeSheet === "edit" && !(selectedRef && selectedElement) && (
 				<PanelSelectPrompt onClose={closeSheet} message="Select an element on the timeline first." />
 			)}
+
+			{/* GitHub #48 — Filters/Adjust are now export-safe (native export
+			    applies the same grade the preview does), so they live on the
+			    shipping toolbar like every other panel. They edit the SELECTED
+			    clip's effects, so with nothing selected they fall back to the
+			    same selection prompt Edit uses instead of an empty sheet. */}
+			{activeSheet === "filters" && selectedRef && visualElement && (
+				<FiltersPanel
+					editor={editor}
+					elementRef={selectedRef}
+					element={visualElement}
+					onClose={closeSheet}
+				/>
+			)}
+
+			{activeSheet === "adjust" && selectedRef && visualElement && (
+				<AdjustPanel
+					editor={editor}
+					elementRef={selectedRef}
+					element={visualElement}
+					onClose={closeSheet}
+				/>
+			)}
+
+			{(activeSheet === "filters" || activeSheet === "adjust") &&
+				!(selectedRef && visualElement) && (
+					<PanelSelectPrompt onClose={closeSheet} message="Select a clip on the timeline first." />
+				)}
 
 			{activeSheet === "captions" && (
 				<CaptionsPanel
