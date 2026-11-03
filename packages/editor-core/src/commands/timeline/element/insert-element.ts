@@ -192,9 +192,20 @@ export class InsertElementCommand extends Command {
 	}: {
 		element: CreateTimelineElement;
 	}): boolean {
-		if (requiresMediaId({ element }) && !("mediaId" in element)) {
-			console.error("Element requires mediaId");
-			return false;
+		if (requiresMediaId({ element })) {
+			// GitHub #55 / PAV-148: a video/image/uploaded-audio element MUST
+			// carry a non-empty mediaId. Checking only that the KEY exists let a
+			// caller pass `mediaId: undefined` (an unresolved asset id) or "",
+			// which the element then kept: the clip landed on the timeline, and
+			// every later export died in the native exporter with
+			// "clip <uuid> has no assetId" — a bare UUID the user cannot act on.
+			const mediaId: unknown = "mediaId" in element ? element.mediaId : undefined;
+			if (typeof mediaId !== "string" || mediaId.length === 0) {
+				console.error(
+					`Element requires a non-empty mediaId, got ${JSON.stringify(mediaId)}`,
+				);
+				return false;
+			}
 		}
 
 		if (
