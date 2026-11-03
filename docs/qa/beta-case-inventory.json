@@ -14,7 +14,7 @@
 		{
 			"id": "ci-api35-emulator",
 			"detail": "GitHub Actions ubuntu-latest, Android API 35 google_apis x86_64, emulator-5554",
-			"evidence": "run 41673551147, 39 instrumented tests, 0 failures"
+			"evidence": "run 41688805558 on 43dcf42, 40 instrumented tests, 0 failures"
 		},
 		{
 			"id": "local-host",
@@ -125,7 +125,6 @@
 			"evidence": "CI runs a single API 35 image",
 			"blocker": "needs API 29-36 images; only API 35 is available"
 		},
-
 		{
 			"id": "timeline-01",
 			"area": "Timeline",
@@ -214,7 +213,6 @@
 			"evidence": "needs TalkBack, a small display, and measured hit areas",
 			"blocker": "no interactive device/emulator"
 		},
-
 		{
 			"id": "export-01",
 			"area": "Preview vs export",
@@ -276,7 +274,7 @@
 			"area": "Preview vs export",
 			"case": "Bundled sound-library audio is audible in the exported MP4",
 			"status": "FAIL",
-			"evidence": "EdlToComposition.audibleClips drops every clip whose assetId is null, and the comment there states bundled library sounds ('generated clips, whose sourceUrl has no asset-table entry') are skipped. Library audio elements carry sourceUrl and no mediaId (packages/editor-core/src/sounds/local-sounds.ts), so they play in preview and vanish from the export. Filed as a separate issue with the two code sites.",
+			"evidence": "EdlToComposition.audibleClips drops every clip whose assetId is null, and the comment there states bundled library sounds ('generated clips, whose sourceUrl has no asset-table entry') are skipped. Library audio elements carry sourceUrl and no mediaId (packages/editor-core/src/sounds/local-sounds.ts), so they play in preview and vanish from the export. Filed as #63 with both code sites.",
 			"blocker": null
 		},
 		{
@@ -343,7 +341,14 @@
 			"evidence": "export pixel tests exist (geometry, blend, grade) but no test diffs a preview frame against the exported frame at the same PTS.",
 			"blocker": null
 		},
-
+		{
+			"id": "export-17",
+			"area": "Preview vs export",
+			"case": "A project stays exportable after media elements are inserted, and a broken reference is reported with the clip named",
+			"status": "FAIL",
+			"evidence": "Reproduced on main@1027a28: creating a clip through the insert path could store a media element with no assetId, after which native export fails with 'clip ... has no assetId' (EdlToComposition.requireAsset) and the project cannot be exported. Fixed on PR #61 with a native error that names the clip, an insert-time rejection, and an export pre-flight; not merged into this build. Report: issue #55 comment 6610436554.",
+			"blocker": null
+		},
 		{
 			"id": "reliability-01",
 			"area": "Reliability",
@@ -392,7 +397,6 @@
 			"evidence": "needs a running device and logcat",
 			"blocker": "no device"
 		},
-
 		{
 			"id": "privacy-01",
 			"area": "Privacy & release",
@@ -459,11 +463,18 @@
 		}
 	],
 	"summary": {
-		"total": 53,
+		"total": 54,
 		"pass": 25,
-		"fail": 3,
+		"fail": 4,
 		"verify": 13,
 		"blocked": 12,
 		"note": "PASS means the named suite or gate executed on this build. VERIFY means the code path exists and is reachable but was not executed on a device in this pass. BLOCKED means no device, emulator, keystore or Console access was available. No row is inferred from another row."
+	},
+	"evidence_links": {
+		"run 41688805558": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/41688805558",
+		"#60 filmstrip (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/60",
+		"#61 media references (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/61",
+		"#62 this evidence pack": "https://github.com/Pavithran-R-A/Cutlyra/pull/62",
+		"#63 sound library silent": "https://github.com/Pavithran-R-A/Cutlyra/issues/63"
 	}
 }
