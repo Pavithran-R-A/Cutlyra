@@ -373,15 +373,20 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           working-directory: apps/mobile/android
           # #54: pull the filmstrip contact sheet the thumbnail test writes to
-          # the app's external files dir, so the frames are reviewable without
-          # a device in hand. Failure to pull must not mask a test failure.
+          # the app's internal files dir (``adb shell`` cannot read
+          # /sdcard/Android/data since Android 11, so this goes through run-as on
+          # the debuggable build). A missing sheet must not mask a test failure,
+          # and a failed test must not cost us the artifact: hence set +e and
+          # capturing gradle's status rather than relying on errexit.
+          # Keep every command on one physical line — this action runs the
+          # script line by line through sh -c, where a trailing backslash does
+          # not continue the way it does inside a script file.
           script: |
             set +e
             ./gradlew :app:connectedDebugAndroidTest --console=plain
             test_status=$?
             mkdir -p app/build/outputs/androidTest-evidence
-            adb pull /sdcard/Android/data/app.cutlyra.editor/files/filmstrip-evidence \
-              app/build/outputs/androidTest-evidence/ || true
+            adb exec-out run-as app.cutlyra.editor cat files/filmstrip-evidence/thumbnail-strip-contact-sheet.png > app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png || rm -f app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png
             exit $test_status
 
       - name: Upload instrumentation reports

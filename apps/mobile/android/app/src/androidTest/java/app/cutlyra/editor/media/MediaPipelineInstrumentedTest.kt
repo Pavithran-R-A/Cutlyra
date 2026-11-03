@@ -177,9 +177,12 @@ class MediaPipelineInstrumentedTest {
 		// Write the visual evidence first. The sheet is worth having even when
 		// the content check below fails, because "every frame is identical" is
 		// precisely the failure mode this test exists to catch, and the sheet is
-		// what lets a human see which it was.
+		// what lets a human see which it was. It goes to the app's internal
+		// files dir rather than external storage because `adb shell` cannot read
+		// `/sdcard/Android/data` since Android 11; CI pulls it back with
+		// `adb exec-out run-as app.cutlyra.editor cat ...` instead.
 		val sheet = contactSheet(frames)
-		val evidenceDir = File(context.getExternalFilesDir(null), "filmstrip-evidence")
+		val evidenceDir = File(context.filesDir, "filmstrip-evidence")
 		assertTrue("evidence dir should exist: $evidenceDir", evidenceDir.isDirectory || evidenceDir.mkdirs())
 		val sheetFile = File(evidenceDir, "thumbnail-strip-contact-sheet.png")
 		FileOutputStream(sheetFile).use { stream ->
