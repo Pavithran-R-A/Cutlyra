@@ -1,0 +1,480 @@
+{
+	"issue": "#56",
+	"parent": "#47 / Linear PAV-141",
+	"generated": "2026-11-03",
+	"build": {
+		"versionName": "0.1.0",
+		"versionCode": 1,
+		"product_commit": "1027a28",
+		"minSdk": 29,
+		"targetSdk": 36,
+		"note": "Product code as merged on main. Two P0 fixes are open, unmerged PRs and are marked FAIL against this build: #54 filmstrip (PR #60) and #55 lost media reference (PR #61)."
+	},
+	"devices": [
+		{
+			"id": "ci-api35-emulator",
+			"detail": "GitHub Actions ubuntu-latest, Android API 35 google_apis x86_64, emulator-5554",
+			"evidence": "run 41688805558 on 43dcf42, 40 instrumented tests, 0 failures"
+		},
+		{
+			"id": "local-host",
+			"detail": "Windows 11 host, no emulator (Play-store image needs 7.4 GB, ~6.1 GB free; every GPU/partition variant fails to boot) and no authorized physical device",
+			"evidence": "blocked: no interactive Android runtime available locally"
+		}
+	],
+	"status_legend": {
+		"PASS": "executed on this build by an automated suite or a named check; the evidence field names it",
+		"FAIL": "proven defect on this build; the linked issue carries the evidence",
+		"VERIFY": "implementation exists in source and is reachable from the UI, but was not executed on a device in this pass",
+		"BLOCKED": "cannot be executed with the hardware/accounts available here; the blocker field says what is missing"
+	},
+	"cases": [
+		{
+			"id": "home-01",
+			"area": "Home & intake",
+			"case": "Cold launch reaches the project list, first-run primer shown once",
+			"status": "VERIFY",
+			"evidence": "apps/mobile/android/app/src/main/AndroidManifest.xml:15 FirstRunActivity is the launcher; apps/mobile/src/app/app-root.css renders the list. Not re-executed: no bootable emulator locally.",
+			"blocker": "no interactive Android runtime in this session"
+		},
+		{
+			"id": "home-02",
+			"area": "Home & intake",
+			"case": "Photo/video import resolves to Android Photo Picker, with SAF fallback",
+			"status": "PASS",
+			"evidence": "instrumented library_pick_intent_resolves_to_either_the_photo_picker_or_the_saf_fallback (CI run 41673551147)",
+			"blocker": null
+		},
+		{
+			"id": "home-03",
+			"area": "Home & intake",
+			"case": "Camera capture Intent targets a FileProvider URI this app declares",
+			"status": "PASS",
+			"evidence": "instrumented camera_capture_intent_targets_a_fileprovider_uri_this_app_declared. The UI exposes no camera entry point in v0.1 (AndroidManifest.xml:48-56 documents CAMERA as declared-but-unreached).",
+			"blocker": null
+		},
+		{
+			"id": "home-04",
+			"area": "Home & intake",
+			"case": "content:// import is copied into noBackupFilesDir and reports the true byte size",
+			"status": "PASS",
+			"evidence": "instrumented importer_copies_a_content_uri_into_noBackupFilesDir_and_reports_the_right_size",
+			"blocker": null
+		},
+		{
+			"id": "home-05",
+			"area": "Home & intake",
+			"case": "Proxy transcode on import completes and the proxy is what playback uses",
+			"status": "VERIFY",
+			"evidence": "packages/editor-core/src/media/native-import.ts + instrumented probe_reads_duration_dimensions_and_codec_from_the_fixture_clip; the end-to-end proxy stream was not driven on this build.",
+			"blocker": "native proxy generator needs a device"
+		},
+		{
+			"id": "home-06",
+			"area": "Home & intake",
+			"case": "Unsupported codec is detected and reported instead of crashing",
+			"status": "VERIFY",
+			"evidence": "codec-detect.test.ts (unit, executed in the 706-test suite) covers detection; the user-facing refusal path is not covered by a test.",
+			"blocker": null
+		},
+		{
+			"id": "home-07",
+			"area": "Home & intake",
+			"case": "HEVC / 10-bit import and decode",
+			"status": "BLOCKED",
+			"evidence": "no fixture or hardware decoder available to this session",
+			"blocker": "needs a device with a hardware HEVC/10-bit decoder; the CI emulator is software-decode only"
+		},
+		{
+			"id": "home-08",
+			"area": "Home & intake",
+			"case": "Portrait 9:16 import adopts a portrait canvas without an aspect choice",
+			"status": "PASS",
+			"evidence": "insert-element-canvas-adoption.test.ts + canvas-adoption-parity.test.ts (unit, executed). GitHub #22 tracks the user-facing choice.",
+			"blocker": null
+		},
+		{
+			"id": "home-09",
+			"area": "Home & intake",
+			"case": "Image import gets a sane default duration",
+			"status": "VERIFY",
+			"evidence": "packages/editor-core/src/timeline/element-utils.ts buildImageElement default duration; no dedicated assertion found.",
+			"blocker": null
+		},
+		{
+			"id": "home-10",
+			"area": "Home & intake",
+			"case": "20-clip multi-select import",
+			"status": "BLOCKED",
+			"evidence": "requires driving the system Photo Picker multi-select grid",
+			"blocker": "no interactive device/emulator"
+		},
+		{
+			"id": "home-11",
+			"area": "Home & intake",
+			"case": "Import progress and cancel",
+			"status": "VERIFY",
+			"evidence": "packages/editor-core/src/media/native-import.ts streams NativeProxyProgress with stage/fraction; cancel path untested on device.",
+			"blocker": "no interactive device/emulator"
+		},
+		{
+			"id": "home-12",
+			"area": "Home & intake",
+			"case": "Android 10-16 OS matrix",
+			"status": "BLOCKED",
+			"evidence": "CI runs a single API 35 image",
+			"blocker": "needs API 29-36 images; only API 35 is available"
+		},
+		{
+			"id": "timeline-01",
+			"area": "Timeline",
+			"case": "Real filmstrip frames in the timeline (not gradients/filenames)",
+			"status": "FAIL",
+			"evidence": "On main the strip renders placeholder tiles; real per-clip frames are pending in #54 / PR #60, which adds a 40-test instrumentation run plus a contact-sheet PNG artifact asserting distinct decoded frames.",
+			"blocker": null
+		},
+		{
+			"id": "timeline-02",
+			"area": "Timeline",
+			"case": "Waveform rendering for imported and library audio",
+			"status": "VERIFY",
+			"evidence": "waveform decoding exists in packages/editor-core/src/media (17 files reference it); visual rendering was not exercised on this build.",
+			"blocker": "no interactive device/emulator"
+		},
+		{
+			"id": "timeline-03",
+			"area": "Timeline",
+			"case": "Split at playhead preserves the removed source (non-destructive trim)",
+			"status": "PASS",
+			"evidence": "split.test.ts + edl.test.ts (unit, executed); split is also exercised end-to-end in asset-reference-integrity.test.ts (#55).",
+			"blocker": null
+		},
+		{
+			"id": "timeline-04",
+			"area": "Timeline",
+			"case": "Trim handles, ripple/delete, gap cut",
+			"status": "VERIFY",
+			"evidence": "dead-space-cut.test.ts + dead-space.test.ts cover the maths; handle interaction not exercised on device.",
+			"blocker": "no interactive device/emulator"
+		},
+		{
+			"id": "timeline-05",
+			"area": "Timeline",
+			"case": "Undo then redo across edit kinds",
+			"status": "VERIFY",
+			"evidence": "command history lives in packages/editor-core/src/core/managers; update-pipeline.test.ts and split.test.ts cover command application, but no test asserts the undo/redo stack itself.",
+			"blocker": null
+		},
+		{
+			"id": "timeline-06",
+			"area": "Timeline",
+			"case": "Drag scroll vs long-press drag, edge snapping",
+			"status": "PASS",
+			"evidence": "snap.test.ts (snapping maths) + the strict mouse-event invariant gate in scripts/invariants.sh (no raw mouse listeners). Gesture feel on a real finger is BLOCKED.",
+			"blocker": null
+		},
+		{
+			"id": "timeline-07",
+			"area": "Timeline",
+			"case": "Zoom out over a 10-minute source without stalling",
+			"status": "BLOCKED",
+			"evidence": "needs a long source and a real device to measure",
+			"blocker": "no device; no long-source fixture"
+		},
+		{
+			"id": "timeline-08",
+			"area": "Timeline",
+			"case": "Appending a second clip to the main track does not silently become an overlay",
+			"status": "PASS",
+			"evidence": "insert-element-canvas-adoption.test.ts asserts the placement mode per call; asset-reference-integrity.test.ts appends video+image+audio and asserts the main track holds three clips. Historical QA fix remains intact in source.",
+			"blocker": null
+		},
+		{
+			"id": "timeline-09",
+			"area": "Timeline",
+			"case": "Captions stay windowed correctly against their clip after trim/move",
+			"status": "PASS",
+			"evidence": "caption-window-integrity.test.ts + caption-pipeline-integration.test.ts + caption-smoothing.test.ts (unit, executed)",
+			"blocker": null
+		},
+		{
+			"id": "timeline-10",
+			"area": "Timeline",
+			"case": "Reopen a saved project restores the timeline",
+			"status": "PASS",
+			"evidence": "persistence.test.ts plus the v0-v31 migration suite (30 files) run in the 706-test suite; asset-reference-integrity.test.ts round-trips through serializeScene/deserializeScene.",
+			"blocker": null
+		},
+		{
+			"id": "timeline-11",
+			"area": "Timeline",
+			"case": "Accessibility, small-screen layout, touch-target size",
+			"status": "BLOCKED",
+			"evidence": "needs TalkBack, a small display, and measured hit areas",
+			"blocker": "no interactive device/emulator"
+		},
+		{
+			"id": "export-01",
+			"area": "Preview vs export",
+			"case": "1920x1080 landscape output geometry is exact",
+			"status": "PASS",
+			"evidence": "instrumented exports_exact_1920x1080_landscape_geometry (CI run 41673551147)",
+			"blocker": null
+		},
+		{
+			"id": "export-02",
+			"area": "Preview vs export",
+			"case": "1280x720 landscape output geometry is exact",
+			"status": "PASS",
+			"evidence": "instrumented exports_exact_1280x720_landscape_geometry",
+			"blocker": null
+		},
+		{
+			"id": "export-03",
+			"area": "Preview vs export",
+			"case": "1080x1920 portrait output geometry is exact",
+			"status": "PASS",
+			"evidence": "instrumented exports_exact_1080x1920_portrait_geometry",
+			"blocker": null
+		},
+		{
+			"id": "export-04",
+			"area": "Preview vs export",
+			"case": "No letterbox border is introduced for a same-aspect source",
+			"status": "PASS",
+			"evidence": "instrumented export_1080p_from_same_aspect_source_has_no_introduced_border, export_720p_..., export_portrait_..., export_1080p_through_a_crossfade_has_no_introduced_border",
+			"blocker": null
+		},
+		{
+			"id": "export-05",
+			"area": "Preview vs export",
+			"case": "A crossfade plus text overlay EDL exports to a playable file",
+			"status": "PASS",
+			"evidence": "instrumented exports_a_two_clip_crossfade_and_text_overlay_edl_to_a_playable_file",
+			"blocker": null
+		},
+		{
+			"id": "export-06",
+			"area": "Preview vs export",
+			"case": "Crossfade luminance follows the linear blend at each pixel window",
+			"status": "PASS",
+			"evidence": "instrumented crossfade_window_luminance_follows_the_linear_blend (+ text overlay, BT.709 limited, prerendered overlay variants)",
+			"blocker": null
+		},
+		{
+			"id": "export-07",
+			"area": "Preview vs export",
+			"case": "Captions appear in the exported file and are clamped to the visual timeline",
+			"status": "PASS",
+			"evidence": "instrumented caption_window_frame_by_frame_diagnostics + export_clamps_caption_tail_that_outlasts_visual_timeline + exports_a_two_clip_crossfade_and_text_overlay_edl_to_a_playable_file",
+			"blocker": null
+		},
+		{
+			"id": "export-08",
+			"area": "Preview vs export",
+			"case": "Bundled sound-library audio is audible in the exported MP4",
+			"status": "FAIL",
+			"evidence": "EdlToComposition.audibleClips drops every clip whose assetId is null, and the comment there states bundled library sounds ('generated clips, whose sourceUrl has no asset-table entry') are skipped. Library audio elements carry sourceUrl and no mediaId (packages/editor-core/src/sounds/local-sounds.ts), so they play in preview and vanish from the export. Filed as #63 with both code sites.",
+			"blocker": null
+		},
+		{
+			"id": "export-09",
+			"area": "Preview vs export",
+			"case": "Video-only source exports as a video-only MP4 without an impossible audio item",
+			"status": "PASS",
+			"evidence": "instrumented exports_a_video_only_mp4_without_creating_an_impossible_audio_item",
+			"blocker": null
+		},
+		{
+			"id": "export-10",
+			"area": "Preview vs export",
+			"case": "Audio that outlasts the visual timeline is clamped, never truncated silently",
+			"status": "PASS",
+			"evidence": "instrumented export_clamps_audio_that_outlasts_visual_timeline",
+			"blocker": null
+		},
+		{
+			"id": "export-11",
+			"area": "Preview vs export",
+			"case": "24 / 30 / 60 fps selection behaves honestly (no silent upscale)",
+			"status": "PASS",
+			"evidence": "instrumented exports_24fps_by_dropping_frames_from_the_30fps_source, exports_30fps_unchanged_from_the_30fps_source, exports_60fps_selection_with_30fps_source_honestly_stays_30fps, exports_crossfade_composition_at_24fps; the pre-export warning is export-frame-rate.ts + export-frame-rate.test.ts",
+			"blocker": null
+		},
+		{
+			"id": "export-12",
+			"area": "Preview vs export",
+			"case": "Filters / adjust export with the same grade as the preview, and refuse unmappable params",
+			"status": "PASS",
+			"evidence": "instrumented effect_bearing_clip_exports_and_its_grade_is_visible_and_matches_preview + an_unmappable_adjust_param_refuses_the_export_with_a_named_message + unit color-grade.test.ts",
+			"blocker": null
+		},
+		{
+			"id": "export-13",
+			"area": "Preview vs export",
+			"case": "User cancels an export in progress",
+			"status": "VERIFY",
+			"evidence": "cancel plumbing exists in the export sheet + native plugin; no automated assertion.",
+			"blocker": "no interactive device/emulator"
+		},
+		{
+			"id": "export-14",
+			"area": "Preview vs export",
+			"case": "Storage exhaustion mid-export",
+			"status": "BLOCKED",
+			"evidence": "needs a device with a fillable volume",
+			"blocker": "no device"
+		},
+		{
+			"id": "export-15",
+			"area": "Preview vs export",
+			"case": "Hardware codec failure falls back instead of failing the export",
+			"status": "BLOCKED",
+			"evidence": "needs a device whose encoder rejects the requested profile",
+			"blocker": "no device"
+		},
+		{
+			"id": "export-16",
+			"area": "Preview vs export",
+			"case": "Preview and export agree frame-for-frame (pixel + PTS)",
+			"status": "VERIFY",
+			"evidence": "export pixel tests exist (geometry, blend, grade) but no test diffs a preview frame against the exported frame at the same PTS.",
+			"blocker": null
+		},
+		{
+			"id": "export-17",
+			"area": "Preview vs export",
+			"case": "A project stays exportable after media elements are inserted, and a broken reference is reported with the clip named",
+			"status": "FAIL",
+			"evidence": "Reproduced on main@1027a28: creating a clip through the insert path could store a media element with no assetId, after which native export fails with 'clip ... has no assetId' (EdlToComposition.requireAsset) and the project cannot be exported. Fixed on PR #61 with a native error that names the clip, an insert-time rejection, and an export pre-flight; not merged into this build. Report: issue #55 comment 6610436554.",
+			"blocker": null
+		},
+		{
+			"id": "reliability-01",
+			"area": "Reliability",
+			"case": "Background / foreground / force-stop mid-edit does not lose the project",
+			"status": "BLOCKED",
+			"evidence": "needs process death on a device",
+			"blocker": "no device"
+		},
+		{
+			"id": "reliability-02",
+			"area": "Reliability",
+			"case": "Upgrade preserves on-device projects (schema migrations)",
+			"status": "PASS",
+			"evidence": "v0-v31 migration suite (30 test files) + persistence.test.ts, all executed in the 706-test run; the on-device upgrade itself is BLOCKED.",
+			"blocker": null
+		},
+		{
+			"id": "reliability-03",
+			"area": "Reliability",
+			"case": "Project archive export then reimport restores the project",
+			"status": "PASS",
+			"evidence": "backup-service.test.ts + backup-cleanup.test.ts (unit, executed)",
+			"blocker": null
+		},
+		{
+			"id": "reliability-04",
+			"area": "Reliability",
+			"case": "Corrupt import is refused rather than crashing",
+			"status": "VERIFY",
+			"evidence": "archive import validates through the same schema gate as load (services/storage); no corrupt-archive fixture is asserted.",
+			"blocker": null
+		},
+		{
+			"id": "reliability-05",
+			"area": "Reliability",
+			"case": "Memory / battery / free-disk behaviour on a long project",
+			"status": "BLOCKED",
+			"evidence": "needs device instrumentation and battery stats",
+			"blocker": "no device"
+		},
+		{
+			"id": "reliability-06",
+			"area": "Reliability",
+			"case": "Crash-free session logs across the journey",
+			"status": "BLOCKED",
+			"evidence": "needs a running device and logcat",
+			"blocker": "no device"
+		},
+		{
+			"id": "privacy-01",
+			"area": "Privacy & release",
+			"case": "No outbound network calls from source or the built bundle",
+			"status": "PASS",
+			"evidence": "bash scripts/invariants.sh offline-audit gate: 'clean — no outbound-network references found in source or the built bundle'",
+			"blocker": null
+		},
+		{
+			"id": "privacy-02",
+			"area": "Privacy & release",
+			"case": "No telemetry, ads or payment SDK ships",
+			"status": "PASS",
+			"evidence": "same offline gate plus app/build.gradle dependency list: no analytics/ads/billing dependency, no google-services.json required (build.gradle guards its absence).",
+			"blocker": null
+		},
+		{
+			"id": "privacy-03",
+			"area": "Privacy & release",
+			"case": "Manifest permissions match the Data Safety / privacy claims",
+			"status": "VERIFY",
+			"evidence": "AndroidManifest.xml declares INTERNET, CAMERA (declared but unreachable in v0.1), no READ_MEDIA_* and no RECORD_AUDIO; allowBackup=false. INTERNET is declared although nothing in source uses the network — harmless at runtime but worth aligning with the Data Safety wording.",
+			"blocker": null
+		},
+		{
+			"id": "privacy-04",
+			"area": "Privacy & release",
+			"case": "DEX optimisation / R8 readiness",
+			"status": "FAIL",
+			"evidence": "app/build.gradle sets minifyEnabled false with the stock proguard-rules.pro, so the shipped DEX is unobfuscated — exactly Play's 1% obfuscation warning. Analysis and the keep-rule worklist are in docs/qa/release-quality-audit.md (#57).",
+			"blocker": null
+		},
+		{
+			"id": "privacy-05",
+			"area": "Privacy & release",
+			"case": "16 KB page-size native alignment",
+			"status": "PASS",
+			"evidence": "app/src/main/cpp/CMakeLists.txt:111 links libcutlyra_whisper with -Wl,-z,max-page-size=16384; it is the only shipped native library.",
+			"blocker": null
+		},
+		{
+			"id": "privacy-06",
+			"area": "Privacy & release",
+			"case": "Android 15+ edge-to-edge: system bars never cover top chrome",
+			"status": "VERIFY",
+			"evidence": "New EdgeToEdgeSystemBarInstrumentedTest asserts it on API 35; result is in the CI run attached to PR #62.",
+			"blocker": null
+		},
+		{
+			"id": "privacy-07",
+			"area": "Privacy & release",
+			"case": "Signing continuity and closed-test versionCode 1",
+			"status": "BLOCKED",
+			"evidence": "release keystore is only in the owner's environment (CUTLYRA_RELEASE_KEYSTORE_* not set here)",
+			"blocker": "no access to the release keystore; inspecting it would be a credential-handling risk"
+		},
+		{
+			"id": "privacy-08",
+			"area": "Privacy & release",
+			"case": "Closed test with >= 12 testers and no accidental upload",
+			"status": "BLOCKED",
+			"evidence": "Play Console state is owner-side; nothing in this session touched uploads.",
+			"blocker": "Console access is not available here, and uploading is not authorized"
+		}
+	],
+	"summary": {
+		"total": 54,
+		"pass": 25,
+		"fail": 4,
+		"verify": 13,
+		"blocked": 12,
+		"note": "PASS means the named suite or gate executed on this build. VERIFY means the code path exists and is reachable but was not executed on a device in this pass. BLOCKED means no device, emulator, keystore or Console access was available. No row is inferred from another row."
+	},
+	"evidence_links": {
+		"run 41688805558": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/41688805558",
+		"#60 filmstrip (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/60",
+		"#61 media references (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/61",
+		"#62 this evidence pack": "https://github.com/Pavithran-R-A/Cutlyra/pull/62",
+		"#63 sound library silent": "https://github.com/Pavithran-R-A/Cutlyra/issues/63"
+	}
+}
