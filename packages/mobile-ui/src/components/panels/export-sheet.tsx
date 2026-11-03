@@ -4,7 +4,11 @@ import { SheetHeader } from "../sheet-header";
 import { SegmentedControl } from "../segmented-control";
 import { ProgressOverlay } from "../progress-overlay";
 import type { EditorCore } from "@cutlyra/editor-core";
-import { buildEdl, type Edl } from "@cutlyra/editor-core/edl";
+import {
+	assertMediaReferencesResolved,
+	buildEdl,
+	type Edl,
+} from "@cutlyra/editor-core/edl";
 import type { ExportFormat, ExportQuality } from "@cutlyra/editor-core/export";
 import { getVideoExportBounds } from "@cutlyra/editor-core/timeline";
 import { mediaTimeToSeconds } from "@cutlyra/editor-core/wasm";
@@ -271,6 +275,12 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 		if (!hasVisualClip) {
 			throw new Error("Add at least one video or image clip before exporting a video.");
 		}
+
+		// GitHub #55 / PAV-148: refuse HERE, with the clips named, when a media
+		// reference was lost. Without this the sheet handed the EDL straight to
+		// the native exporter, which can only report `clip <uuid> has no
+		// assetId` — the exact unactionable text that reached a real user.
+		assertMediaReferencesResolved({ edl });
 
 		return edl;
 	};
