@@ -1,14 +1,23 @@
 /**
- * One filmstrip frame slot. If the clip carries a real per-frame URI
- * (`clip.thumbnails[slotSec]` — populated once a consumer wires plan M4's
- * native thumbnail-strip generation) it's rendered directly; otherwise this
- * draws a deterministic placeholder swatch (a hue-shifted gradient keyed on
- * the clip's own `colorHue` + the slot's time) so the filmstrip still reads
- * as "many distinct frames" for layout/virtualization/interaction testing
- * without pretending to be real video content. NOT a claim that this is
- * what CapCut's or this app's real filmstrip will look like — see
- * timeline/types.ts's `TimelineClipVM.thumbnails` doc comment.
+ * One filmstrip frame slot. When the clip carries a real frame URI
+ * (`clip.thumbnails` — GitHub #54's native strip, resolved by the
+ * renderer via `nearestThumbnailUri` so every zoom level maps to the
+ * closest generated frame rather than an exact float key) it renders as a
+ * real `<img>`; otherwise — synthetic harness clips, a strip still
+ * generating, or a strip that failed — this draws a deterministic
+ * placeholder swatch (a hue-shifted gradient keyed on the clip's own
+ * `colorHue` + the slot's time) so the filmstrip still reads as "many
+ * distinct frames" for layout/virtualization/interaction testing WITHOUT
+ * pretending to be real video content.
+ *
+ * The `<img>` also carries the honest-failure path the issue asks for: if
+ * a persisted frame's file is gone or corrupt (restored backup, pruned
+ * custody), its `onError` swaps THAT slot back to the placeholder instead
+ * of leaving a transparent hole — and a later strip upgrade (new URI from
+ * regeneration) naturally retries, since the failed URI no longer matches.
  */
+import { useState } from "react";
+
 export function FilmstripThumbnail({
 	widthPx,
 	realUri,
@@ -20,12 +29,19 @@ export function FilmstripThumbnail({
 	colorHue: number;
 	slotSec: number;
 }) {
-	if (realUri) {
+	const [failedUri, setFailedUri] = useState<string | null>(null);
+
+	if (realUri && realUri !== failedUri) {
 		return (
-			<div
-				className="cc-timeline__clip-thumbnail"
-				style={{ width: widthPx, backgroundImage: `url(${realUri})` }}
-			/>
+			<div className="cc-timeline__clip-thumbnail" style={{ width: widthPx }}>
+				<img
+					className="cc-timeline__clip-thumbnail-img"
+					src={realUri}
+					alt=""
+					aria-hidden="true"
+					onError={() => setFailedUri(realUri)}
+				/>
+			</div>
 		);
 	}
 
@@ -40,4 +56,4 @@ export function FilmstripThumbnail({
 			aria-hidden="true"
 		/>
 	);
-}
+}

@@ -5,6 +5,7 @@ import {
 	thumbnailSlotIntervalSec,
 	visibleThumbnailSlots,
 } from "../../timeline/virtualization";
+import { nearestThumbnailUri } from "../../timeline/thumbnails";
 import { resolveSnap, type SnapTarget } from "../../timeline/snapping";
 import { hapticTick } from "../../timeline/haptics";
 import { FilmstripThumbnail } from "./filmstrip-thumbnail";
@@ -520,7 +521,7 @@ function ClipFilmstrip({
 				>
 					<FilmstripThumbnail
 						widthPx={slotWidthPx}
-						realUri={clip.thumbnails?.[slotSec]}
+						realUri={nearestThumbnailUri({ frames: clip.thumbnails, slotSec })}
 						colorHue={clip.colorHue}
 						slotSec={slotSec}
 					/>

@@ -55,11 +55,24 @@ import {
 	kickWaveform,
 	subscribeWaveforms,
 } from "./waveform-peaks";
+import {
+	getThumbnailStrip,
+	getThumbnailsVersion,
+	kickThumbnailStrip,
+	makeStripPersister,
+	subscribeThumbnails,
+} from "./thumbnail-strip";
+import { mapSourceStripToClip } from "../timeline/thumbnails";
+import {
+	resolveNativeMediaPath,
+	resolveNativeMediaRawPath,
+} from "@cutlyra/editor-core/media/native-paths";
 import { getClipKeyframeTimes } from "./keyframes";
 import type {
 	TimelineClipKind,
 	TimelineClipVM,
 	TimelineProjectVM,
+	TimelineThumbnailFrame,
 	TimelineTrackKind,
 	TimelineTrackVM,
 } from "../timeline/types";
@@ -182,14 +195,125 @@ function keyframeVMs({ element }: { element: TimelineElement }): TimelineClipVM[
 	}));
 }
 
+/** Everything the filmstrip kick needs beyond the asset itself — read at
+ *  persist time through the LIVE editor, never from the mapping snapshot
+ *  (a delete/switch mid-generation must not resurrect stale metadata). */
+interface StripKickContext {
+	projectId: string | null;
+	liveAssets: () => MediaAsset[];
+}
+
+/** Absolute native path to sample for the strip: the PROXY first (short-
+ *  GOP, baked upright, full length — proxy time == source time), falling
+ *  back to the original for legacy assets imported before relative proxy
+ *  paths existed. Null on web / pre-root builds (no custody resolver
+ *  registered) — there the caller simply doesn't kick and the honest
+ *  placeholder stays, exactly like the web waveform path. */
+function resolveAssetRawPath(asset: MediaAsset): string | null {
+	if (asset.nativeRelativePath) {
+		const raw = resolveNativeMediaRawPath(asset.nativeRelativePath);
+		if (raw) return raw;
+	}
+	if (asset.sourceNativeRelativePath) {
+		const raw = resolveNativeMediaRawPath(asset.sourceNativeRelativePath);
+		if (raw) return raw;
+	}
+	return null;
+}
+
+/** Persisted strip manifest (import seed or a previous session's upgrade)
+ *  resolved against the CURRENT custody root — relative paths are the
+ *  durable form precisely so this re-anchoring happens at read time
+ *  (iOS rotates the container UUID under them). Unresolvable frames are
+ *  dropped; an all-dropped manifest degrades to `undefined` (kick will
+ *  regenerate). */
+function persistedStripFrames(
+	asset: MediaAsset,
+): TimelineThumbnailFrame[] | undefined {
+	const strip = asset.thumbnailStrip;
+	if (!strip?.length) return undefined;
+	const frames: TimelineThumbnailFrame[] = [];
+	for (const frame of strip) {
+		const uri = resolveNativeMediaPath(frame.relativePath);
+		if (uri) frames.push({ timeSec: frame.timeSec, uri });
+	}
+	return frames.length > 0 ? frames : undefined;
+}
+
+/** Real filmstrip frames for a VIDEO/IMAGE clip's source window (GitHub
+ *  #54), or `undefined` → honest placeholder while generation is in
+ *  flight / impossible / exhausted. Images skip native entirely: the
+ *  still IS every frame of the clip. */
+function videoClipThumbnails({
+	element,
+	asset,
+	stripContext,
+}: {
+	element: TimelineElement;
+	asset: MediaAsset | undefined;
+	stripContext: StripKickContext;
+}): TimelineThumbnailFrame[] | undefined {
+	if (!asset) return undefined;
+	const durationSec = mediaTimeToSeconds({ time: element.duration });
+
+	if (element.type === "image") {
+		const uri = asset.thumbnailUrl ?? asset.url;
+		return uri ? [{ timeSec: 0, uri }] : undefined;
+	}
+	if (element.type !== "video") return undefined;
+
+	// Kick only when there's no SUCCESSFUL strip yet — `null` (failed)
+	// re-enters here too, and the store itself bounds that to a few
+	// cooldown-gated retries rather than a per-render storm.
+	const generated = getThumbnailStrip(asset.id);
+	if (!generated || generated.length === 0) {
+		const rawPath = resolveAssetRawPath(asset);
+		if (rawPath && asset.duration != null && asset.duration > 0) {
+			kickThumbnailStrip({
+				assetId: asset.id,
+				rawPath,
+				durationMicros: Math.round(asset.duration * 1_000_000),
+				fileName: asset.name,
+				persist: stripContext.projectId
+					? makeStripPersister({
+							projectId: stripContext.projectId,
+							asset,
+							isAssetLive: () =>
+								stripContext
+									.liveAssets()
+									.some((live) => live.id === asset.id),
+						})
+					: undefined,
+			});
+		}
+	}
+
+	// Generated frames win; the persisted manifest covers the gap while
+	// generation runs and is the ONLY source when generation is impossible
+	// (web) or keeps failing — real (if stale) footage beats a gradient.
+	const sourceFrames = generated ?? persistedStripFrames(asset);
+	if (!sourceFrames?.length) return undefined;
+	return mapSourceStripToClip({
+		frames: sourceFrames,
+		trimStartSec: mediaTimeToSeconds({ time: element.trimStart }),
+		durationSec,
+		rate:
+			"retime" in element && element.retime
+				? element.retime.rate
+				: undefined,
+	});
+}
+
 function mapTrack({
 	track,
 	isMain,
 	assetById,
+	stripContext,
 }: {
 	track: TimelineTrack;
 	isMain: boolean;
 	assetById: Map<string, MediaAsset>;
+	stripContext: StripKickContext;
 }): TimelineTrackVM {
 	const clips: TimelineClipVM[] = track.elements.map((element) => ({
 		id: element.id,
@@ -214,6 +338,19 @@ function mapTrack({
 		waveformPeaks:
 			element.type === "audio" && "mediaId" in element
 				? audioClipPeaks({ element, asset: assetById.get(element.mediaId) })
+				: undefined,
+		// GitHub #54: real filmstrip frames for video/image clips —
+		// kick + persisted-seed fallback + trim/speed source mapping.
+		thumbnails:
+			element.type === "video" || element.type === "image"
+				? videoClipThumbnails({
+						element,
+						asset:
+							"mediaId" in element
+								? assetById.get(element.mediaId)
+								: undefined,
+						stripContext,
+					})
 				: undefined,
 		// Round 47: one diamond per clip-keyframe TIME (the group model in
 		// keyframes.ts), drawn on the clip by TimelineClip. Ticks ride along
@@ -243,6 +380,13 @@ export function useTimelineProjectVM(): TimelineProjectVM | null {
 		(editor): FrameRate | null => editor.project.getActiveOrNull()?.settings.fps ?? null,
 	);
 	const mediaAssets = useEditor((editor) => editor.media.getAssets());
+	// Stable singleton — the filmstrip persist hook reads the CURRENT media
+	// list through it at write time (see StripKickContext).
+	const editor = useEditor();
+	const projectId = useEditor(
+		(editor): string | null =>
+			editor.project.getActiveOrNull()?.metadata.id ?? null,
+	);
 	// Bumps when an async waveform decode lands, re-running the mapping so
 	// audio clips pick up their real peaks (see waveform-peaks.ts).
 	const waveformsVersion = useSyncExternalStore(
@@ -250,15 +394,31 @@ export function useTimelineProjectVM(): TimelineProjectVM | null {
 		getWaveformsVersion,
 		getWaveformsVersion,
 	);
+	// Bumps when a native filmstrip strip lands (or fails), re-running the
+	// mapping so video clips upgrade placeholder → real frames (see
+	// thumbnail-strip.ts).
+	const thumbnailsVersion = useSyncExternalStore(
+		subscribeThumbnails,
+		getThumbnailsVersion,
+		getThumbnailsVersion,
+	);
 
 	return useMemo(() => {
 		if (!tracks || !fps) return null;
 
 		const assetById = new Map(mediaAssets.map((asset) => [asset.id, asset]));
+		const stripContext: StripKickContext = {
+			projectId,
+			liveAssets: () => editor.media.getAssets(),
+		};
 		const trackVMs: TimelineTrackVM[] = [
-			mapTrack({ track: tracks.main, isMain: true, assetById }),
-			...tracks.overlay.map((track) => mapTrack({ track, isMain: false, assetById })),
-			...tracks.audio.map((track) => mapTrack({ track, isMain: false, assetById })),
+			mapTrack({ track: tracks.main, isMain: true, assetById, stripContext }),
+			...tracks.overlay.map((track) =>
+				mapTrack({ track, isMain: false, assetById, stripContext }),
+			),
+			...tracks.audio.map((track) =>
+				mapTrack({ track, isMain: false, assetById, stripContext }),
+			),
 		];
 
 		return {
@@ -266,5 +426,13 @@ export function useTimelineProjectVM(): TimelineProjectVM | null {
 			durationSec: mediaTimeToSeconds({ time: calculateTotalDuration({ tracks }) }),
 			fps: frameRateToFloatInline(fps),
 		};
-	}, [tracks, fps, mediaAssets, waveformsVersion]);
+	}, [
+		tracks,
+		fps,
+		mediaAssets,
+		waveformsVersion,
+		thumbnailsVersion,
+		projectId,
+		editor,
+	]);
 }
