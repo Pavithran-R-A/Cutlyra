@@ -383,10 +383,11 @@ jobs:
           # not continue the way it does inside a script file.
           script: |
             set +e
-            ./gradlew :app:connectedDebugAndroidTest --console=plain
+            ./gradlew :app:connectedDebugAndroidTest --console=plain -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
             test_status=$?
             mkdir -p app/build/outputs/androidTest-evidence
-            adb exec-out run-as app.cutlyra.editor cat files/filmstrip-evidence/thumbnail-strip-contact-sheet.png > app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png || rm -f app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png
+            adb exec-out run-as app.cutlyra.editor cat files/filmstrip-evidence/thumbnail-strip-contact-sheet.png > app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png
+            [ "$(wc -c < app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png)" -ge 1024 ] || { rm -f app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png; echo "::error::the filmstrip contact sheet was not pulled off the device"; exit 1; }
             exit $test_status
 
       - name: Upload instrumentation reports
