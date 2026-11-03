@@ -79,17 +79,27 @@ export interface TimelineClipVM {
 	 */
 	colorHue: number;
 	/**
-	 * Real per-frame thumbnail URIs, keyed by the frame's clip-relative
-	 * second (rounded to the density the caller decided to generate).
-	 * `undefined` (the harness's synthetic clips) falls back to the
-	 * generated placeholder pattern in filmstrip-thumbnail.tsx — plan M4
-	 * (native thumbnail-strip generation) is not built yet, so no
-	 * consumer of this package has real entries to put here today.
+	 * Real filmstrip frames (GitHub #54), sorted ascending by clip-relative
+	 * `timeSec` and already mapped through this clip's trim/speed window
+	 * (timeline/thumbnails.ts). The renderer looks each zoom-dependent slot
+	 * up by NEAREST frame — never by exact key equality, which native
+	 * source timestamps can't satisfy (see thumbnails.ts's header).
+	 * `undefined` (synthetic harness clips, or a source whose strip hasn't
+	 * generated yet / failed) falls back to the honest placeholder pattern
+	 * in filmstrip-thumbnail.tsx.
 	 */
-	thumbnails?: Record<number, string>;
+	thumbnails?: TimelineThumbnailFrame[];
 	/** Audio-only: amplitude samples 0..1 across the clip's SOURCE duration. */
 	waveformPeaks?: number[];
 	keyframes?: TimelineKeyframeVM[];
+}
+
+/** One real filmstrip frame on the CLIP's timeline (see above). */
+export interface TimelineThumbnailFrame {
+	/** Clip-relative seconds. */
+	timeSec: number;
+	/** Webview-loadable playback URI for the frame's JPEG. */
+	uri: string;
 }
 
 export interface TimelineTrackVM {
