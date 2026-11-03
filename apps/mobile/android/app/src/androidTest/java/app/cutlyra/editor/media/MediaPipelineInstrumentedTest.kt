@@ -46,6 +46,16 @@ import java.io.FileOutputStream
  * over a real-world sample specifically so it's small (32KB), license-free,
  * and reproducible from a one-line command — no binary asset provenance
  * question.
+ *
+ * Second fixture: `res/raw/test_clip_dense_gop.mp4` — the same 2s/320x240/30fps
+ * testsrc picture, video-only and re-encoded with a keyframe every 6 frames,
+ * generated via
+ * `ffmpeg -f lavfi -i testsrc=duration=2:size=320x240:rate=30 -c:v libx264
+ * -g 6 -keyint_min 6 -sc_threshold 0 -pix_fmt yuv420p -crf 28
+ * -movflags +faststart`. It exists because `ThumbnailStripGenerator` samples
+ * with `OPTION_CLOSEST_SYNC`: against `test_clip.mp4`, whose only keyframe is
+ * at t=0, every sample legitimately resolves to the same picture, so that clip
+ * cannot show whether the strip tracks the clip at all.
  */
 @RunWith(AndroidJUnit4::class)
 class MediaPipelineInstrumentedTest {
@@ -53,6 +63,7 @@ class MediaPipelineInstrumentedTest {
 	private lateinit var context: Context
 	private lateinit var testContext: Context
 	private lateinit var copiedClip: File
+	private lateinit var denseGopClip: File
 
 	@Before
 	fun setUp() {
@@ -67,11 +78,16 @@ class MediaPipelineInstrumentedTest {
 		testContext.resources.openRawResource(R.raw.test_clip).use { input ->
 			copiedClip.outputStream().use { output -> input.copyTo(output) }
 		}
+		denseGopClip = File(context.cacheDir, "test_clip_dense_gop_${System.nanoTime()}.mp4")
+		testContext.resources.openRawResource(R.raw.test_clip_dense_gop).use { input ->
+			denseGopClip.outputStream().use { output -> input.copyTo(output) }
+		}
 	}
 
 	@After
 	fun tearDown() {
 		copiedClip.delete()
+		denseGopClip.delete()
 	}
 
 	// -- MediaProbe -----------------------------------------------------------
@@ -134,19 +150,18 @@ class MediaPipelineInstrumentedTest {
 	}
 
 	/**
-	 * #54 evidence: the frames the timeline filmstrip renders are real decoded
-	 * video frames, not a repeated placeholder. The 3-frame test above checks
-	 * shape only; this one checks *content* differs between frames, and writes a
-	 * contact sheet to the app's external files dir so the CI workflow can pull
-	 * it out as a viewable artifact (see `.github/workflows/mobile-ci.yml`).
+	 * #54 evidence: the frames the timeline filmstrip renders are real, distinct
+	 * decoded video frames, not one repeated or placeholder image. Runs on-device
+	 * (the CI API 35 emulator) and writes a contact sheet to the app's external
+	 * files dir so the CI workflow can pull it out as a viewable artifact.
 	 */
 	@Test
 	fun thumbnail_strip_frames_carry_distinct_real_content_and_write_a_contact_sheet() {
-		val probed = MediaProbe.probe(copiedClip, "video/mp4")
+		val probed = MediaProbe.probe(denseGopClip, "video/mp4")
 		val thumbnails = ThumbnailStripGenerator.generate(
 			context = context,
 			assetId = "instrumented-contact-sheet",
-			file = copiedClip,
+			file = denseGopClip,
 			durationMicros = probed.durationMicros,
 			count = 6,
 			maxEdgePx = 160,
@@ -174,15 +189,21 @@ class MediaPipelineInstrumentedTest {
 
 		// Then the content check: 64x64 greyscale fingerprints compared against
 		// the first frame by mean absolute difference. A strip that returns one
-		// frozen or placeholder image measures 0 everywhere.
+		// frozen or placeholder image measures 0 everywhere. Six samples across
+		// the dense-GOP clip land on keyframes a few tenths of a second apart,
+		// which measured ~2-9 grey levels apart locally; require at least three
+		// of the five followers to differ so a single coincidental keyframe
+		// collision cannot fail the run.
 		val fingerprints = frames.map { frame -> fingerprint(frame) }
 		val deviations = fingerprints.drop(1).map { candidate ->
 			meanAbsoluteDifference(fingerprints.first(), candidate)
 		}
+		val differing = deviations.count { deviation -> deviation > DISTINCT_FRAME_MAD }
 		assertTrue(
-			"expected at least one frame to differ from the first " +
-				"(mean abs differences: ${deviations.joinToString()}), contact sheet: ${sheetFile.absolutePath}",
-			deviations.any { deviation -> deviation > DISTINCT_FRAME_MAD },
+			"expected at least 3 of 5 frames to differ from the first, got $differing " +
+				"(mean abs differences: ${deviations.joinToString()}), " +
+				"contact sheet: ${sheetFile.absolutePath}",
+			differing >= 3,
 		)
 	}
 
