@@ -372,7 +372,16 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           working-directory: apps/mobile/android
-          script: ./gradlew :app:connectedDebugAndroidTest --console=plain
+          # #54: pull the filmstrip contact sheet the thumbnail test writes to
+          # the app's external files dir, so the frames are reviewable without
+          # a device in hand. Failure to pull must not mask a test failure.
+          script: |
+            ./gradlew :app:connectedDebugAndroidTest --console=plain
+            test_status=$?
+            mkdir -p app/build/outputs/androidTest-evidence
+            adb pull /sdcard/Android/data/app.cutlyra.editor/files/filmstrip-evidence \
+              app/build/outputs/androidTest-evidence/ || true
+            exit $test_status
 
       - name: Upload instrumentation reports
         if: always()
@@ -382,6 +391,7 @@ jobs:
           path: |
             apps/mobile/android/app/build/reports/androidTests/connected/
             apps/mobile/android/app/build/outputs/androidTest-results/connected/
+            apps/mobile/android/app/build/outputs/androidTest-evidence/
           if-no-files-found: warn
           retention-days: 14
 

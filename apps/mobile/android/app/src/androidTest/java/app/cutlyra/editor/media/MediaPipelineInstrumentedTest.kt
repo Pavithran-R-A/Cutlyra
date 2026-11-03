@@ -1,6 +1,11 @@
 package app.cutlyra.editor.media
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
@@ -15,6 +20,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Cutlyra M4 — instrumentation tests for the Android-framework-dependent
@@ -114,7 +120,7 @@ class MediaPipelineInstrumentedTest {
 			val file = File(thumbnail.filePath)
 			assertTrue("thumbnail file should exist: ${thumbnail.filePath}", file.exists())
 			assertTrue("thumbnail file should be non-empty", file.length() > 0)
-			val bitmap = android.graphics.BitmapFactory.decodeFile(thumbnail.filePath)
+			val bitmap = BitmapFactory.decodeFile(thumbnail.filePath)
 			assertNotNull("thumbnail should decode as a valid JPEG", bitmap)
 			assertTrue(
 				"long edge should be <= maxEdgePx (100)",
@@ -125,6 +131,84 @@ class MediaPipelineInstrumentedTest {
 		val timestamps = thumbnails.map { it.timestampMicros }
 		assertEquals(timestamps.sorted(), timestamps)
 		assertTrue(timestamps.all { it in 0 until probed.durationMicros })
+	}
+
+	/**
+	 * #54 evidence: the frames the timeline filmstrip renders are real decoded
+	 * video frames, not a repeated placeholder. The 3-frame test above checks
+	 * shape only; this one checks *content* differs between frames, and writes a
+	 * contact sheet to the app's external files dir so the CI workflow can pull
+	 * it out as a viewable artifact (see `.github/workflows/mobile-ci.yml`).
+	 */
+	@Test
+	fun thumbnail_strip_frames_carry_distinct_real_content_and_write_a_contact_sheet() {
+		val probed = MediaProbe.probe(copiedClip, "video/mp4")
+		val thumbnails = ThumbnailStripGenerator.generate(
+			context = context,
+			assetId = "instrumented-contact-sheet",
+			file = copiedClip,
+			durationMicros = probed.durationMicros,
+			count = 6,
+			maxEdgePx = 160,
+		)
+		assertEquals(6, thumbnails.size)
+
+		val frames = thumbnails.map { thumbnail ->
+			val bitmap = BitmapFactory.decodeFile(thumbnail.filePath)
+			assertNotNull("frame should decode: ${thumbnail.filePath}", bitmap)
+			bitmap!!
+		}
+
+		// An 8x8 luminance signature per frame: a strip that returned one frozen
+		// or placeholder image collapses to a single signature; a real decode of
+		// a moving clip does not.
+		val signatures = frames.map { frame -> luminanceSignature(frame) }
+		assertTrue(
+			"expected more than one distinct frame, got ${signatures.toSet().size}",
+			signatures.toSet().size > 1,
+		)
+
+		val sheet = contactSheet(frames)
+		val evidenceDir = File(context.getExternalFilesDir(null), "filmstrip-evidence")
+		assertTrue("evidence dir should exist: $evidenceDir", evidenceDir.isDirectory || evidenceDir.mkdirs())
+		val sheetFile = File(evidenceDir, "thumbnail-strip-contact-sheet.png")
+		FileOutputStream(sheetFile).use { stream ->
+			assertTrue("contact sheet should encode", sheet.compress(Bitmap.CompressFormat.PNG, 100, stream))
+		}
+		assertTrue("contact sheet should be non-empty", sheetFile.length() > 0)
+	}
+
+	/** 8x8 grey levels as comma-separated 4-bit buckets — cheap visual equality. */
+	private fun luminanceSignature(bitmap: Bitmap): String {
+		val scaled = Bitmap.createScaledBitmap(bitmap, SIGNATURE_EDGE, SIGNATURE_EDGE, true)
+		val pixels = IntArray(SIGNATURE_EDGE * SIGNATURE_EDGE)
+		scaled.getPixels(pixels, 0, SIGNATURE_EDGE, 0, 0, SIGNATURE_EDGE, SIGNATURE_EDGE)
+		if (scaled !== bitmap) scaled.recycle()
+		return pixels.joinToString(",") { pixel ->
+			val luminance = 0.299 * Color.red(pixel) + 0.587 * Color.green(pixel) + 0.114 * Color.blue(pixel)
+			(luminance.toInt() / 16).toString()
+		}
+	}
+
+	/** Lays the frames out left to right on one black bitmap for eyeball review. */
+	private fun contactSheet(frames: List<Bitmap>): Bitmap {
+		val gap = 6
+		val width = frames.sumOf { it.width } + gap * (frames.size + 1)
+		val height = frames.maxOf { it.height } + gap * 2
+		val sheet = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+		val canvas = Canvas(sheet)
+		canvas.drawColor(Color.BLACK)
+		val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+		var x = gap
+		for (frame in frames) {
+			canvas.drawBitmap(frame, x.toFloat(), gap.toFloat(), paint)
+			x += frame.width + gap
+		}
+		return sheet
+	}
+
+	private companion object {
+		const val SIGNATURE_EDGE = 8
 	}
 
 	// -- MediaImporter ----------------------------------------------------------
