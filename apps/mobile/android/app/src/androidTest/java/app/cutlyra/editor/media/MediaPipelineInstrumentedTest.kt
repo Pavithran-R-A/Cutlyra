@@ -159,15 +159,10 @@ class MediaPipelineInstrumentedTest {
 			bitmap!!
 		}
 
-		// An 8x8 luminance signature per frame: a strip that returned one frozen
-		// or placeholder image collapses to a single signature; a real decode of
-		// a moving clip does not.
-		val signatures = frames.map { frame -> luminanceSignature(frame) }
-		assertTrue(
-			"expected more than one distinct frame, got ${signatures.toSet().size}",
-			signatures.toSet().size > 1,
-		)
-
+		// Write the visual evidence first. The sheet is worth having even when
+		// the content check below fails, because "every frame is identical" is
+		// precisely the failure mode this test exists to catch, and the sheet is
+		// what lets a human see which it was.
 		val sheet = contactSheet(frames)
 		val evidenceDir = File(context.getExternalFilesDir(null), "filmstrip-evidence")
 		assertTrue("evidence dir should exist: $evidenceDir", evidenceDir.isDirectory || evidenceDir.mkdirs())
@@ -176,18 +171,38 @@ class MediaPipelineInstrumentedTest {
 			assertTrue("contact sheet should encode", sheet.compress(Bitmap.CompressFormat.PNG, 100, stream))
 		}
 		assertTrue("contact sheet should be non-empty", sheetFile.length() > 0)
+
+		// Then the content check: 64x64 greyscale fingerprints compared against
+		// the first frame by mean absolute difference. A strip that returns one
+		// frozen or placeholder image measures 0 everywhere.
+		val fingerprints = frames.map { frame -> fingerprint(frame) }
+		val deviations = fingerprints.drop(1).map { candidate ->
+			meanAbsoluteDifference(fingerprints.first(), candidate)
+		}
+		assertTrue(
+			"expected at least one frame to differ from the first " +
+				"(mean abs differences: ${deviations.joinToString()}), contact sheet: ${sheetFile.absolutePath}",
+			deviations.any { deviation -> deviation > DISTINCT_FRAME_MAD },
+		)
 	}
 
-	/** 8x8 grey levels as comma-separated 4-bit buckets — cheap visual equality. */
-	private fun luminanceSignature(bitmap: Bitmap): String {
-		val scaled = Bitmap.createScaledBitmap(bitmap, SIGNATURE_EDGE, SIGNATURE_EDGE, true)
-		val pixels = IntArray(SIGNATURE_EDGE * SIGNATURE_EDGE)
-		scaled.getPixels(pixels, 0, SIGNATURE_EDGE, 0, 0, SIGNATURE_EDGE, SIGNATURE_EDGE)
+	/** 64x64 greyscale fingerprint of one frame, one 0..255 value per pixel. */
+	private fun fingerprint(bitmap: Bitmap): IntArray {
+		val scaled = Bitmap.createScaledBitmap(bitmap, FINGERPRINT_EDGE, FINGERPRINT_EDGE, true)
+		val pixels = IntArray(FINGERPRINT_EDGE * FINGERPRINT_EDGE)
+		scaled.getPixels(pixels, 0, FINGERPRINT_EDGE, 0, 0, FINGERPRINT_EDGE, FINGERPRINT_EDGE)
 		if (scaled !== bitmap) scaled.recycle()
-		return pixels.joinToString(",") { pixel ->
+		return IntArray(pixels.size) { index ->
+			val pixel = pixels[index]
 			val luminance = 0.299 * Color.red(pixel) + 0.587 * Color.green(pixel) + 0.114 * Color.blue(pixel)
-			(luminance.toInt() / 16).toString()
+			luminance.toInt()
 		}
+	}
+
+	private fun meanAbsoluteDifference(left: IntArray, right: IntArray): Double {
+		var total = 0
+		for (index in left.indices) total += kotlin.math.abs(left[index] - right[index])
+		return total.toDouble() / left.size
 	}
 
 	/** Lays the frames out left to right on one black bitmap for eyeball review. */
@@ -208,7 +223,10 @@ class MediaPipelineInstrumentedTest {
 	}
 
 	private companion object {
-		const val SIGNATURE_EDGE = 8
+		const val FINGERPRINT_EDGE = 64
+
+		/** Grey levels of mean absolute difference that count as a changed frame. */
+		const val DISTINCT_FRAME_MAD = 1.0
 	}
 
 	// -- MediaImporter ----------------------------------------------------------

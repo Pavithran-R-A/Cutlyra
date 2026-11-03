@@ -376,6 +376,7 @@ jobs:
           # the app's external files dir, so the frames are reviewable without
           # a device in hand. Failure to pull must not mask a test failure.
           script: |
+            set +e
             ./gradlew :app:connectedDebugAndroidTest --console=plain
             test_status=$?
             mkdir -p app/build/outputs/androidTest-evidence
