@@ -29,8 +29,9 @@ buildTypes {
 
 - `minifyEnabled false` means R8 runs in **no-op mode**: no shrinking, no
   optimisation, no obfuscation. `shrinkResources` is unset (defaults to false).
-- `app/proguard-rules.pro` is the untouched Android Studio template — 21 lines,
-  every line a comment.
+- At the 0.1.0 audit `app/proguard-rules.pro` was the untouched Android Studio
+  template — 21 lines, every line a comment. PR #64 replaced it with the
+  Capacitor / JNI / WebView keeps shown below.
 - Play's "Obfuscation 1 %" is therefore an accurate description of the artifact,
   not a false positive. The threshold is a quality signal, and the artifact is
   maximally far from it.
@@ -65,7 +66,7 @@ with `-Wl,-z,max-page-size=16384` (`app/src/main/cpp/CMakeLists.txt:111`) for
 
 ### The keep rules that enabling R8 needs
 
-Written out so the change is a review away, **not applied**:
+Applied to a CI-only `r8test` build type since PR #64; the `release` build type still has `minifyEnabled false`:
 
 ```proguard
 # Capacitor bridge: plugin classes, plugin methods, permission/activity callbacks.
@@ -88,29 +89,42 @@ Written out so the change is a review away, **not applied**:
 plus `-printconfiguration` + `-printmapping` output archived as the retrace
 artifact Play asks for, and `minifyEnabled true` / `shrinkResources true`.
 
-### Why it is not enabled in this pass
+### How the hypothesis was tested (GitHub #57, PR #64)
 
-The rule set above is a *hypothesis* until a **release** build is exercised on a
-device: the debug variant does not run R8 at all, so no existing test in this repo
-covers the failure mode. The verification that would settle it:
+`release` was not flipped blind. The repo now has a CI-only `r8test` build type
+inherited from `debug` (so it stays debug-signed and installable without the
+owner keystore) but `debuggable false`, which is what makes AGP run R8's
+optimisation and obfuscation passes instead of skipping them. It enables
+`minifyEnabled true` + `shrinkResources true`, and
+`.github/workflows/mobile-ci.yml` builds it and runs the whole instrumented
+suite against it (`:app:connectedR8testAndroidTest -PcutlyraR8Test`).
 
-| Check | Why it can fail only under R8 |
+Measured on `main@fcaa03c` (PR #64 head `a6edc76`): the *Android instrumentation
+(R8 test variant)* job is green with "Starting 45 tests ... Finished 45 tests",
+covering the surfaces listed below, and the same 45 tests pass on the
+debug APK against the API-35 emulator.
+
+| Check | Result on the minified variant |
 | --- | --- |
-| Import a video through the Photo Picker | Capacitor plugin methods renamed |
-| Generate auto-captions | `WhisperJNI` native symbols renamed |
-| Export an MP4 | export plugin methods renamed |
-| Backup/archive export | same bridge |
-| Launcher icon, splash, permissions dialogs | resource shrinking |
+| Import a video through the Photo Picker | 45/45 tests, app installs and launches |
+| Generate auto-captions (`WhisperJNI`) | 45/45 |
+| Export an MP4 | 45/45 |
+| Backup/archive export | 45/45 |
+| Launcher icon, splash, permissions dialogs | packaged, installed, launched |
 
-That requires a **signed** release build. The release keystore is owner-side
-(`CUTLYRA_RELEASE_KEYSTORE_*` are unset here), and building an unsigned AAB cannot
-be installed. A safe next step — not taken here because it changes the release
-build type — is a CI-only `release` variant signed with the debug keystore, run
-against the API-35 emulator, before any real release uses R8.
+The suite also forced linkage rules that describe the *test* APK rather than the
+app: the androidTest APK is minified by a separate R8 run that links against the
+app by mapped name, so members R8 removes from the app (Kotlin intrinsics,
+`Edl.copy`, `MediaItem.fromUri`) broke startup or individual tests. Those keeps
+live in `proguard-instrumentation-rules.pro`, which only `r8test` consumes, so a
+future minified release does not inherit them.
 
-**Risk of waiting:** Play's deadline is Feb 2027. **Risk of flipping blind:**
-release-only `UnsatisfiedLinkError` in captions and a dead native bridge in the
-build testers install. The second is worse; the deadline does not force the first.
+**Still not proven:** a *signed distribution* build. `release` keeps
+`minifyEnabled false`; flipping it remains a separate, reviewed change, and
+Play's "obfuscation 1 %" figure cannot be re-measured until an AAB with R8
+enabled is built. **Risk of waiting:** Play's deadline is Feb 2027. **Risk of
+flipping without device QA:** a release-only `UnsatisfiedLinkError` in captions
+or a dead native bridge in the build testers install.
 
 ---
 
