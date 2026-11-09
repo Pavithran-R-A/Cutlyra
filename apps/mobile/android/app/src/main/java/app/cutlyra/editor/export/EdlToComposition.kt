@@ -532,14 +532,25 @@ object EdlToComposition {
             .build()
     }
 
+    // GitHub #55 / PAV-148: these messages used to name only a clip UUID
+    // ("clip 71a7d579-… has no assetId"), which is what reached the user and
+    // told them nothing. Every refusal now carries the clip's own name and
+    // kind so the offending clip can be identified in the timeline. The sheet
+    // pre-flights the same conditions (`assertMediaReferencesResolved`), so
+    // this text is the last line of defence, not the first thing users read.
     private fun requireAsset(edl: Edl, clip: EdlClip): EdlAsset {
+        val label = "clip \"${clip.name}\" (${clip.kind}, ${clip.clipId})"
         val assetId = clip.assetId
-            ?: throw ExportUnsupportedException("clip ${clip.clipId} has no assetId")
+            ?: throw ExportUnsupportedException(
+                "$label has no assetId — this clip lost its media reference; replace or delete it, then export again",
+            )
         val asset = edl.assetById(assetId)
-            ?: throw ExportUnsupportedException("clip ${clip.clipId} references unknown assetId $assetId")
+            ?: throw ExportUnsupportedException(
+                "$label references assetId $assetId, which is not in this project's asset list",
+            )
         if (asset.sourceUri == null) {
             throw ExportUnsupportedException(
-                "asset ${asset.assetId} has no sourceUri — media import (M4) has not run for this asset",
+                "asset ${asset.assetId} (${asset.name}) for $label has no sourceUri — media import (M4) has not run for this asset",
             )
         }
         return asset
