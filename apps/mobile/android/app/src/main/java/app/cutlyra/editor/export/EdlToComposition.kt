@@ -601,7 +601,7 @@ object EdlToComposition {
         val videoEffects = mutableListOf<Effect>()
         val itemStartUs = us(itemStartTicks)
         val animated = KeyframeEvaluator.hasVisualAnimations(clip)
-        if ((animated || !EdlTransformEffect.isIdentity(clip.transform)) && !isImage) {
+        if (animated || !EdlTransformEffect.isIdentity(clip.transform)) {
             videoEffects.add(EdlTransformEffect(clip, canvasWidth, canvasHeight, itemStartUs, ticksPerSecond))
         }
         if (applyOpacity) {
