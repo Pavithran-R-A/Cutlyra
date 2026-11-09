@@ -136,6 +136,7 @@ object EdlParser {
                 rotateDegrees = transformObj.getDouble("rotateDegrees"),
             ),
             opacity = o.getDouble("opacity"),
+            framing = o.optString("framing", "fit"),
             effects = (o.optJSONArray("effects") ?: JSONArray()).map(::parseEffect),
             hasMasks = masks != null && masks.length() > 0,
             animations = (animations ?: JSONArray()).map(::parseAnimationChannel),

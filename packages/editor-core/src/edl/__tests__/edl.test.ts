@@ -526,3 +526,22 @@ describe("overlay stacking: captions always on top", () => {
 		}
 	});
 });
+
+
+describe("framing (#22)", () => {
+	test("emits fit by default and carries fill from element params", () => {
+		const scene = buildFixtureScene();
+		(scene.tracks.main.elements[0].params as Record<string, unknown>).framing = "fill";
+		const edl = buildEdl({
+			project: buildFixtureProject(),
+			scene,
+			mediaAssets: buildFixtureMediaAssets(),
+			output: FIXTURE_OUTPUT,
+			resolveAsset: fixtureAssetResolver,
+		});
+		const clipA = edl.tracks[0].clips.find((c) => c.clipId === "clip-a");
+		const clipB = edl.tracks[0].clips.find((c) => c.clipId === "clip-b");
+		expect(clipA?.framing).toBe("fill");
+		expect(clipB?.framing).toBe("fit");
+	});
+});

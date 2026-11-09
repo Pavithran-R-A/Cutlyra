@@ -654,11 +654,16 @@ object EdlToComposition {
         // frames reaching the overlay stage are already at output size and the
         // overlay is a true 1:1 blit.
         if (!removeVideo && outputWidth > 0 && outputHeight > 0) {
+            val layout = if (clip.framing == "fill") {
+                Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP
+            } else {
+                Presentation.LAYOUT_SCALE_TO_FIT
+            }
             videoEffects.add(
                 Presentation.createForWidthAndHeight(
                     outputWidth,
                     outputHeight,
-                    Presentation.LAYOUT_SCALE_TO_FIT,
+                    layout,
                 ),
             )
         }

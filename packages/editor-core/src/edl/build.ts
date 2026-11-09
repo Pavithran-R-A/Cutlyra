@@ -22,6 +22,7 @@ import { clampRetimeRate } from "@/retime/rate";
 import {
 	buildTransformFromParams,
 	readBlendModeFromParams,
+	readFramingFromParams,
 	readOpacityFromParams,
 } from "@/rendering";
 import { rationalFromNumber, reduceRational, scaleTicks } from "./rational";
@@ -292,6 +293,7 @@ function buildClip({ element }: { element: TimelineElement }): EdlClip {
 		muted: readBooleanParam({ element, key: "muted", fallback: false }),
 		hidden: "hidden" in element ? element.hidden === true : false,
 		transform,
+		framing: readFramingFromParams({ params: element.params }),
 		opacity: readOpacityFromParams({ params: element.params }),
 		blendMode: readBlendModeFromParams({ params: element.params }),
 		effects:

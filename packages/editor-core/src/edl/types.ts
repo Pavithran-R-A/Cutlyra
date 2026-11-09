@@ -258,6 +258,11 @@ export interface EdlClip {
 	muted: boolean;
 	hidden: boolean;
 	transform: EdlTransform;
+	/** Clip-to-canvas framing for visual source clips: `fit` preserves the
+	 *  whole frame (letter/pillarbox with background, legacy behaviour),
+	 *  `fill` scales to cover and crops the overflow. Additive in v1;
+	 *  readers default absent values to `fit`. */
+	framing?: "fit" | "fill";
 	opacity: number;
 	blendMode: string;
 	effects: EdlEffect[];

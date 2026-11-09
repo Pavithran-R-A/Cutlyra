@@ -1,5 +1,12 @@
 import type { ParamValues } from "@/params";
 
+export {
+	DEFAULT_FRAMING,
+	readFramingFromParams,
+	resolveFramingScale,
+	type FramingMode,
+} from "./framing";
+
 export interface Transform {
 	scaleX: number;
 	scaleY: number;
