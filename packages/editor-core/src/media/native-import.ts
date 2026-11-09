@@ -85,6 +85,16 @@ export interface NativeMediaSource {
 	/** See `@cutlyra/native-bridge` `NativeBridge.getMediaRoot` — null on
 	 *  web or when the native build predates the method. */
 	getMediaRoot(): Promise<string | null>;
+	/** See `@cutlyra/native-bridge` `NativeBridge.saveGeneratedAudio` —
+	 *  persists a JS-generated WAV into native custody and returns its
+	 *  custody-ROOT-relative path, or null when the platform has none.
+	 *  Idempotent per `assetId`. OPTIONAL because a native shell older than
+	 *  the method has nothing to call — call sites treat absence the same
+	 *  as the null return. */
+	saveGeneratedAudio?: (params: {
+		assetId: string;
+		base64: string;
+	}) => Promise<{ relativePath: string } | null>;
 }
 
 const MIME_BY_KIND: Record<MediaType, string> = {

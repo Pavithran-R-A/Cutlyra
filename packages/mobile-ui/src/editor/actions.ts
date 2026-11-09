@@ -62,7 +62,9 @@ import {
 } from "./keyframes";
 import { getNativeBridge } from "@cutlyra/native-bridge";
 import {
+	ensureLibraryAudioAsset,
 	importMediaFromNative,
+	materializeLibraryAudio,
 	mediaTimeFromSeconds,
 	resolveNativeMediaRawPath,
 	TICKS_PER_SECOND,
@@ -987,7 +989,24 @@ export async function importAndPlaceAudio({
 
 // --------------------------------- Audio ------------------------------------
 
-export function insertLocalSound({
+/** GitHub #63: a bundled sound is inserted as an ordinary file-backed
+ *  audio element so the same state backs preview AND export. The WAV is
+ *  written into native media custody through the bridge and registered as
+ *  a real media asset (deduplicated per sound, so re-inserting the same
+ *  sound reuses the one custody file and the one asset row). When the
+ *  platform has no editable custody (web), insertion falls back to the
+ *  preview-only library element — the pre-#63 behavior, unchanged. */
+export async function materializeLibraryAudioSounds({
+	editor,
+}: {
+	editor: EditorCore;
+}): Promise<void> {
+	const bridge = await getNativeBridge();
+	const projectId = editor.project.getActive().metadata.id;
+	await materializeLibraryAudio({ editor, projectId, source: bridge });
+}
+
+export async function insertLocalSound({
 	editor,
 	sourceUrl,
 	name,
@@ -997,12 +1016,44 @@ export function insertLocalSound({
 	sourceUrl: string;
 	name: string;
 	durationSeconds: number;
-}): ElementRef | null {
+}): Promise<ElementRef | null> {
+	const duration = mediaTimeFromSeconds({ seconds: durationSeconds });
+	const startTime = editor.playback.getCurrentTime();
+
+	// Primary path: materialize the bundled sound into native custody and
+	// insert a file-backed audio element. Same shape `importAndPlaceAudio`
+	// produces, so preview/export/backup all read one asset row.
+	const bridge = await getNativeBridge();
+	const projectId = editor.project.getActive().metadata.id;
+	const saved = await ensureLibraryAudioAsset({
+		editor,
+		projectId,
+		source: bridge,
+		name,
+		sourceUrl,
+		durationSeconds,
+	});
+	if (saved) {
+		const create = buildElementFromMedia({
+			mediaId: saved.assetId,
+			mediaType: "audio",
+			name,
+			duration,
+			startTime,
+		});
+		const command = new InsertElementCommand({ element: create, placement: { mode: "auto", trackType: "audio" } });
+		editor.command.execute({ command });
+		const trackId = command.getTrackId();
+		return trackId ? { trackId, elementId: command.getElementId() } : null;
+	}
+
+	// No writable custody (web shell / predating shell): keep the
+	// preview-only library element — same as before #63.
 	const create = buildLibraryAudioElement({
 		sourceUrl,
 		name,
-		duration: mediaTimeFromSeconds({ seconds: durationSeconds }),
-		startTime: editor.playback.getCurrentTime(),
+		duration,
+		startTime,
 	});
 	const command = new InsertElementCommand({ element: create, placement: { mode: "auto", trackType: "audio" } });
 	editor.command.execute({ command });

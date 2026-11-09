@@ -79,6 +79,14 @@ export interface MediaAssetData {
 	 *  restored proxy. Never carries absolute paths/URLs: they die with the
 	 *  container. */
 	thumbnailStrip?: MediaThumbnailStripFrame[];
+	/** Deterministic identity for a bundled-library sound asset (GitHub #63):
+	 *  the content-derived id from `media/library-audio.ts`
+	 *  (`libraryAudioAssetId`). Present only for assets materialized from a
+	 *  bundled library sound — lets repeat inserts of the same bundled sound
+	 *  dedupe to ONE asset row across project reopens and backup restores.
+	 *  The asset's own `id` remains a random `generateUUID()` row id; this
+	 *  marker, not the row id, is what identifies a library sound. */
+	librarySoundId?: string;
 }
 
 /** One persisted filmstrip frame — see `MediaAssetData.thumbnailStrip`. */

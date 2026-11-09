@@ -346,6 +346,23 @@ export interface NativeBridge {
 	 * playback broke after an Xcode reinstall).
 	 */
 	getMediaRoot(): Promise<string | null>;
+	/**
+	 * Persist a JS-generated audio clip (a bundled library sound) into the
+	 * media custody root so it becomes a real, durable asset the native
+	 * exporter can read. Returns the custody-ROOT-relative path of the
+	 * written file, or null when this platform has no editable media
+	 * custody (the web fallback — bundled sounds then stay preview-only,
+	 * exactly as before).
+	 *
+	 * `base64` is the raw WAV bytes (no `data:` prefix). `assetId` is the
+	 * caller's stable id for the sound — writing the same id again overwrites
+	 * the same path with the same bytes, so retries and repeat inserts are
+	 * idempotent.
+	 */
+	saveGeneratedAudio(params: {
+		assetId: string;
+		base64: string;
+	}): Promise<{ relativePath: string } | null>;
 	/** Dogfood audio bisector: a native-rendered 440Hz tone, NO webview
 	 *  involved (2026-08-19 device-silence campaign). Resolves false when
 	 *  the platform can't play one (web fallback / old native build). */

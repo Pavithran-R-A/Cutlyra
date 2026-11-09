@@ -76,6 +76,15 @@ export {
 	type NativeImportFailure,
 } from "./media/native-import";
 export {
+	dataUriToBase64,
+	ensureLibraryAudioAsset,
+	libraryAudioAssetId,
+	materializeLibraryAudio,
+	type LibraryAudioMigrationResult,
+	type LibraryAudioSource,
+	type MaterializedLibraryAudioAsset,
+} from "./media/library-audio";
+export {
 	registerNativeMediaPathResolver,
 	resolveNativeMediaPath,
 	resolveNativeMediaRawPath,

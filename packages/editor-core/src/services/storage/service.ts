@@ -339,6 +339,9 @@ class StorageService {
 			// Real filmstrip frames (GitHub #54) — already custody-relative
 			// in memory (that IS the durable form), so pass through as-is.
 			thumbnailStrip: mediaAsset.thumbnailStrip,
+			// The bundled-library fingerprint (GitHub #63) — pass through so the
+			// same sound dedupes to one asset row after reopen/restore.
+			librarySoundId: mediaAsset.librarySoundId,
 		};
 
 		try {
@@ -470,6 +473,8 @@ class StorageService {
 			// (same discipline as the paths above, which re-anchor here
 			// because playback URLs must be absolute to be loadable).
 			thumbnailStrip: metadata.thumbnailStrip,
+			// The bundled-library fingerprint (GitHub #63) — the dedupe key.
+			librarySoundId: metadata.librarySoundId,
 		};
 	}
 

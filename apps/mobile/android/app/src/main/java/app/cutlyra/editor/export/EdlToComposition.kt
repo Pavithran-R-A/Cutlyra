@@ -354,10 +354,11 @@ object EdlToComposition {
                         // Media3 correctly rejects an EditedMediaItem with
                         // BOTH streams removed. Omitting the clip here makes
                         // its time range silence in the dedicated audio lane.
-                        //
-                        // Generated clips (bundled library sounds, whose
-                        // sourceUrl has no asset-table entry) are still skipped
-                        // above; images are silent by definition.
+                        //						// Assetless clips are still skipped above (e.g. generated
+						// content with no media row); bundled library sounds since
+						// stay null-free once materialized into a real asset at
+						// insert/export time (GitHub #63). Images are silent by
+						// definition.
                         val asset = requireAsset(edl, clip)
                         asset.kind != EdlAssetKind.IMAGE && asset.hasAudio
                     }
