@@ -191,3 +191,11 @@ issue instructs.
   or with the keyboard open.
 - No Play Console API inspection was performed; the findings come from the owner's
   screenshot.
+
+---
+
+## 2026-11-09 addendum — PR #66 framing slice (no release artifact changes)
+
+- PR #66 (`feat/22-canvas-fit-fill`) addresses #22 canvas fit/fill framing with preview↔EDL↔native export parity plumbing and tests. **No `minifyEnabled`/release R8 enablement, no signing changes, no `versionCode` bump, no AAB upload, and no closed-test changes.** R8 test-APK keep rules remain separate from production (per #57/#64 state).
+- Physical POCO M4 Pro 5G + Android 15/16 edge-to-edge/system-bars acceptance is **prepared, not executed**: see `docs/qa/physical-device-acceptance-poco-m4-pro-5g.md`. Owner blocker.
+- Merge gate: full CI matrix on exact final head SHA (including R8 variant + normal instrumentation) must be green; merged-main CI must be verified after merge.

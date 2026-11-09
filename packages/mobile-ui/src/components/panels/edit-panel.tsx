@@ -1,13 +1,19 @@
-import { Copy, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
+import { Copy, Frame, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
 import { CC_ICON_STROKE } from "../../tokens";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
+import { SegmentedControl } from "../segmented-control";
 import { ParamRow, ToggleRow } from "../editor/param-row";
 import type { ElementRef, TimelineElement } from "@cutlyra/editor-core/timeline";
 import { DEFAULT_RETIME_RATE, MAX_RETIME_RATE, MIN_RETIME_RATE } from "@cutlyra/editor-core/retime";
 import { VOLUME_DB_MAX, VOLUME_DB_MIN } from "@cutlyra/editor-core/timeline/audio-constants";
 
 const RETIMABLE_TYPES = new Set(["video", "audio"]);
+const FRAMING_TYPES = new Set(["video", "image"]);
+const FRAMING_SEGMENTS = [
+	{ id: "fit", label: "Fit" },
+	{ id: "fill", label: "Fill" },
+] as const;
 
 interface EditPanelProps {
 	elementRef: ElementRef;
@@ -22,6 +28,7 @@ interface EditPanelProps {
 	onCutDeadSpace?: () => void;
 	onSetSpeed: (args: { rate: number; maintainPitch: boolean }) => void;
 	onSetVolume: (db: number) => void;
+	onSetFraming?: (mode: "fit" | "fill") => void;
 }
 
 /**
@@ -43,12 +50,15 @@ export function EditPanel({
 	onCutDeadSpace,
 	onSetSpeed,
 	onSetVolume,
+	onSetFraming,
 }: EditPanelProps) {
 	const isRetimable = RETIMABLE_TYPES.has(element.type);
+	const isFramable = FRAMING_TYPES.has(element.type);
 	const retime = "retime" in element ? element.retime : undefined;
 	const rate = retime?.rate ?? DEFAULT_RETIME_RATE;
 	const maintainPitch = retime?.maintainPitch ?? false;
 	const volumeDb = typeof element.params.volume === "number" ? element.params.volume : 0;
+	const framing = element.params.framing === "fill" ? "fill" : "fit";
 
 	return (
 		<PanelSheet onScrimClick={onClose} header={<SheetHeader onClose={onClose} />}>
@@ -115,6 +125,28 @@ export function EditPanel({
 						}
 					/>
 				</>
+			)}
+
+			{isFramable && onSetFraming && (
+				<div className="cc-param-row">
+					<div className="cc-param-row__head">
+						<span className="cc-param-row__label">Framing</span>
+						<span className="cc-param-row__value">
+							{framing === "fill" ? "Crops to fill" : "Fits whole frame"}
+						</span>
+					</div>
+					<SegmentedControl
+						aria-label="Framing"
+						segments={FRAMING_SEGMENTS}
+						activeId={framing}
+						onSelect={(id) => onSetFraming(id === "fill" ? "fill" : "fit")}
+					/>
+					<p className="cc-hint" style={{ marginTop: 6, fontSize: 12, opacity: 0.72 }}>
+						{framing === "fill"
+							? "Fill crops the media to cover the canvas. Use Transform to reposition."
+							: "Fit keeps the whole frame visible; the canvas background shows around it."}
+					</p>
+				</div>
 			)}
 		</PanelSheet>
 	);

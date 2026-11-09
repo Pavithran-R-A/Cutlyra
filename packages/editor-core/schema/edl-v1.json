@@ -4,25 +4,68 @@
 	"title": "Cutlyra EDL v1",
 	"description": "FROZEN contract between the Cutlyra TypeScript engine and the native exporters (AVFoundation on iOS, Media3 on Android). Plan section 2.3. Every time value is an integer tick count at meta.ticksPerSecond; every rate is a rational pair of integers. There are no float seconds and no float frame rates in this document. See docs/EDL.md.",
 	"type": "object",
-	"required": ["$schema", "meta", "assets", "tracks", "transitions", "overlays", "output"],
+	"required": [
+		"$schema",
+		"meta",
+		"assets",
+		"tracks",
+		"transitions",
+		"overlays",
+		"output"
+	],
 	"additionalProperties": false,
 	"properties": {
-		"$schema": { "const": "https://cutlyra.dev/schema/edl-v1.json" },
-		"meta": { "$ref": "#/$defs/meta" },
-		"assets": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
-		"tracks": { "type": "array", "items": { "$ref": "#/$defs/track" } },
-		"transitions": { "type": "array", "items": { "$ref": "#/$defs/transition" } },
-		"overlays": { "type": "array", "items": { "$ref": "#/$defs/overlay" } },
-		"output": { "$ref": "#/$defs/output" }
+		"$schema": {
+			"const": "https://cutlyra.dev/schema/edl-v1.json"
+		},
+		"meta": {
+			"$ref": "#/$defs/meta"
+		},
+		"assets": {
+			"type": "array",
+			"items": {
+				"$ref": "#/$defs/asset"
+			}
+		},
+		"tracks": {
+			"type": "array",
+			"items": {
+				"$ref": "#/$defs/track"
+			}
+		},
+		"transitions": {
+			"type": "array",
+			"items": {
+				"$ref": "#/$defs/transition"
+			}
+		},
+		"overlays": {
+			"type": "array",
+			"items": {
+				"$ref": "#/$defs/overlay"
+			}
+		},
+		"output": {
+			"$ref": "#/$defs/output"
+		}
 	},
 	"$defs": {
 		"rational": {
 			"type": "object",
-			"required": ["numerator", "denominator"],
+			"required": [
+				"numerator",
+				"denominator"
+			],
 			"additionalProperties": false,
 			"properties": {
-				"numerator": { "type": "integer", "exclusiveMinimum": 0 },
-				"denominator": { "type": "integer", "exclusiveMinimum": 0 }
+				"numerator": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				},
+				"denominator": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				}
 			}
 		},
 		"ticks": {
@@ -30,39 +73,72 @@
 			"type": "integer",
 			"minimum": 0
 		},
-		"signedTicks": { "type": "integer" },
+		"signedTicks": {
+			"type": "integer"
+		},
 		"size": {
 			"type": "object",
-			"required": ["width", "height"],
+			"required": [
+				"width",
+				"height"
+			],
 			"additionalProperties": false,
 			"properties": {
-				"width": { "type": "integer", "exclusiveMinimum": 0 },
-				"height": { "type": "integer", "exclusiveMinimum": 0 }
+				"width": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				},
+				"height": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				}
 			}
 		},
-		"paramValue": { "type": ["number", "string", "boolean"] },
+		"paramValue": {
+			"type": [
+				"number",
+				"string",
+				"boolean"
+			]
+		},
 		"paramBag": {
 			"type": "object",
-			"additionalProperties": { "$ref": "#/$defs/paramValue" }
+			"additionalProperties": {
+				"$ref": "#/$defs/paramValue"
+			}
 		},
 		"background": {
 			"oneOf": [
 				{
 					"type": "object",
-					"required": ["type", "color"],
+					"required": [
+						"type",
+						"color"
+					],
 					"additionalProperties": false,
 					"properties": {
-						"type": { "const": "color" },
-						"color": { "type": "string" }
+						"type": {
+							"const": "color"
+						},
+						"color": {
+							"type": "string"
+						}
 					}
 				},
 				{
 					"type": "object",
-					"required": ["type", "blurIntensity"],
+					"required": [
+						"type",
+						"blurIntensity"
+					],
 					"additionalProperties": false,
 					"properties": {
-						"type": { "const": "blur" },
-						"blurIntensity": { "type": "number" }
+						"type": {
+							"const": "blur"
+						},
+						"blurIntensity": {
+							"type": "number"
+						}
 					}
 				}
 			]
@@ -84,17 +160,40 @@
 			],
 			"additionalProperties": false,
 			"properties": {
-				"edlVersion": { "const": 1 },
-				"generator": { "type": "string" },
-				"ticksPerSecond": { "type": "integer", "exclusiveMinimum": 0 },
-				"frameRate": { "$ref": "#/$defs/rational" },
-				"canvas": { "$ref": "#/$defs/size" },
-				"background": { "$ref": "#/$defs/background" },
-				"projectId": { "type": "string" },
-				"projectName": { "type": "string" },
-				"sceneId": { "type": "string" },
-				"sceneName": { "type": "string" },
-				"durationTicks": { "$ref": "#/$defs/ticks" }
+				"edlVersion": {
+					"const": 1
+				},
+				"generator": {
+					"type": "string"
+				},
+				"ticksPerSecond": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				},
+				"frameRate": {
+					"$ref": "#/$defs/rational"
+				},
+				"canvas": {
+					"$ref": "#/$defs/size"
+				},
+				"background": {
+					"$ref": "#/$defs/background"
+				},
+				"projectId": {
+					"type": "string"
+				},
+				"projectName": {
+					"type": "string"
+				},
+				"sceneId": {
+					"type": "string"
+				},
+				"sceneName": {
+					"type": "string"
+				},
+				"durationTicks": {
+					"$ref": "#/$defs/ticks"
+				}
 			}
 		},
 		"asset": {
@@ -114,17 +213,67 @@
 			],
 			"additionalProperties": false,
 			"properties": {
-				"assetId": { "type": "string" },
-				"kind": { "enum": ["video", "image", "audio"] },
-				"name": { "type": "string" },
-				"sourceUri": { "type": ["string", "null"] },
-				"proxyUri": { "type": ["string", "null"] },
-				"codec": { "type": ["string", "null"] },
-				"width": { "type": ["integer", "null"] },
-				"height": { "type": ["integer", "null"] },
-				"durationTicks": { "type": ["integer", "null"], "minimum": 0 },
-				"rotationDegrees": { "enum": [0, 90, 180, 270] },
-				"hasAudio": { "type": "boolean" }
+				"assetId": {
+					"type": "string"
+				},
+				"kind": {
+					"enum": [
+						"video",
+						"image",
+						"audio"
+					]
+				},
+				"name": {
+					"type": "string"
+				},
+				"sourceUri": {
+					"type": [
+						"string",
+						"null"
+					]
+				},
+				"proxyUri": {
+					"type": [
+						"string",
+						"null"
+					]
+				},
+				"codec": {
+					"type": [
+						"string",
+						"null"
+					]
+				},
+				"width": {
+					"type": [
+						"integer",
+						"null"
+					]
+				},
+				"height": {
+					"type": [
+						"integer",
+						"null"
+					]
+				},
+				"durationTicks": {
+					"type": [
+						"integer",
+						"null"
+					],
+					"minimum": 0
+				},
+				"rotationDegrees": {
+					"enum": [
+						0,
+						90,
+						180,
+						270
+					]
+				},
+				"hasAudio": {
+					"type": "boolean"
+				}
 			}
 		},
 		"track": {
@@ -141,63 +290,138 @@
 			],
 			"additionalProperties": false,
 			"properties": {
-				"trackId": { "type": "string" },
-				"kind": { "enum": ["main", "overlay", "audio"] },
-				"trackType": {
-					"enum": ["video", "text", "audio", "graphic", "effect", "caption"]
+				"trackId": {
+					"type": "string"
 				},
-				"name": { "type": "string" },
+				"kind": {
+					"enum": [
+						"main",
+						"overlay",
+						"audio"
+					]
+				},
+				"trackType": {
+					"enum": [
+						"video",
+						"text",
+						"audio",
+						"graphic",
+						"effect",
+						"caption"
+					]
+				},
+				"name": {
+					"type": "string"
+				},
 				"zIndex": {
 					"description": "0 is the bottom-most composited layer; higher paints on top. null for audio tracks, which are not composited.",
-					"type": ["integer", "null"],
+					"type": [
+						"integer",
+						"null"
+					],
 					"minimum": 0
 				},
-				"muted": { "type": "boolean" },
-				"hidden": { "type": "boolean" },
-				"clips": { "type": "array", "items": { "$ref": "#/$defs/clip" } }
+				"muted": {
+					"type": "boolean"
+				},
+				"hidden": {
+					"type": "boolean"
+				},
+				"clips": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/clip"
+					}
+				}
 			}
 		},
 		"transform": {
 			"type": "object",
-			"required": ["positionX", "positionY", "scaleX", "scaleY", "rotateDegrees"],
+			"required": [
+				"positionX",
+				"positionY",
+				"scaleX",
+				"scaleY",
+				"rotateDegrees"
+			],
 			"additionalProperties": false,
 			"properties": {
-				"positionX": { "type": "number" },
-				"positionY": { "type": "number" },
-				"scaleX": { "type": "number" },
-				"scaleY": { "type": "number" },
-				"rotateDegrees": { "type": "number" }
+				"positionX": {
+					"type": "number"
+				},
+				"positionY": {
+					"type": "number"
+				},
+				"scaleX": {
+					"type": "number"
+				},
+				"scaleY": {
+					"type": "number"
+				},
+				"rotateDegrees": {
+					"type": "number"
+				}
 			}
 		},
 		"effect": {
 			"type": "object",
-			"required": ["effectId", "type", "enabled", "params"],
+			"required": [
+				"effectId",
+				"type",
+				"enabled",
+				"params"
+			],
 			"additionalProperties": false,
 			"properties": {
-				"effectId": { "type": "string" },
-				"type": { "type": "string" },
-				"enabled": { "type": "boolean" },
-				"params": { "$ref": "#/$defs/paramBag" }
+				"effectId": {
+					"type": "string"
+				},
+				"type": {
+					"type": "string"
+				},
+				"enabled": {
+					"type": "boolean"
+				},
+				"params": {
+					"$ref": "#/$defs/paramBag"
+				}
 			}
 		},
 		"mask": {
 			"description": "Carried so preview and export read the same graph. Masks are post-v1 for native export; a v1 mapper should refuse rather than drop them.",
 			"type": "object",
-			"required": ["maskId", "type", "params"],
+			"required": [
+				"maskId",
+				"type",
+				"params"
+			],
 			"additionalProperties": false,
 			"properties": {
-				"maskId": { "type": "string" },
-				"type": { "type": "string" },
-				"params": { "type": "object" }
+				"maskId": {
+					"type": "string"
+				},
+				"type": {
+					"type": "string"
+				},
+				"params": {
+					"type": "object"
+				}
 			}
 		},
 		"curveHandle": {
 			"type": "object",
-			"required": ["dtTicks", "dv"],
+			"required": [
+				"dtTicks",
+				"dv"
+			],
 			"additionalProperties": false,
 			"properties": {
-				"dtTicks": { "$ref": "#/$defs/signedTicks" },
-				"dv": { "type": "number" }
+				"dtTicks": {
+					"$ref": "#/$defs/signedTicks"
+				},
+				"dv": {
+					"type": "number"
+				}
 			}
 		},
 		"keyframe": {
@@ -212,18 +436,42 @@
 			],
 			"additionalProperties": false,
 			"properties": {
-				"keyframeId": { "type": "string" },
+				"keyframeId": {
+					"type": "string"
+				},
 				"timeTicks": {
 					"description": "Relative to the clip's own start, not the timeline origin.",
 					"$ref": "#/$defs/ticks"
 				},
-				"value": { "$ref": "#/$defs/paramValue" },
-				"interpolation": { "enum": ["linear", "hold", "bezier"] },
+				"value": {
+					"$ref": "#/$defs/paramValue"
+				},
+				"interpolation": {
+					"enum": [
+						"linear",
+						"hold",
+						"bezier"
+					]
+				},
 				"leftHandle": {
-					"oneOf": [{ "$ref": "#/$defs/curveHandle" }, { "type": "null" }]
+					"oneOf": [
+						{
+							"$ref": "#/$defs/curveHandle"
+						},
+						{
+							"type": "null"
+						}
+					]
 				},
 				"rightHandle": {
-					"oneOf": [{ "$ref": "#/$defs/curveHandle" }, { "type": "null" }]
+					"oneOf": [
+						{
+							"$ref": "#/$defs/curveHandle"
+						},
+						{
+							"type": "null"
+						}
+					]
 				}
 			}
 		},
@@ -238,11 +486,33 @@
 			],
 			"additionalProperties": false,
 			"properties": {
-				"propertyPath": { "type": "string" },
-				"componentKey": { "type": ["string", "null"] },
-				"extrapolationBefore": { "enum": ["hold", "linear"] },
-				"extrapolationAfter": { "enum": ["hold", "linear"] },
-				"keyframes": { "type": "array", "items": { "$ref": "#/$defs/keyframe" } }
+				"propertyPath": {
+					"type": "string"
+				},
+				"componentKey": {
+					"type": [
+						"string",
+						"null"
+					]
+				},
+				"extrapolationBefore": {
+					"enum": [
+						"hold",
+						"linear"
+					]
+				},
+				"extrapolationAfter": {
+					"enum": [
+						"hold",
+						"linear"
+					]
+				},
+				"keyframes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/keyframe"
+					}
+				}
 			}
 		},
 		"clip": {
@@ -273,7 +543,9 @@
 			],
 			"additionalProperties": false,
 			"properties": {
-				"clipId": { "type": "string" },
+				"clipId": {
+					"type": "string"
+				},
 				"kind": {
 					"enum": [
 						"video",
@@ -286,46 +558,113 @@
 						"caption"
 					]
 				},
-				"assetId": { "type": ["string", "null"] },
-				"name": { "type": "string" },
-				"startTicks": { "$ref": "#/$defs/ticks" },
-				"durationTicks": { "type": "integer", "exclusiveMinimum": 0 },
-				"sourceStartTicks": { "$ref": "#/$defs/ticks" },
-				"sourceEndTicks": { "$ref": "#/$defs/ticks" },
-				"trimEndTicks": { "$ref": "#/$defs/ticks" },
+				"assetId": {
+					"type": [
+						"string",
+						"null"
+					]
+				},
+				"name": {
+					"type": "string"
+				},
+				"startTicks": {
+					"$ref": "#/$defs/ticks"
+				},
+				"durationTicks": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				},
+				"sourceStartTicks": {
+					"$ref": "#/$defs/ticks"
+				},
+				"sourceEndTicks": {
+					"$ref": "#/$defs/ticks"
+				},
+				"trimEndTicks": {
+					"$ref": "#/$defs/ticks"
+				},
 				"speed": {
 					"description": "Source ticks consumed per timeline tick, exact. 2/1 is double speed.",
 					"$ref": "#/$defs/rational"
 				},
-				"maintainPitch": { "type": "boolean" },
-				"volumeDb": { "type": "number" },
-				"muted": { "type": "boolean" },
-				"hidden": { "type": "boolean" },
-				"transform": { "$ref": "#/$defs/transform" },
-				"opacity": { "type": "number", "minimum": 0, "maximum": 1 },
-				"blendMode": { "type": "string" },
-				"effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
-				"masks": { "type": "array", "items": { "$ref": "#/$defs/mask" } },
+				"maintainPitch": {
+					"type": "boolean"
+				},
+				"volumeDb": {
+					"type": "number"
+				},
+				"muted": {
+					"type": "boolean"
+				},
+				"hidden": {
+					"type": "boolean"
+				},
+				"transform": {
+					"$ref": "#/$defs/transform"
+				},
+				"opacity": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 1
+				},
+				"blendMode": {
+					"type": "string"
+				},
+				"effects": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/effect"
+					}
+				},
+				"masks": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/mask"
+					}
+				},
 				"animations": {
 					"type": "array",
-					"items": { "$ref": "#/$defs/animationChannel" }
+					"items": {
+						"$ref": "#/$defs/animationChannel"
+					}
 				},
 				"captionWords": {
 					"description": "[] unless kind is \"caption\". Ticks are in the same source-tick space as sourceStartTicks/sourceEndTicks above.",
 					"type": "array",
-					"items": { "$ref": "#/$defs/captionWord" }
+					"items": {
+						"$ref": "#/$defs/captionWord"
+					}
 				},
-				"params": { "$ref": "#/$defs/paramBag" }
+				"params": {
+					"$ref": "#/$defs/paramBag"
+				},
+				"framing": {
+					"enum": [
+						"fit",
+						"fill"
+					],
+					"description": "Clip-to-canvas framing for visual sources; absent defaults to fit."
+				}
 			}
 		},
 		"captionWord": {
 			"type": "object",
-			"required": ["text", "startTicks", "endTicks"],
+			"required": [
+				"text",
+				"startTicks",
+				"endTicks"
+			],
 			"additionalProperties": false,
 			"properties": {
-				"text": { "type": "string" },
-				"startTicks": { "$ref": "#/$defs/ticks" },
-				"endTicks": { "$ref": "#/$defs/ticks" }
+				"text": {
+					"type": "string"
+				},
+				"startTicks": {
+					"$ref": "#/$defs/ticks"
+				},
+				"endTicks": {
+					"$ref": "#/$defs/ticks"
+				}
 			}
 		},
 		"overlay": {
@@ -342,25 +681,60 @@
 			],
 			"additionalProperties": false,
 			"properties": {
-				"overlayId": { "type": "string" },
-				"kind": { "enum": ["text", "sticker", "graphic", "caption"] },
-				"trackId": { "type": "string" },
-				"clipId": { "type": "string" },
-				"zIndex": { "type": "integer", "minimum": 0 },
-				"startTicks": { "$ref": "#/$defs/ticks" },
-				"durationTicks": { "type": "integer", "exclusiveMinimum": 0 }
+				"overlayId": {
+					"type": "string"
+				},
+				"kind": {
+					"enum": [
+						"text",
+						"sticker",
+						"graphic",
+						"caption"
+					]
+				},
+				"trackId": {
+					"type": "string"
+				},
+				"clipId": {
+					"type": "string"
+				},
+				"zIndex": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"startTicks": {
+					"$ref": "#/$defs/ticks"
+				},
+				"durationTicks": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				}
 			}
 		},
 		"transition": {
 			"description": "Main-track only, matching CapCut. v1 producer always emits an empty array; the slot is frozen so adding transitions later is not a schema break.",
 			"type": "object",
-			"required": ["transitionId", "afterClipId", "kind", "durationTicks"],
+			"required": [
+				"transitionId",
+				"afterClipId",
+				"kind",
+				"durationTicks"
+			],
 			"additionalProperties": false,
 			"properties": {
-				"transitionId": { "type": "string" },
-				"afterClipId": { "type": "string" },
-				"kind": { "type": "string" },
-				"durationTicks": { "type": "integer", "exclusiveMinimum": 0 }
+				"transitionId": {
+					"type": "string"
+				},
+				"afterClipId": {
+					"type": "string"
+				},
+				"kind": {
+					"type": "string"
+				},
+				"durationTicks": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				}
 			}
 		},
 		"output": {
@@ -376,13 +750,31 @@
 			],
 			"additionalProperties": false,
 			"properties": {
-				"container": { "enum": ["mp4", "webm"] },
-				"videoCodec": { "type": "string" },
-				"audioCodec": { "type": "string" },
-				"bitrate": { "type": "integer", "exclusiveMinimum": 0 },
-				"fps": { "$ref": "#/$defs/rational" },
-				"resolution": { "$ref": "#/$defs/size" },
-				"includeAudio": { "type": "boolean" }
+				"container": {
+					"enum": [
+						"mp4",
+						"webm"
+					]
+				},
+				"videoCodec": {
+					"type": "string"
+				},
+				"audioCodec": {
+					"type": "string"
+				},
+				"bitrate": {
+					"type": "integer",
+					"exclusiveMinimum": 0
+				},
+				"fps": {
+					"$ref": "#/$defs/rational"
+				},
+				"resolution": {
+					"$ref": "#/$defs/size"
+				},
+				"includeAudio": {
+					"type": "boolean"
+				}
 			}
 		}
 	}

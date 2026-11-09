@@ -4,6 +4,7 @@ import { incrementCounter } from "@/diagnostics/render-perf";
 import type { AnyBaseNode } from "../nodes/base-node";
 import type { CanvasRenderer } from "../canvas-renderer";
 import { createCanvasSurface } from "../canvas-utils";
+import { DEFAULT_FRAMING, resolveFramingScale, type FramingMode } from "@/rendering";
 import { BlurBackgroundNode } from "../nodes/blur-background-node";
 import { ColorNode } from "../nodes/color-node";
 import { EffectLayerNode } from "../nodes/effect-layer-node";
@@ -317,6 +318,7 @@ async function collectVisualSourceNode({
 		resolved: node.resolved,
 		sourceWidth,
 		sourceHeight,
+		framing: node.params.framing ?? DEFAULT_FRAMING,
 	});
 	const { mask, strokeLayer } = buildMaskArtifacts({
 		node,
@@ -393,18 +395,23 @@ function computeVisualTransform({
 	resolved,
 	sourceWidth,
 	sourceHeight,
+	framing = DEFAULT_FRAMING,
 }: {
 	renderer: CanvasRenderer;
 	resolved: ResolvedVisualSourceNodeState | ResolvedGraphicNodeState;
 	sourceWidth: number;
 	sourceHeight: number;
+	framing?: FramingMode;
 }): QuadTransformDescriptor {
-	const containScale = Math.min(
-		renderer.width / sourceWidth,
-		renderer.height / sourceHeight,
-	);
-	const scaledWidth = sourceWidth * containScale * resolved.transform.scaleX;
-	const scaledHeight = sourceHeight * containScale * resolved.transform.scaleY;
+	const framingScale = resolveFramingScale({
+		canvasWidth: renderer.width,
+		canvasHeight: renderer.height,
+		sourceWidth,
+		sourceHeight,
+		framing,
+	});
+	const scaledWidth = sourceWidth * framingScale * resolved.transform.scaleX;
+	const scaledHeight = sourceHeight * framingScale * resolved.transform.scaleY;
 	const absWidth = Math.abs(scaledWidth);
 	const absHeight = Math.abs(scaledHeight);
 

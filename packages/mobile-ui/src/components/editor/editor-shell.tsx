@@ -574,6 +574,18 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 					}
 					onSetSpeed={({ rate, maintainPitch }) => setRetime({ editor, ref: selectedRef, rate, maintainPitch })}
 					onSetVolume={(db) => setElementParam({ editor, ref: selectedRef, key: "volume", value: db })}
+					onSetFraming={
+						(selectedElement.type === "video" || selectedElement.type === "image") &&
+						selectedRef.trackId === editor.scenes.getActiveScene()?.tracks.main.id
+							? (mode) =>
+									setElementParam({
+										editor,
+										ref: selectedRef,
+										key: "framing",
+										value: mode,
+									})
+							: undefined
+					}
 				/>
 			)}
 
@@ -674,6 +686,10 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 			{activeSheet === "ratio" && (
 				<PanelSheet onScrimClick={closeSheet} header={<SheetHeader onClose={closeSheet} />}>
 					<p className="cc-sheet-title">Aspect ratio</p>
+					<p className="cc-hint" style={{ marginBottom: 10, fontSize: 12, opacity: 0.72 }}>
+						Changes the canvas frame. For a selected video or image, use Edit → Framing to choose Fit
+						(whole frame visible) or Fill (crops to cover).
+					</p>
 					<div className="cc-ratio-grid">
 						{RATIO_PRESETS.map((preset) => {
 							const active =

@@ -90,7 +90,7 @@
 			"area": "Home & intake",
 			"case": "Portrait 9:16 import adopts a portrait canvas without an aspect choice",
 			"status": "PASS",
-			"evidence": "insert-element-canvas-adoption.test.ts + canvas-adoption-parity.test.ts (unit, executed). GitHub #22 tracks the user-facing choice.",
+			"evidence": "insert-element-canvas-adoption.test.ts + canvas-adoption-parity.test.ts (unit). PR #66 implements per-clip Fit/Fill framing (#22) with framing math/EDL tests and ExportFramingInstrumentedTest; CI evidence pending on exact final head SHA.",
 			"blocker": null
 		},
 		{
@@ -243,7 +243,8 @@
 			"case": "No letterbox border is introduced for a same-aspect source",
 			"status": "PASS",
 			"evidence": "instrumented export_1080p_from_same_aspect_source_has_no_introduced_border, export_720p_..., export_portrait_..., export_1080p_through_a_crossfade_has_no_introduced_border",
-			"blocker": null
+			"blocker": null,
+			"note": "Same-aspect border regression remains covered by existing instrumented tests. PR #66 adds mismatched-aspect Fit/Fill export geometry coverage (ExportFramingInstrumentedTest); CI evidence pending on exact final head SHA."
 		},
 		{
 			"id": "export-05",
@@ -460,6 +461,14 @@
 			"status": "BLOCKED",
 			"evidence": "Play Console state is owner-side; nothing in this session touched uploads.",
 			"blocker": "Console access is not available here, and uploading is not authorized"
+		},
+		{
+			"id": "export-22",
+			"area": "Preview vs export",
+			"case": "Per-clip Fit preserves whole frame with bars/background; Fill covers canvas without letterbox bars for mismatched aspect (#22)",
+			"status": "VERIFY",
+			"evidence": "PR #66 adds framing math tests (packages/editor-core/src/rendering/__tests__/framing.test.ts), EDL framing propagation/golden/schema, EdlToComposition Presentation CROP for fill, and instrumented ExportFramingInstrumentedTest (fit letterboxes, fill covers, 4:3 source in 9:16 canvas). CI run on exact final head SHA required for PASS; device preview/export parity not executed here.",
+			"blocker": "awaiting green CI on exact final head SHA; no interactive POCO M4 Pro 5G / Android 15-16 device verification in this environment"
 		}
 	],
 	"summary": {
@@ -476,5 +485,12 @@
 		"#61 media references (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/61",
 		"#62 this evidence pack": "https://github.com/Pavithran-R-A/Cutlyra/pull/62",
 		"#63 sound library silent": "https://github.com/Pavithran-R-A/Cutlyra/issues/63"
+	},
+	"rebaseline_pr66": {
+		"date": "2026-11-09",
+		"branch": "feat/22-canvas-fit-fill",
+		"head_sha": "1c351be",
+		"pr": "https://github.com/Pavithran-R-A/Cutlyra/pull/66",
+		"note": "Truthful interim rebaseline for #22/#56/#58 slice. Baseline case statuses/evidence from 2026-11-03 main@1027a28 are preserved unless directly updated; no new PASS claims without direct evidence on this head. Full CI matrix must pass on the exact final head SHA before merge; update evidence with CI run IDs after results."
 	}
 }

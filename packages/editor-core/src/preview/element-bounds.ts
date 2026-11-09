@@ -7,7 +7,11 @@ import {
 	getElementLocalTime,
 } from "@/animation";
 import { resolveTransformAtTime } from "@/rendering/animation-values";
-import { buildTransformFromParams } from "@/rendering";
+import {
+	buildTransformFromParams,
+	DEFAULT_FRAMING,
+	resolveFramingScale,
+} from "@/rendering";
 import { resolveCaptionStyle } from "@/captions/resolve-style";
 import { getActiveCaptionWordIndex, getVisibleCaptionWords } from "@/captions/layout";
 import {
@@ -37,6 +41,7 @@ function getVisualElementBounds({
 	sourceWidth,
 	sourceHeight,
 	transform,
+	framing = DEFAULT_FRAMING,
 }: {
 	canvasWidth: number;
 	canvasHeight: number;
@@ -48,13 +53,17 @@ function getVisualElementBounds({
 		position: { x: number; y: number };
 		rotate: number;
 	};
+	framing?: "fit" | "fill";
 }): ElementBounds {
-	const containScale = Math.min(
-		canvasWidth / sourceWidth,
-		canvasHeight / sourceHeight,
-	);
-	const scaledWidth = sourceWidth * containScale * transform.scaleX;
-	const scaledHeight = sourceHeight * containScale * transform.scaleY;
+	const framingScale = resolveFramingScale({
+		canvasWidth,
+		canvasHeight,
+		sourceWidth,
+		sourceHeight,
+		framing,
+	});
+	const scaledWidth = sourceWidth * framingScale * transform.scaleX;
+	const scaledHeight = sourceHeight * framingScale * transform.scaleY;
 	const cx = canvasWidth / 2 + transform.position.x;
 	const cy = canvasHeight / 2 + transform.position.y;
 
@@ -137,12 +146,14 @@ function getElementBounds({
 		});
 		const sourceWidth = mediaAsset?.width ?? canvasWidth;
 		const sourceHeight = mediaAsset?.height ?? canvasHeight;
+		const framing = element.params.framing === "fill" ? "fill" : "fit";
 		return getVisualElementBounds({
 			canvasWidth,
 			canvasHeight,
 			sourceWidth,
 			sourceHeight,
 			transform,
+			framing,
 		});
 	}
 
@@ -152,12 +163,14 @@ function getElementBounds({
 			animations: element.animations,
 			localTime,
 		});
+		const framing = element.params.framing === "fill" ? "fill" : "fit";
 		return getVisualElementBounds({
 			canvasWidth,
 			canvasHeight,
 			sourceWidth: element.intrinsicWidth ?? STICKER_INTRINSIC_SIZE_FALLBACK,
 			sourceHeight: element.intrinsicHeight ?? STICKER_INTRINSIC_SIZE_FALLBACK,
 			transform,
+			framing,
 		});
 	}
 
@@ -167,12 +180,14 @@ function getElementBounds({
 			animations: element.animations,
 			localTime,
 		});
+		const framing = element.params.framing === "fill" ? "fill" : "fit";
 		return getVisualElementBounds({
 			canvasWidth,
 			canvasHeight,
 			sourceWidth: DEFAULT_GRAPHIC_SOURCE_SIZE,
 			sourceHeight: DEFAULT_GRAPHIC_SOURCE_SIZE,
 			transform,
+			framing,
 		});
 	}
 

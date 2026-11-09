@@ -96,6 +96,8 @@ data class EdlClip(
     val hidden: Boolean,
     val transform: EdlTransform,
     val opacity: Double,
+    /** `fit` (default, preserve whole frame) or `fill` (cover + crop). */
+    val framing: String = "fit",
     val effects: List<EdlEffect>,
     val hasMasks: Boolean,
     /** Keyframe channels, `EdlAnimationChannel` per (propertyPath,
