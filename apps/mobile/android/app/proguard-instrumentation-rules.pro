@@ -20,6 +20,12 @@
 # obfuscated (test references are rewritten through the mapping).
 -keepclassmembers class app.cutlyra.editor.** { *; }
 
+# media3 is the one library the suite calls directly (MediaItem, Composition,
+# effects) to check what the exporter produced. R8 drops overloads the app
+# never uses — MediaItem.fromUri(String) was measured going missing — so
+# keep its members too. Class names still obfuscate.
+-keepclassmembers class androidx.media3.** { *; }
+
 # Kotlin runtime the test APK links through by name after mapping. The
 # stdlib is an app dependency, so the test APK drops its own copy, while
 # R8 drops the classes the app never uses (measured: Intrinsics helpers,
