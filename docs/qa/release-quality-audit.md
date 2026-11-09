@@ -101,7 +101,7 @@ suite against it (`:app:connectedR8testAndroidTest -PcutlyraR8Test`).
 
 Measured on `main@fcaa03c` (PR #64 head `a6edc76`): the *Android instrumentation
 (R8 test variant)* job is green with "Starting 45 tests ... Finished 45 tests",
-covering the surfaces the table above lists, and the same 45 tests pass on the
+covering the surfaces listed below, and the same 45 tests pass on the
 debug APK against the API-35 emulator.
 
 | Check | Result on the minified variant |
