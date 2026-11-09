@@ -336,6 +336,9 @@ class StorageService {
 			sourceRotationDegrees: mediaAsset.sourceRotationDegrees,
 			sourceWidth: mediaAsset.sourceWidth,
 			sourceHeight: mediaAsset.sourceHeight,
+			// Real filmstrip frames (GitHub #54) — already custody-relative
+			// in memory (that IS the durable form), so pass through as-is.
+			thumbnailStrip: mediaAsset.thumbnailStrip,
 		};
 
 		try {
@@ -461,6 +464,12 @@ class StorageService {
 			sourceRotationDegrees: metadata.sourceRotationDegrees,
 			sourceWidth: metadata.sourceWidth,
 			sourceHeight: metadata.sourceHeight,
+			// Relative strip paths ride through unresolved — the timeline
+			// resolves them per read via resolveNativeMediaPath so a
+			// container-UUID rotation re-anchors at the LAST possible moment
+			// (same discipline as the paths above, which re-anchor here
+			// because playback URLs must be absolute to be loadable).
+			thumbnailStrip: metadata.thumbnailStrip,
 		};
 	}
 

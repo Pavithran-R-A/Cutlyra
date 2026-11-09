@@ -84,6 +84,55 @@ describe("buildMediaAssetFromNativeImport", () => {
 		const noThumbs: NativeProxyProgress = { ...doneProxy, thumbnailUris: undefined };
 		const asset = buildMediaAssetFromNativeImport({ handle, proxy: noThumbs, toPlaybackUri });
 		expect(asset.thumbnailUrl).toBeUndefined();
+		expect(asset.thumbnailStrip).toBeUndefined();
+	});
+
+	// --- GitHub #54: the import-time filmstrip seed ----------------------
+
+	test("persists the WHOLE import-time strip with midpoint timestamps (GitHub #54)", () => {
+		const asset = buildMediaAssetFromNativeImport({
+			handle,
+			proxy: doneProxy,
+			toPlaybackUri,
+			mediaRoot: "/sandbox",
+		});
+		// 4s source, 2 frames → native samples cell midpoints
+		// (2i+1)·duration / 2n: 1.0s and 3.0s — the same formula iOS's
+		// ThumbnailStripGenerator documents, not a guess at even spacing.
+		expect(asset.thumbnailStrip).toEqual([
+			{ timeSec: 1, relativePath: "Thumbnails/native-1/thumb-000.jpg" },
+			{ timeSec: 3, relativePath: "Thumbnails/native-1/thumb-001.jpg" },
+		]);
+	});
+
+	test("image imports carry no strip seed — the still is its own filmstrip", () => {
+		const imageHandle: NativeMediaHandle = {
+			...handle,
+			kind: "image",
+			frameRate: null,
+			hasAudio: false,
+		};
+		const imageProxy: NativeProxyProgress = {
+			...doneProxy,
+			thumbnailUris: ["/sandbox/Media/native-1.jpg"],
+		};
+		const asset = buildMediaAssetFromNativeImport({
+			handle: imageHandle,
+			proxy: imageProxy,
+			toPlaybackUri,
+			mediaRoot: "/sandbox",
+		});
+		expect(asset.thumbnailStrip).toBeUndefined();
+	});
+
+	test("no custody root (web / pre-root build) → no persisted strip", () => {
+		const asset = buildMediaAssetFromNativeImport({
+			handle,
+			proxy: doneProxy,
+			toPlaybackUri,
+			mediaRoot: null,
+		});
+		expect(asset.thumbnailStrip).toBeUndefined();
 	});
 });
 

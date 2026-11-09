@@ -63,6 +63,30 @@ export interface MediaAssetData {
 	 *  source, so width/height are already the true dims). */
 	sourceWidth?: number;
 	sourceHeight?: number;
+	/** Real timeline filmstrip frames (GitHub #54), ordered by `timeSec`:
+	 *  the durable form of the lazy thumbnail strip. Each entry is a
+	 *  custody-root-relative JPEG path (media/native-paths.ts — the SAME
+	 *  container-rotation discipline as `thumbnailNativeRelativePath`, so
+	 *  the strip survives iOS app updates) plus the frame's SOURCE-relative
+	 *  midpoint in seconds (the proxy is a full-length transcode, so proxy
+	 *  time == source time). Populated at import from iOS's free
+	 *  `proxy.thumbnailUris` seed and upgraded in place by the mobile
+	 *  timeline's lazy `generateThumbnails` pass (packages/mobile-ui/
+	 *  src/editor/thumbnail-strip.ts). Missing on blob-backed assets, on
+	 *  Android imports (the native proxy emits no seed there), and on
+	 *  archives restored from backup — restore deliberately rebuilds media
+	 *  from its own descriptors, and the strip regenerates lazily from the
+	 *  restored proxy. Never carries absolute paths/URLs: they die with the
+	 *  container. */
+	thumbnailStrip?: MediaThumbnailStripFrame[];
+}
+
+/** One persisted filmstrip frame — see `MediaAssetData.thumbnailStrip`. */
+export interface MediaThumbnailStripFrame {
+	/** Source-relative seconds (frame midpoint within the source file). */
+	timeSec: number;
+	/** Custody-root-relative JPEG path (media/native-paths.ts). */
+	relativePath: string;
 }
 
 export type SerializedScene = Omit<TScene, "createdAt" | "updatedAt"> & {

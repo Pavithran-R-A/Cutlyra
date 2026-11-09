@@ -372,7 +372,23 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           working-directory: apps/mobile/android
-          script: ./gradlew :app:connectedDebugAndroidTest --console=plain
+          # #54: pull the filmstrip contact sheet the thumbnail test writes to
+          # the app's internal files dir (``adb shell`` cannot read
+          # /sdcard/Android/data since Android 11, so this goes through run-as on
+          # the debuggable build). A missing sheet must not mask a test failure,
+          # and a failed test must not cost us the artifact: hence set +e and
+          # capturing gradle's status rather than relying on errexit.
+          # Keep every command on one physical line — this action runs the
+          # script line by line through sh -c, where a trailing backslash does
+          # not continue the way it does inside a script file.
+          script: |
+            set +e
+            ./gradlew :app:connectedDebugAndroidTest --console=plain -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+            test_status=$?
+            mkdir -p app/build/outputs/androidTest-evidence
+            adb exec-out run-as app.cutlyra.editor cat files/filmstrip-evidence/thumbnail-strip-contact-sheet.png > app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png
+            [ "$(wc -c < app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png)" -ge 1024 ] || { rm -f app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png; echo "::error::the filmstrip contact sheet was not pulled off the device"; exit 1; }
+            exit $test_status
 
       - name: Upload instrumentation reports
         if: always()
@@ -382,6 +398,7 @@ jobs:
           path: |
             apps/mobile/android/app/build/reports/androidTests/connected/
             apps/mobile/android/app/build/outputs/androidTest-results/connected/
+            apps/mobile/android/app/build/outputs/androidTest-evidence/
           if-no-files-found: warn
           retention-days: 14
 
