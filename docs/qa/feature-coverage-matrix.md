@@ -140,3 +140,11 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 3. **Sound-library export** — one defect stands between the audio panel and parity with preview.
 4. **Undo/redo and project duplicate/delete tests** — cheap rows that are currently PARTIAL only for lack of an assertion.
 5. **A device session (or an API-29 + API-36 CI matrix)** — unblocks 9 BLOCKED rows at once.
+
+---
+
+## 2026-11-09 rebaseline note (PR #66, `feat/22-canvas-fit-fill`, head `1c351be`+docs)
+
+- **#22 canvas fit/fill (focused slice):** PR #66 adds per-clip `fit` (default, preserve whole frame) / `fill` (cover+crop) across preview geometry/bounds, renderer effect sizing, EDL (additive `framing` field; schema/golden updated), and native Media3 export (`Presentation` layout crop for fill). UI exposes Fit/Fill for main-track video/image clips. Deterministic tests added: `packages/editor-core/src/rendering/__tests__/framing.test.ts`, EDL framing propagation/golden; instrumented `ExportFramingInstrumentedTest` added. **Evidence status:** code/tests committed; PASS requires green CI on the exact final head SHA and device preview↔export parity (owner-blocked).
+- **#48 (not in scope, no unrelated closure):** Filters/Adjust are exposed as export-safe per current toolbar/source (color-grade mapping in `EdlToComposition`); Effects remains hidden. Full #48 scope (blur feasibility, all params, pixel-level active/inactive checks across required cases, every unsupported param visibly refuses, 6/6 head+main CI) remains open.
+- **#50 (not implemented in this slice):** reverse/freeze/crop-rotate-flip/timeline productivity scope remains open; framing UI clarity is the only adjacent usability change here.
