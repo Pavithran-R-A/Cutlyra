@@ -207,7 +207,7 @@ class ExportTransformParityInstrumentedTest {
         rect(0, 0, hs, hs, Color.RED); rect(hs, 0, size, hs, Color.GREEN)
         rect(0, hs, hs, size, Color.BLUE); rect(hs, hs, size, size, Color.YELLOW)
         rect(0, 0, marker, marker, Color.CYAN)
-        target.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        target.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 95, it) }
         bmp.recycle()
         assertTrue("marker image not written", target.exists() && target.length() > 0)
         val (w, h) = retrieveDims(target)
@@ -368,7 +368,7 @@ class ExportTransformParityInstrumentedTest {
     }
 
     @Test fun imageClip_rotate90_exportsTransformedImage() {
-        val src = createMarkerImage(tmp("src_img", "png"))
+        val src = createMarkerImage(tmp("src_img", "jpg"))
         val out = export(edlFor(src, EdlAssetKind.IMAGE, srcSize, srcSize, 0, srcSize, srcSize, "fill", t(r = 90.0)), "img90")
         assertCorners("image rotate+90cw", sampleCorners(out), BLUE, RED, YELLOW, GREEN)
     }
