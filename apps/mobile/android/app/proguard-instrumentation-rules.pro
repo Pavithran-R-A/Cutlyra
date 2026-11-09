@@ -20,8 +20,11 @@
 # obfuscated (test references are rewritten through the mapping).
 -keepclassmembers class app.cutlyra.editor.** { *; }
 
-# Kotlin runtime helpers the test APK links through by name after mapping.
--keep class kotlin.jvm.internal.Intrinsics { *; }
+# Kotlin runtime the test APK links through by name after mapping. The
+# stdlib is an app dependency, so the test APK drops its own copy, while
+# R8 drops the classes the app never uses (measured: Intrinsics helpers,
+# kotlin.LazyKt). Keeping the whole (small) stdlib closes that family.
+-keep class kotlin.** { *; }
 
 # androidTest runtime. androidx.test ships no consumer keep rules for a
 # minified host (android/android-test#2167); these are the packages its
