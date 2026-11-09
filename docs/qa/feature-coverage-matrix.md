@@ -36,7 +36,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | Gap removal / ripple | **PARTIAL** | `dead-space.test.ts` + `dead-space-cut.test.ts` cover maths; UI exposure unverified |
 | Replace clip | **GAP** | No command; recovery from a lost asset is "delete + re-import" (see #55) |
 | Freeze frame | **PARTIAL** | `freeze` handling exists in the engine; no toolbar/panel entry point found |
-| Reverse | **SHIP** | Edit panel verb; documented as exercised on a POCO device in `docs/PHYSICAL-QA-MATRIX.md` |
+| Reverse | **GAP** (hidden in shipping UI) | `packages/mobile-ui` has a `toggleReversed` action and editor-core carries a `reversed` param for project compatibility, but `packages/mobile-ui/src/components/panels/edit-panel.tsx` intentionally hides Reverse in v0.1.0 until preview and native export can honor it. Android native export source (`apps/mobile/android/app/src`) has no reverse implementation. `docs/PHYSICAL-QA-MATRIX.md` records a historical Stage 11 PASS claim; do not treat that as current shipping parity without UI+export proof. |
 | Rotate / flip / crop with ratios | **PARTIAL** | Transform + `RATIO_PRESETS` exist; a crop-with-ratio UI was not found |
 | Undo / redo | **PARTIAL** | Every mutation is a `Command`, but no test asserts the undo/redo stack itself |
 | Import multiple videos at once | **BLOCKED** | Needs the Photo Picker multi-select grid on a device |

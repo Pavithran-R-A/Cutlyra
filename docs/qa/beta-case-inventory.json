@@ -3,12 +3,9 @@
 	"parent": "#47 / Linear PAV-141",
 	"generated": "2026-11-03",
 	"build": {
-		"versionName": "0.1.0",
-		"versionCode": 1,
-		"product_commit": "1027a28",
-		"minSdk": 29,
-		"targetSdk": 36,
-		"note": "Product code as merged on main. Two P0 fixes are open, unmerged PRs and are marked FAIL against this build: #54 filmstrip (PR #60) and #55 lost media reference (PR #61)."
+		"product_commit": "24ab6c43292987846c4598c10e6c41c5ec623a56",
+		"inventory_date": "2026-11-09",
+		"note": "Current assessed build is merged main after PR #67 (qualification/evidence repair). Computed summary reflects current row statuses. Historical 2026-11-03 snapshot/evidence is preserved in historical_baseline and per-case baseline_2026_11_03 fields and is not silently rewritten."
 	},
 	"devices": [
 		{
@@ -590,5 +587,27 @@
 			"note": "PASS means the named suite or gate executed on this build. VERIFY means the code path exists and is reachable but was not executed on a device in this pass. BLOCKED means no device, emulator, keystore or Console access was available. No row is inferred from another row."
 		},
 		"note": "Preserved as historical 2026-11-03 main@1027a28 baseline evidence. Current assessments below are build-specific and must cite proof for current status changes; historical FAIL rows are not silently rewritten as if they never happened."
+	},
+	"rebaseline_pr67_postmerge": {
+		"headSha": "24ab6c43292987846c4598c10e6c41c5ec623a56",
+		"pr": 67,
+		"pr_head_sha": "12cf7d450aa7e4e0726dc436606bfa43b75aaf60",
+		"merged_main_ci": {
+			"bun_ci": {
+				"run_id": 42683711950,
+				"attempt": 1,
+				"conclusion": "success",
+				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42683711950",
+				"jobs": "3/3 invariants ubuntu/macos/windows"
+			},
+			"mobile_ci": {
+				"run_id": 42683712239,
+				"attempt": 1,
+				"conclusion": "success",
+				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42683712239",
+				"jobs": "4/4 Android debug APK, iOS simulator unsigned, Android instrumentation API 35 (46 tests, 0 failures, job 129386849408), Android instrumentation R8 test variant (46 tests, 0 failures, job 129386849414)"
+			}
+		},
+		"qualification_gate": "GREEN on merged main 24ab6c4 (all 7 expected CI jobs completed successfully)."
 	}
 }

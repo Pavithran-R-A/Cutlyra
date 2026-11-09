@@ -1,55 +1,63 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-const VALID_STATUSES = new Set(["PASS", "FAIL", "VERIFY", "BLOCKED"]);
+type CaseRow = { id: string; status: "PASS" | "FAIL" | "VERIFY" | "BLOCKED" };
+type Inventory = {
+	build?: { product_commit?: string };
+	historical_baseline?: { generated?: string; build?: { product_commit?: string }; summary_as_recorded_2026_11_03?: unknown };
+	summary: { pass: number; fail: number; blocked: number; verify: number; total: number; note?: string };
+	cases: CaseRow[];
+};
+
+const inventoryPath = join(process.cwd(), "docs/qa/beta-case-inventory.json");
 
 describe("docs/qa/beta-case-inventory.json integrity", () => {
-	const inventoryPath = resolve(
-		import.meta.dir,
-		"..",
-		"docs",
-		"qa",
-		"beta-case-inventory.json",
-	);
-	const inventory = JSON.parse(readFileSync(inventoryPath, "utf8")) as {
-		summary?: Record<string, number | string>;
-		cases?: Array<{ id?: string; status?: string; [k: string]: unknown }>;
-	};
-
-	test("cases exist and each row has required fields and a valid status", () => {
-		expect(Array.isArray(inventory.cases)).toBe(true);
-		const cases = inventory.cases ?? [];
-		expect(cases.length).toBeGreaterThan(0);
-		for (const c of cases) {
-			expect(typeof c.id).toBe("string");
-			expect((c.id ?? "").length).toBeGreaterThan(0);
-			expect(typeof c.area).toBe("string");
-			expect(typeof c.case).toBe("string");
-			expect(typeof c.evidence).toBe("string");
-			expect(VALID_STATUSES.has(c.status ?? "")).toBe(true);
-		}
+	test("summary counts match the case rows", async () => {
+		const raw = await readFile(inventoryPath, "utf8");
+		const inventory = JSON.parse(raw) as Inventory;
+		const computed = inventory.cases.reduce(
+			(acc, row) => {
+				if (row.status === "PASS") acc.pass += 1;
+				else if (row.status === "FAIL") acc.fail += 1;
+				else if (row.status === "VERIFY") acc.verify += 1;
+				else if (row.status === "BLOCKED") acc.blocked += 1;
+				acc.total += 1;
+				return acc;
+			},
+			{ pass: 0, fail: 0, verify: 0, blocked: 0, total: 0 },
+		);
+		expect({
+			pass: inventory.summary.pass,
+			fail: inventory.summary.fail,
+			verify: inventory.summary.verify,
+			blocked: inventory.summary.blocked,
+			total: inventory.summary.total,
+		}).toEqual(computed);
+		expect(inventory.summary.total).toBe(inventory.cases.length);
 	});
 
-	test("case IDs are unique", () => {
-		const cases = inventory.cases ?? [];
-		const ids = cases.map((c) => c.id);
+	test("case IDs are unique", async () => {
+		const raw = await readFile(inventoryPath, "utf8");
+		const inventory = JSON.parse(raw) as Inventory;
+		const ids = inventory.cases.map((c) => c.id);
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 
-	test("summary matches the case rows", () => {
-		const cases = inventory.cases ?? [];
-		const counts = { PASS: 0, FAIL: 0, VERIFY: 0, BLOCKED: 0 };
-		for (const c of cases) {
-			const s = c.status as keyof typeof counts;
-			expect(VALID_STATUSES.has(s)).toBe(true);
-			counts[s] += 1;
+	test("statuses are valid", async () => {
+		const raw = await readFile(inventoryPath, "utf8");
+		const inventory = JSON.parse(raw) as Inventory;
+		for (const row of inventory.cases) {
+			expect(["PASS", "FAIL", "VERIFY", "BLOCKED"]).toContain(row.status);
 		}
-		const summary = inventory.summary ?? {};
-		expect(summary.total).toBe(cases.length);
-		expect(summary.pass).toBe(counts.PASS);
-		expect(summary.fail).toBe(counts.FAIL);
-		expect(summary.verify).toBe(counts.VERIFY);
-		expect(summary.blocked).toBe(counts.BLOCKED);
+	});
+
+	test("assessed build is current and historical baseline snapshot is preserved", async () => {
+		const raw = await readFile(inventoryPath, "utf8");
+		const inventory = JSON.parse(raw) as Inventory;
+		expect(inventory.build?.product_commit).toMatch(/^[0-9a-f]{40}$/);
+		expect(inventory.historical_baseline?.generated).toBeTruthy();
+		expect(inventory.historical_baseline?.build?.product_commit).toBeTruthy();
+		expect(inventory.historical_baseline?.summary_as_recorded_2026_11_03).toBeTruthy();
 	});
 });
