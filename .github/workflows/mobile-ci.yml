@@ -474,7 +474,7 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           working-directory: apps/mobile/android
           script: |
-            ./gradlew :app:connectedR8testAndroidTest --console=plain -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+            ./gradlew :app:connectedR8testAndroidTest -PcutlyraR8Test --console=plain -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 
       - name: Upload R8 mapping + instrumentation reports
         if: always()

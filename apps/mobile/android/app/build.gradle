@@ -113,10 +113,24 @@ android {
         r8test {
             initWith buildTypes.debug
             matchingFallbacks = ['debug']
+            // Inheriting `debug` leaves the variant debuggable, and AGP then
+            // disables every R8 optimization and obfuscation pass ("BuildType
+            // ... is both debuggable and has isMinifyEnabled set to true"),
+            // which is exactly the surface these keep rules must be proven
+            // against. Signing is still the inherited debug config, so the
+            // variant stays installable without an owner keystore.
+            debuggable false
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+    // GitHub #57: AGP creates androidTest variants only for the single
+    // `testBuildType` (default `debug`), so `connectedR8testAndroidTest` does
+    // not exist while `debug` owns the instrumented suite. The R8 CI job
+    // opts in with -PcutlyraR8Test; every other job keeps the debug variant.
+    if (project.hasProperty('cutlyraR8Test')) {
+        testBuildType 'r8test'
     }
     compileOptions {
         // Matches capacitor-android's own compileOptions (javac target 21) —
