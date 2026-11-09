@@ -33,6 +33,7 @@ import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -50,8 +51,12 @@ import kotlin.math.sqrt
  *   1. Standalone library audio is present in the exported MP4 as
  *      decoded non-silent audio (decoded-PCM RMS, not just track
  *      presence) — what the buggy build did not do at all.
- *   2. Two library sounds mixed together measure strictly louder than
- *      the same single sound (real mixing, not a swallowed track).
+ *   2. Two library sounds mixed together BOTH appear in the exported
+ *      audio (real mixing, not a swallowed track). Loudness alone cannot
+ *      prove this: `LimitingAudioMixer` is a brickwall limiter on the
+ *      summed mix, so a second equal-energy tone is pulled back down to
+ *      roughly the single-tone level BY DESIGN. The two tones are
+ *      therefore identified spectrally, not by comparing RMS.
  *   3. A muted library sound produces no audible output (mute
  *      semantics), while an image/visual-only composition with NO
  *      library audio still exports cleanly (no collateral damage).
@@ -368,11 +373,19 @@ class ExportLibraryAudioInstrumentedTest {
         return destination
     }
 
+    private data class DecodedAudio(
+        val sampleCount: Long,
+        val rms: Double,
+        val sampleRate: Int,
+        val channelZero: DoubleArray,
+    )
+
     /**
-     * Decodes the output MP4's audio track and returns
-     * `(sampleCount, rootMeanSquare of Int16 samples)`.
+     * Decodes the output MP4's audio track into PCM. `rms` covers every
+     * decoded Int16 sample; `channelZero` holds the first channel at
+     * `sampleRate` for spectral analysis.
      */
-    private fun decodeAudioRms(file: File): Pair<Long, Double> {
+    private fun decodeAudio(file: File): DecodedAudio {
         val extractor = MediaExtractor()
         extractor.setDataSource(file.absolutePath)
         var audioTrack = -1
@@ -387,8 +400,19 @@ class ExportLibraryAudioInstrumentedTest {
             }
         }
         assertTrue("exported file has no audio track", audioTrack >= 0)
-        val mimeType = format!!.getString(MediaFormat.KEY_MIME)
+        val sourceFormat = format!!
+        val mimeType = sourceFormat.getString(MediaFormat.KEY_MIME)
             ?: throw IllegalStateException("audio track has no mime type")
+        var sampleRate = if (sourceFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+            sourceFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        } else {
+            44_100
+        }
+        var channelCount = if (sourceFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+            sourceFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        } else {
+            1
+        }
         val codec = MediaCodec.createDecoderByType(mimeType)
         codec.configure(format, null, null, 0)
         codec.start()
@@ -396,8 +420,13 @@ class ExportLibraryAudioInstrumentedTest {
 
         var sumsq = 0L
         var count = 0L
+        val collected = ArrayList<Short>(64 * 1024)
         val bufferInfo = MediaCodec.BufferInfo()
-        val outputBuffer = ByteBuffer.allocate(32_768 * 4)
+        // Android audio PCM is 16-bit LITTLE-ENDIAN. Reading it through a
+        // default (big-endian) ByteBuffer would leave RMS intact — byte
+        // swapping is a value permutation — but would destroy the waveform
+        // shape the spectral assertion below depends on.
+        val outputBuffer = ByteBuffer.allocate(32_768 * 4).order(ByteOrder.LITTLE_ENDIAN)
         var sawEos = false
         val deadline = System.currentTimeMillis() + 30_000
         while (!sawEos || true) {
@@ -419,7 +448,15 @@ class ExportLibraryAudioInstrumentedTest {
             }
             val outIndex = codec.dequeueOutputBuffer(bufferInfo, 1_000)
             when (outIndex) {
-                MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> codec.outputFormat
+                MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                    val outputFormat = codec.outputFormat
+                    if (outputFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+                        sampleRate = outputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                    }
+                    if (outputFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+                        channelCount = outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                    }
+                }
                 MediaCodec.INFO_TRY_AGAIN_LATER -> if (sawEos) break
                 else -> {
                     if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -429,8 +466,9 @@ class ExportLibraryAudioInstrumentedTest {
                     outputBuffer.put(codec.getOutputBuffer(outIndex)!!)
                     outputBuffer.flip()
                     while (outputBuffer.remaining() >= 2) {
-                        val sample = outputBuffer.short.toLong()
-                        sumsq += sample * sample
+                        val sample = outputBuffer.short
+                        collected.add(sample)
+                        sumsq += sample.toLong() * sample.toLong()
                         count++
                     }
                     codec.releaseOutputBuffer(outIndex, false)
@@ -441,7 +479,41 @@ class ExportLibraryAudioInstrumentedTest {
         codec.release()
         extractor.release()
         val rms = if (count == 0L) 0.0 else sqrt(sumsq.toDouble() / count.toDouble())
-        return count to rms
+        val channels = channelCount.coerceAtLeast(1)
+        val channelZero = ArrayList<Double>(collected.size / channels + 1)
+        var index = 0
+        while (index + channels <= collected.size) {
+            channelZero.add(collected[index].toDouble())
+            index += channels
+        }
+        return DecodedAudio(
+            sampleCount = count,
+            rms = rms,
+            sampleRate = sampleRate,
+            channelZero = channelZero.toDoubleArray(),
+        )
+    }
+
+    /**
+     * Goertzel amplitude of `hz` in a mono PCM signal, in the same Int16 units
+     * as the decoded samples (a full-scale sine reads ~32767). This is how the
+     * mixing assertion identifies each library tone: the export's brickwall
+     * limiter makes summed loudness a useless signal (see LimitingAudioMixer).
+     */
+    private fun toneAmplitude(samples: DoubleArray, sampleRate: Int, hz: Double): Double {
+        if (samples.isEmpty() || sampleRate <= 0) return 0.0
+        val omega = 2.0 * PI * hz / sampleRate
+        val coefficient = 2.0 * cos(omega)
+        var s1 = 0.0
+        var s2 = 0.0
+        for (sample in samples) {
+            val s0 = sample + coefficient * s1 - s2
+            s2 = s1
+            s1 = s0
+        }
+        val real = s1 - s2 * cos(omega)
+        val imaginary = s2 * sin(omega)
+        return 2.0 * sqrt(real * real + imaginary * imaginary) / samples.size
     }
 
     @Test
@@ -451,11 +523,11 @@ class ExportLibraryAudioInstrumentedTest {
             val output = export(buildEdl(wav))
             val probe = MediaProbe.probe(output, mimeTypeHint = "video/mp4")
             assertTrue("export should carry an audio track: $probe", probe.hasAudio)
-            val (count, rms) = decodeAudioRms(output)
-            assertTrue("decoded no audio samples", count > 0)
+            val decoded = decodeAudio(output)
+            assertTrue("decoded no audio samples", decoded.sampleCount > 0)
             assertTrue(
-                "library sound was swallowed by export (decoded RMS is silence): $rms",
-                rms > 5_000.0,
+                "library sound was swallowed by export (decoded RMS is silence): ${decoded.rms}",
+                decoded.rms > 5_000.0,
             )
         } finally {
             wav.delete()
@@ -463,20 +535,39 @@ class ExportLibraryAudioInstrumentedTest {
     }
 
     @Test
-    fun two_library_sounds_mixed_together_get_louder_than_either_alone() {
+    fun two_library_sounds_are_both_present_in_the_mixed_export() {
         val wavA = synthesizeWav(440.0, "lib63_tone440_${System.nanoTime()}.wav")
         val wavB = synthesizeWav(880.0, "lib63_tone880_${System.nanoTime()}.wav")
         try {
-            val single = decodeAudioRms(export(buildEdl(wavA)))
-            val (unusedSingle) = single
-            assertTrue("single decoded no audio", unusedSingle > 0)
-            val singleRms = single.second
-
-            val mixed = decodeAudioRms(export(buildEdl(wavA, mixed = true, additionalWav = wavB)))
-            assertTrue("mixed decoded no audio", mixed.first > 0)
+            val single = decodeAudio(export(buildEdl(wavA)))
+            assertTrue("single decoded no audio", single.sampleCount > 0)
+            val single440 = toneAmplitude(single.channelZero, single.sampleRate, 440.0)
+            val single880 = toneAmplitude(single.channelZero, single.sampleRate, 880.0)
             assertTrue(
-                "two equal-energy tones mixed should measure louder than one (single=$singleRms, mixed=${mixed.second})",
-                mixed.second > singleRms * 1.12,
+                "the 440 Hz library tone is missing from the standalone export " +
+                    "(440Hz=$single440, 880Hz=$single880)",
+                single440 > 5_000.0,
+            )
+
+            val mixed = decodeAudio(export(buildEdl(wavA, mixed = true, additionalWav = wavB)))
+            assertTrue("mixed decoded no audio", mixed.sampleCount > 0)
+            val mixed440 = toneAmplitude(mixed.channelZero, mixed.sampleRate, 440.0)
+            val mixed880 = toneAmplitude(mixed.channelZero, mixed.sampleRate, 880.0)
+
+            // The summed mix runs through `LimitingAudioMixer`, whose brickwall
+            // limiter holds the sum under -1 dBFS: adding a second equal-energy
+            // tone does NOT raise the decoded RMS (the limiter pulls the louder
+            // sum back down — measured on-device exactly this way). Presence of
+            // BOTH tones in the decoded spectrum is the mixing evidence.
+            assertTrue(
+                "the first (440 Hz) library sound is missing from the mix " +
+                    "(440Hz=$mixed440, 880Hz=$mixed880)",
+                mixed440 > 5_000.0,
+            )
+            assertTrue(
+                "the second (880 Hz) library sound is missing from the mix " +
+                    "(single 880Hz=$single880, mixed 880Hz=$mixed880)",
+                mixed880 > 5_000.0 && mixed880 > single880 * 4.0,
             )
         } finally {
             wavA.delete()
@@ -491,10 +582,10 @@ class ExportLibraryAudioInstrumentedTest {
             val output = export(buildEdl(wav, muted = true))
             val probe = MediaProbe.probe(output, mimeTypeHint = "video/mp4")
             if (probe.hasAudio) {
-                val (_, rms) = decodeAudioRms(output)
+                val decoded = decodeAudio(output)
                 assertTrue(
-                    "muted library sound decoded non-silence (RMS $rms)",
-                    rms < 100.0,
+                    "muted library sound decoded non-silence (RMS ${decoded.rms})",
+                    decoded.rms < 100.0,
                 )
             }
             assertTrue(output.length() > 0)
