@@ -664,6 +664,16 @@
 	background-position: center;
 	border-right: 1px solid rgb(0 0 0 / 25%);
 }
+/* Real filmstrip frame (GitHub #54): fills the slot exactly like the
+   background-size:cover treatment above, but as an <img> so a missing /
+   corrupt file can fall back to the placeholder via onError. */
+.cc-timeline__clip-thumbnail-img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center;
+}
 .cc-timeline__clip-label {
 	position: absolute;
 	left: var(--cc-space-1);

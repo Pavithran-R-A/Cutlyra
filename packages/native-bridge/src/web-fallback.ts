@@ -166,6 +166,12 @@ export function createWebFallbackBridge(): NativeBridge {
 		// relative-path persistence has nothing to anchor to here.
 		getMediaRoot: async () => null,
 
+		// No native media custody on web either — generated sounds stay
+		// preview-only here, exactly the reported gap the Android path fixes
+		// (#63). Null (not a throw) so the insert flow keeps its real
+		// library element as the durable state.
+		saveGeneratedAudio: async () => null,
+
 		// No native audio stack on the web — the WebAudio side of the
 		// bisector already covers this platform.
 		playTestTone: async () => false,

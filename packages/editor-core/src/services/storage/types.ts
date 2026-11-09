@@ -63,6 +63,38 @@ export interface MediaAssetData {
 	 *  source, so width/height are already the true dims). */
 	sourceWidth?: number;
 	sourceHeight?: number;
+	/** Real timeline filmstrip frames (GitHub #54), ordered by `timeSec`:
+	 *  the durable form of the lazy thumbnail strip. Each entry is a
+	 *  custody-root-relative JPEG path (media/native-paths.ts — the SAME
+	 *  container-rotation discipline as `thumbnailNativeRelativePath`, so
+	 *  the strip survives iOS app updates) plus the frame's SOURCE-relative
+	 *  midpoint in seconds (the proxy is a full-length transcode, so proxy
+	 *  time == source time). Populated at import from iOS's free
+	 *  `proxy.thumbnailUris` seed and upgraded in place by the mobile
+	 *  timeline's lazy `generateThumbnails` pass (packages/mobile-ui/
+	 *  src/editor/thumbnail-strip.ts). Missing on blob-backed assets, on
+	 *  Android imports (the native proxy emits no seed there), and on
+	 *  archives restored from backup — restore deliberately rebuilds media
+	 *  from its own descriptors, and the strip regenerates lazily from the
+	 *  restored proxy. Never carries absolute paths/URLs: they die with the
+	 *  container. */
+	thumbnailStrip?: MediaThumbnailStripFrame[];
+	/** Deterministic identity for a bundled-library sound asset (GitHub #63):
+	 *  the content-derived id from `media/library-audio.ts`
+	 *  (`libraryAudioAssetId`). Present only for assets materialized from a
+	 *  bundled library sound — lets repeat inserts of the same bundled sound
+	 *  dedupe to ONE asset row across project reopens and backup restores.
+	 *  The asset's own `id` remains a random `generateUUID()` row id; this
+	 *  marker, not the row id, is what identifies a library sound. */
+	librarySoundId?: string;
+}
+
+/** One persisted filmstrip frame — see `MediaAssetData.thumbnailStrip`. */
+export interface MediaThumbnailStripFrame {
+	/** Source-relative seconds (frame midpoint within the source file). */
+	timeSec: number;
+	/** Custody-root-relative JPEG path (media/native-paths.ts). */
+	relativePath: string;
 }
 
 export type SerializedScene = Omit<TScene, "createdAt" | "updatedAt"> & {

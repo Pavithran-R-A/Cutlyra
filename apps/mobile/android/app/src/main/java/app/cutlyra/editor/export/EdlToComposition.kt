@@ -354,10 +354,11 @@ object EdlToComposition {
                         // Media3 correctly rejects an EditedMediaItem with
                         // BOTH streams removed. Omitting the clip here makes
                         // its time range silence in the dedicated audio lane.
-                        //
-                        // Generated clips (bundled library sounds, whose
-                        // sourceUrl has no asset-table entry) are still skipped
-                        // above; images are silent by definition.
+                        //						// Assetless clips are still skipped above (e.g. generated
+						// content with no media row); bundled library sounds since
+						// stay null-free once materialized into a real asset at
+						// insert/export time (GitHub #63). Images are silent by
+						// definition.
                         val asset = requireAsset(edl, clip)
                         asset.kind != EdlAssetKind.IMAGE && asset.hasAudio
                     }
@@ -532,14 +533,25 @@ object EdlToComposition {
             .build()
     }
 
+    // GitHub #55 / PAV-148: these messages used to name only a clip UUID
+    // ("clip 71a7d579-… has no assetId"), which is what reached the user and
+    // told them nothing. Every refusal now carries the clip's own name and
+    // kind so the offending clip can be identified in the timeline. The sheet
+    // pre-flights the same conditions (`assertMediaReferencesResolved`), so
+    // this text is the last line of defence, not the first thing users read.
     private fun requireAsset(edl: Edl, clip: EdlClip): EdlAsset {
+        val label = "clip \"${clip.name}\" (${clip.kind}, ${clip.clipId})"
         val assetId = clip.assetId
-            ?: throw ExportUnsupportedException("clip ${clip.clipId} has no assetId")
+            ?: throw ExportUnsupportedException(
+                "$label has no assetId — this clip lost its media reference; replace or delete it, then export again",
+            )
         val asset = edl.assetById(assetId)
-            ?: throw ExportUnsupportedException("clip ${clip.clipId} references unknown assetId $assetId")
+            ?: throw ExportUnsupportedException(
+                "$label references assetId $assetId, which is not in this project's asset list",
+            )
         if (asset.sourceUri == null) {
             throw ExportUnsupportedException(
-                "asset ${asset.assetId} has no sourceUri — media import (M4) has not run for this asset",
+                "asset ${asset.assetId} (${asset.name}) for $label has no sourceUri — media import (M4) has not run for this asset",
             )
         }
         return asset

@@ -4,7 +4,11 @@ import { SheetHeader } from "../sheet-header";
 import { SegmentedControl } from "../segmented-control";
 import { ProgressOverlay } from "../progress-overlay";
 import type { EditorCore } from "@cutlyra/editor-core";
-import { buildEdl, type Edl } from "@cutlyra/editor-core/edl";
+import {
+	assertMediaReferencesResolved,
+	buildEdl,
+	type Edl,
+} from "@cutlyra/editor-core/edl";
 import type { ExportFormat, ExportQuality } from "@cutlyra/editor-core/export";
 import { getVideoExportBounds } from "@cutlyra/editor-core/timeline";
 import { mediaTimeToSeconds } from "@cutlyra/editor-core/wasm";
@@ -14,7 +18,7 @@ import {
 	type OverlayFrame,
 } from "@cutlyra/editor-core/export/overlay-frames";
 import {
-	buildNativeEdlAssetResolver, setProjectFps, setProjectResolution, toEdlMediaAssets } from "../../editor/actions";
+	buildNativeEdlAssetResolver, materializeLibraryAudioSounds, setProjectFps, setProjectResolution, toEdlMediaAssets } from "../../editor/actions";
 import { exportErrorMessage } from "../../editor/export-errors";
 import {
 	describeFrameRateCapability,
@@ -54,29 +58,14 @@ const QUALITY_BITRATE: Record<ExportQuality, number> = {
 	very_high: 20_000_000,
 };
 
-/** Stage 11 physical QA honesty rule: bundled sounds (Warm Hum et al.) are
- *  `sourceType:"library"` AudioElements backed by data: URIs. They are real
- *  in the WebAudio preview mix, but the native exporter mixes only clips it
- *  can custody-resolve to a sandbox file (EdlToComposition's audibleClips
- *  filters assetless clips — that filter is what keeps requireAsset() from
- *  aborting the export). Rendering data: URIs into the export mix is a
- *  future feature; until then the sheet must SAY the sound stays
- *  preview-only instead of silently dropping it from the user's file. */
-function hasPreviewOnlyLibraryAudio(editor: EditorCore): boolean {
-	const tracks = editor.scenes.getActiveSceneOrNull()?.tracks;
-	if (!tracks) return false;
-	return tracks.audio
-		.flatMap((track) => track.elements)
-		.some(
-			(element) =>
-				element.type === "audio" &&
-				"sourceType" in element &&
-				element.sourceType === "library",
-		);
-}
-
-const LIBRARY_AUDIO_NOTE =
-	"Note: bundled sounds (e.g. Warm Hum) play in preview but are not yet included in the exported video file.";
+/** GitHub #63: bundled library sounds used to be preview-only — the sheet
+ *  used to SAY so ('Note: bundled sounds ... are not yet included in the
+ *  exported video file') because the stage-11 native exporter cannot read
+ *  data: URIs and `EdlToComposition.audibleClips` skipped assetless clips.
+ *  That disclosure is now retired: before the EDL is built, leftover
+ *  preview-only elements are materialized into durable media assets
+ *  (`materializeLibraryAudioSounds` below), so the exported MP4 carries the
+ *  same sounds the preview mixes. */
 
 function isExportQuality(value: string): value is ExportQuality {
 	return QUALITY_OPTIONS.some((option) => option.id === value);
@@ -238,7 +227,13 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 	/** Shared by both "Preview EDL output" and "Export video" — the real
 	 *  export must build the EDL the exact same way the preview claims to,
 	 *  or the preview would be lying about what gets exported. */
-	const buildCurrentEdl = (): Edl => {
+	const buildCurrentEdl = async (): Promise<Edl> => {
+		// #63: projects saved before the fix may still contain preview-only
+		// library elements. Materialize them into durable media assets
+		// BEFORE building the EDL, so what preview shows is what export
+		// mixes. Idempotent — projects without leftovers return at once.
+		await materializeLibraryAudioSounds({ editor });
+
 		const scene = editor.scenes.getActiveScene();
 		const fpsPreset = FPS_OPTIONS.find((f) => f.id === fpsId)?.fps;
 		const edl = buildEdl({
@@ -272,20 +267,28 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 			throw new Error("Add at least one video or image clip before exporting a video.");
 		}
 
+		// GitHub #55 / PAV-148: refuse HERE, with the clips named, when a media
+		// reference was lost. Without this the sheet handed the EDL straight to
+		// the native exporter, which can only report `clip <uuid> has no
+		// assetId` — the exact unactionable text that reached a real user.
+		assertMediaReferencesResolved({ edl });
+
 		return edl;
 	};
 
 	const previewEdl = () => {
 		setPreviewError(null);
-		try {
-			const edl = buildCurrentEdl();
-			setPreviewResult({
-				fps: `${edl.output.fps.numerator}/${edl.output.fps.denominator}`,
-				resolution: `${edl.output.resolution.width}x${edl.output.resolution.height}`,
-			});
-		} catch (error) {
-			setPreviewError(error instanceof Error ? error.message : String(error));
-		}
+		void (async () => {
+			try {
+				const edl = await buildCurrentEdl();
+				setPreviewResult({
+					fps: `${edl.output.fps.numerator}/${edl.output.fps.denominator}`,
+					resolution: `${edl.output.resolution.width}x${edl.output.resolution.height}`,
+				});
+			} catch (error) {
+				setPreviewError(error instanceof Error ? error.message : String(error));
+			}
+		})();
 	};
 
 	const startExport = async ({ acceptTruncation = false }: { acceptTruncation?: boolean } = {}) => {
@@ -310,7 +313,7 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 
 		let edl: Edl;
 		try {
-			edl = buildCurrentEdl();
+			edl = await buildCurrentEdl();
 		} catch (error) {
 			setRunState("error");
 			setExportError(exportErrorMessage({ value: error }));
@@ -366,7 +369,6 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 					break;
 				}
 			}
-			refreshLibraryAudioNote();
 		} catch (error) {
 			// Includes the honest `NativeBridgeError({code:"UNSUPPORTED",...})`
 			// the web-fallback bridge throws the moment this generator is first
@@ -387,16 +389,6 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 		} finally {
 			activeExportRef.current = null;
 		}
-	};
-
-	// Recomputed on sheet mount and after every export run: the element set
-	// can change while the sheet is open (another panel), so mount-time
-	// state alone would risk a stale disclosure.
-	const [libraryAudioNote, setLibraryAudioNote] = useState<string | null>(() =>
-		hasPreviewOnlyLibraryAudio(editor) ? LIBRARY_AUDIO_NOTE : null,
-	);
-	const refreshLibraryAudioNote = () => {
-		setLibraryAudioNote(hasPreviewOnlyLibraryAudio(editor) ? LIBRARY_AUDIO_NOTE : null);
 	};
 
 	const cancelExport = () => {
@@ -477,11 +469,6 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 						{outputUri?.startsWith("content://")
 							? "Saved to Gallery — Movies/Cutlyra. Open Photos or Gallery to play or share your video."
 							: `Export complete${outputUri ? ` — ${outputUri}` : "."}`}
-					</p>
-				)}
-				{libraryAudioNote && (
-					<p className="cc-panel-note" role="status">
-						{libraryAudioNote}
 					</p>
 				)}
 			</PanelSheet>

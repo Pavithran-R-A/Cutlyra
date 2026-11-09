@@ -98,6 +98,43 @@ android {
                 signingConfig signingConfigs.release
             }
         }
+        // CI-ONLY release-like test variant (GitHub #57, Mission C of the
+        // 0.4 integration): inherited from `debug`, so it is signed with
+        // the debug keystore and can be installed directly — no owner
+        // keystore is needed. minifyEnabled/shrinkResources are ON so the
+        // instrumented suite exercises the R8 keep rules in
+        // proguard-rules.pro (Capacitor reflective bridge, WhisperJNI
+        // native symbols, WebView bridge). This variant is never bundled
+        // for distribution: the `release` build type above keeps
+        // minifyEnabled false until the r8test CI job has proven the
+        // rules against the full instrumented suite. The retrace mapping
+        // is printed to build/outputs/mapping/r8test/mapping.txt and
+        // archived by the android-instrumentation-r8 CI job.
+        r8test {
+            initWith buildTypes.debug
+            matchingFallbacks = ['debug']
+            // Inheriting `debug` leaves the variant debuggable, and AGP then
+            // disables every R8 optimization and obfuscation pass ("BuildType
+            // ... is both debuggable and has isMinifyEnabled set to true"),
+            // which is exactly the surface these keep rules must be proven
+            // against. Signing is still the inherited debug config, so the
+            // variant stays installable without an owner keystore.
+            debuggable false
+            minifyEnabled true
+            shrinkResources true
+            // The extra file only keeps the test APK's linkage stable; it
+            // never applies to a distribution build.
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                    'proguard-rules.pro',
+                    'proguard-instrumentation-rules.pro'
+        }
+    }
+    // GitHub #57: AGP creates androidTest variants only for the single
+    // `testBuildType` (default `debug`), so `connectedR8testAndroidTest` does
+    // not exist while `debug` owns the instrumented suite. The R8 CI job
+    // opts in with -PcutlyraR8Test; every other job keeps the debug variant.
+    if (project.hasProperty('cutlyraR8Test')) {
+        testBuildType 'r8test'
     }
     compileOptions {
         // Matches capacitor-android's own compileOptions (javac target 21) —
@@ -265,6 +302,7 @@ dependencies {
     testImplementation "org.json:json:$orgJsonVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    androidTestImplementation "androidx.test.uiautomator:uiautomator:$androidxUiautomatorVersion"
     implementation project(':capacitor-cordova-android-plugins')
 }
 

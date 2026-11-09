@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { TimelineClipVM, TimelineTrackVM } from "../../timeline/types";
 import { visibleClipIndices } from "../../timeline/virtualization";
+import { nearestThumbnailUri } from "../../timeline/thumbnails";
 import type { SnapTarget } from "../../timeline/snapping";
 import { TimelineClip, MIN_CLIP_DURATION_SEC, type TrimEdge } from "./timeline-clip";
 import { TransitionSquare } from "./transition-square";
@@ -282,7 +283,7 @@ function ReorderTile({
 		>
 			<FilmstripThumbnail
 				widthPx={REORDER_TILE_PX}
-				realUri={clip.thumbnails?.[0]}
+				realUri={nearestThumbnailUri({ frames: clip.thumbnails, slotSec: 0 })}
 				colorHue={clip.colorHue}
 				slotSec={0}
 			/>

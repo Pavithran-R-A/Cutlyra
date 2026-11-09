@@ -6,6 +6,7 @@ import {
 	relativeMediaPathFromRawPath,
 } from "@/media/native-paths";
 import type { MediaAsset, MediaType } from "@/media/types";
+import type { MediaThumbnailStripFrame } from "@/services/storage/types";
 
 /**
  * Cutlyra M4 — wires the editor's import flow to a `NativeBridge`
@@ -84,6 +85,16 @@ export interface NativeMediaSource {
 	/** See `@cutlyra/native-bridge` `NativeBridge.getMediaRoot` — null on
 	 *  web or when the native build predates the method. */
 	getMediaRoot(): Promise<string | null>;
+	/** See `@cutlyra/native-bridge` `NativeBridge.saveGeneratedAudio` —
+	 *  persists a JS-generated WAV into native custody and returns its
+	 *  custody-ROOT-relative path, or null when the platform has none.
+	 *  Idempotent per `assetId`. OPTIONAL because a native shell older than
+	 *  the method has nothing to call — call sites treat absence the same
+	 *  as the null return. */
+	saveGeneratedAudio?: (params: {
+		assetId: string;
+		base64: string;
+	}) => Promise<{ relativePath: string } | null>;
 }
 
 const MIME_BY_KIND: Record<MediaType, string> = {
@@ -155,6 +166,39 @@ export function buildMediaAssetFromNativeImport({
 		? toPlaybackUri(proxy.thumbnailUris[0])
 		: undefined;
 
+	// GitHub #54 — persist the WHOLE import-time strip, not just [0]. iOS's
+	// proxy step emits 10 free frames (Android emits none), and the native
+	// ThumbnailStripGenerator samples them at cell MIDPOINTS — the exact
+	// `(2i+1)·duration / 2n` formula its `generateThumbnails` returns — so
+	// the timestamps are known, not guessed. This seed lets the timeline
+	// paint a real (coarse) filmstrip synchronously on reopen while the
+	// lazy dense pass (mobile-ui's thumbnail-strip.ts) upgrades it.
+	// Videos only: an image IS its own still (the VM synthesizes a
+	// one-entry strip from the asset URL) and audio has no filmstrip.
+	const thumbnailStripFrames: MediaThumbnailStripFrame[] = [];
+	if (handle.kind === "video" && proxy.thumbnailUris?.length) {
+		const frameCount = proxy.thumbnailUris.length;
+		for (const [i, frameUri] of proxy.thumbnailUris.entries()) {
+			// Same conversion discipline as `thumbnailUrl` above: the bridge
+			// already ran toPlaybackUri at its event boundary and the
+			// conversion is idempotent, so this mirrors the single-frame path
+			// exactly — then relativizes against the custody root so the
+			// entry survives iOS container-UUID rotation.
+			const relativePath = relativeMediaPathFromPlaybackUrl({
+				url: toPlaybackUri(frameUri),
+				root: mediaRoot,
+			});
+			if (!relativePath) continue;
+			thumbnailStripFrames.push({
+				timeSec:
+					(handle.durationMicros * (2 * i + 1)) /
+					(2 * frameCount) /
+					1_000_000,
+				relativePath,
+			});
+		}
+	}
+
 	return {
 		name: handle.fileName,
 		type: handle.kind,
@@ -170,10 +214,14 @@ export function buildMediaAssetFromNativeImport({
 		fps,
 		hasAudio: handle.hasAudio,
 		// Only the strip's first frame — `MediaAssetData` has one
-		// `thumbnailUrl` slot, not an array. The rest of `proxy.thumbnailUris`
-		// (the actual filmstrip) has no storage home yet; that's M7's
-		// timeline UI to build, not this import path's job to invent.
+		// `thumbnailUrl` slot for the ASSET-level cover art. The rest of
+		// `proxy.thumbnailUris` (the actual filmstrip) persists below as
+		// `thumbnailStrip` (GitHub #54).
 		thumbnailUrl,
+		// Durable filmstrip seed — see the block above. Empty array →
+		// undefined so blob-backed/Android assets stay field-less.
+		thumbnailStrip:
+			thumbnailStripFrames.length > 0 ? thumbnailStripFrames : undefined,
 		// Container-relative persistence identities (media/native-paths.ts):
 		// the ONLY forms that survive an iOS app update's container-UUID
 		// rotation. Absent when the native build has no getMediaRoot or the

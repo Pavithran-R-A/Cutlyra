@@ -195,6 +195,9 @@ interface NativeTranscribeResult {
 interface NativeBridgePluginSpec {
 	getDeviceInfo(): Promise<NativeDeviceInfo>;
 	getMediaRoot(): Promise<{ root: string }>;
+	saveGeneratedAudio(params: { assetId: string; base64: string }): Promise<{
+		relativePath: string;
+	}>;
 	playTestTone(): Promise<{ ok: boolean }>;
 	audioStart(params: { clips: unknown[]; atSec: number }): Promise<{ ok: boolean }>;
 	audioStop(): Promise<{ ok: boolean }>;
@@ -483,6 +486,23 @@ export function createCapacitorBridge({
 				// A native build predating the method rejects with Capacitor's
 				// "not implemented" — degrade to absolute-path persistence
 				// rather than failing the import flow.
+				return null;
+			}
+		},
+
+		async saveGeneratedAudio({
+			assetId,
+			base64,
+		}: {
+			assetId: string;
+			base64: string;
+		}): Promise<{ relativePath: string } | null> {
+			try {
+				return await plugin.saveGeneratedAudio({ assetId, base64 });
+			} catch {
+				// A shell predating the method (or one without media custody)
+				// rejects with "not implemented" — degrade to null so the caller
+				// keeps the preview-only library element instead of failing.
 				return null;
 			}
 		},

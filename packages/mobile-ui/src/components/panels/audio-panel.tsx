@@ -58,18 +58,29 @@ export function AudioPanel({ editor, onClose, onInserted }: AudioPanelProps) {
 						key={sound.id}
 						type="button"
 						className="cc-panel-actions__btn"
+						disabled={importing}
 						onClick={() => {
-							const ref = insertLocalSound({
+							// #63: insertion materializes the sound into native custody
+							// before placing it, so the export sees the same rows.
+							setImporting(true);
+							setImportError(null);
+							insertLocalSound({
 								editor,
 								sourceUrl: sound.sourceUrl,
 								name: sound.name,
 								durationSeconds: sound.durationSeconds,
-							});
-							if (ref) onInserted(ref);
+							})
+								.then((ref) => {
+								if (ref) onInserted(ref);
+								})
+								.catch((error: unknown) =>
+									setImportError(error instanceof Error ? error.message : String(error)),
+								)
+								.finally(() => setImporting(false));
 						}}
 					>
 						<Music size={20} strokeWidth={CC_ICON_STROKE} />
-						<span>{sound.name}</span>
+						<span>{importing ? "Adding…" : sound.name}</span>
 					</button>
 				))}
 			</div>

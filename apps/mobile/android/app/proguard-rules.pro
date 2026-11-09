@@ -19,3 +19,30 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# --- R8 readiness for the CI-only `r8test` build type (GitHub #57) ---
+# Written from docs/qa/release-quality-audit.md section 1. These rules
+# MUST also be re-validated before any distribution build enables R8:
+# the CI job `android-instrumentation-r8` installs the r8test build and
+# runs the instrumented suite against it.
+
+# Capacitor bridge: plugin classes, plugin methods, permission/activity callbacks.
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keepclassmembers class * {
+    @com.getcapacitor.PluginMethod <methods>;
+    @com.getcapacitor.annotation.PermissionCallback <methods>;
+    @com.getcapacitor.annotation.ActivityCallback <methods>;
+}
+-keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
+
+# JNI: class name and native method names are part of the ABI.
+-keep class app.cutlyra.editor.stt.WhisperJNI { *; }
+-keepclasseswithmembernames,includedescriptorclasses class * { native <methods>; }
+
+# WebView bridge (defensive: any future @JavascriptInterface surface).
+-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
+
+# Retrace artifacts: Play (and CI) archives these for stacktrace mapping.
+-printmapping build/outputs/mapping/r8test/mapping.txt
+-printusage build/outputs/mapping/r8test/usage.txt
+-printconfiguration build/outputs/mapping/r8test/configuration.txt

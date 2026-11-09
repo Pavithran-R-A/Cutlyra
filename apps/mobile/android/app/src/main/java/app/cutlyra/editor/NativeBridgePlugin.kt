@@ -142,6 +142,60 @@ class NativeBridgePlugin : Plugin() {
 		call.resolve(result)
 	}
 
+	/** GitHub #63 — persists a JS-generated library sound (a base64 WAV)
+	 *  into the media custody root so it becomes a real asset the Media3
+	 *  exporter can read. `assetId` is the caller's content-derived id
+	 *  (the same bundled sound always derives the same id), so retries and
+	 *  repeat inserts overwrite the same path with the same bytes. */
+	@PluginMethod
+	fun saveGeneratedAudio(call: PluginCall) {
+		val assetId = call.getString("assetId")
+		val base64 = call.getString("base64")
+		if (assetId.isNullOrBlank() || base64.isNullOrBlank()) {
+			call.reject("saveGeneratedAudio requires {assetId, base64}", "IO_ERROR")
+			return
+		}
+		val bytes = try {
+			android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+		} catch (e: IllegalArgumentException) {
+			call.reject("saveGeneratedAudio: base64 did not decode: ${e.message}", "IO_ERROR")
+			return
+		}
+		// A WAV opens with "RIFF", has "WAVE" at offset 8, and carries the
+		// payload size in bytes 4-7; anything smaller is not one.
+		val riffOk = bytes.size >= 44 &&
+			bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+			bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte() &&
+			bytes[8] == 'W'.code.toByte() && bytes[9] == 'A'.code.toByte() &&
+			bytes[10] == 'V'.code.toByte() && bytes[11] == 'E'.code.toByte()
+		if (!riffOk) {
+			call.reject("saveGeneratedAudio: decoded bytes are not a RIFF/WAVE file", "IO_ERROR")
+			return
+		}
+
+		val dir = File(context.noBackupFilesDir, "generated")
+		if (!dir.exists()) dir.mkdirs()
+		val dest = File(dir, "$assetId.wav")
+		val tmp = File(dir, "$assetId.wav.tmp")
+		try {
+			java.io.FileOutputStream(tmp).use { out -> out.write(bytes) }
+			if (!tmp.renameTo(dest)) {
+				tmp.delete()
+				call.reject("saveGeneratedAudio: could not publish $assetId.wav", "IO_ERROR")
+				return
+			}
+		} catch (e: Exception) {
+			tmp.delete()
+			call.reject("saveGeneratedAudio failed: ${e.message}", "IO_ERROR")
+			return
+		}
+
+		val result = JSObject()
+		result.put("relativePath", "generated/$assetId.wav")
+		result.put("sizeBytes", bytes.size)
+		call.resolve(result)
+	}
+
 	@PluginMethod
 	fun getDeviceInfo(call: PluginCall) {
 		val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager

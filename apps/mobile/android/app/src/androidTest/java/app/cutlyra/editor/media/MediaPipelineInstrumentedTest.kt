@@ -1,6 +1,11 @@
 package app.cutlyra.editor.media
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
@@ -15,6 +20,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Cutlyra M4 — instrumentation tests for the Android-framework-dependent
@@ -40,6 +46,16 @@ import java.io.File
  * over a real-world sample specifically so it's small (32KB), license-free,
  * and reproducible from a one-line command — no binary asset provenance
  * question.
+ *
+ * Second fixture: `res/raw/test_clip_dense_gop.mp4` — the same 2s/320x240/30fps
+ * testsrc picture, video-only and re-encoded with a keyframe every 6 frames,
+ * generated via
+ * `ffmpeg -f lavfi -i testsrc=duration=2:size=320x240:rate=30 -c:v libx264
+ * -g 6 -keyint_min 6 -sc_threshold 0 -pix_fmt yuv420p -crf 28
+ * -movflags +faststart`. It exists because `ThumbnailStripGenerator` samples
+ * with `OPTION_CLOSEST_SYNC`: against `test_clip.mp4`, whose only keyframe is
+ * at t=0, every sample legitimately resolves to the same picture, so that clip
+ * cannot show whether the strip tracks the clip at all.
  */
 @RunWith(AndroidJUnit4::class)
 class MediaPipelineInstrumentedTest {
@@ -47,6 +63,7 @@ class MediaPipelineInstrumentedTest {
 	private lateinit var context: Context
 	private lateinit var testContext: Context
 	private lateinit var copiedClip: File
+	private lateinit var denseGopClip: File
 
 	@Before
 	fun setUp() {
@@ -61,11 +78,16 @@ class MediaPipelineInstrumentedTest {
 		testContext.resources.openRawResource(R.raw.test_clip).use { input ->
 			copiedClip.outputStream().use { output -> input.copyTo(output) }
 		}
+		denseGopClip = File(context.cacheDir, "test_clip_dense_gop_${System.nanoTime()}.mp4")
+		testContext.resources.openRawResource(R.raw.test_clip_dense_gop).use { input ->
+			denseGopClip.outputStream().use { output -> input.copyTo(output) }
+		}
 	}
 
 	@After
 	fun tearDown() {
 		copiedClip.delete()
+		denseGopClip.delete()
 	}
 
 	// -- MediaProbe -----------------------------------------------------------
@@ -114,7 +136,7 @@ class MediaPipelineInstrumentedTest {
 			val file = File(thumbnail.filePath)
 			assertTrue("thumbnail file should exist: ${thumbnail.filePath}", file.exists())
 			assertTrue("thumbnail file should be non-empty", file.length() > 0)
-			val bitmap = android.graphics.BitmapFactory.decodeFile(thumbnail.filePath)
+			val bitmap = BitmapFactory.decodeFile(thumbnail.filePath)
 			assertNotNull("thumbnail should decode as a valid JPEG", bitmap)
 			assertTrue(
 				"long edge should be <= maxEdgePx (100)",
@@ -125,6 +147,110 @@ class MediaPipelineInstrumentedTest {
 		val timestamps = thumbnails.map { it.timestampMicros }
 		assertEquals(timestamps.sorted(), timestamps)
 		assertTrue(timestamps.all { it in 0 until probed.durationMicros })
+	}
+
+	/**
+	 * #54 evidence: the frames the timeline filmstrip renders are real, distinct
+	 * decoded video frames, not one repeated or placeholder image. Runs on-device
+	 * (the CI API 35 emulator) and writes a contact sheet to the app's external
+	 * files dir so the CI workflow can pull it out as a viewable artifact.
+	 */
+	@Test
+	fun thumbnail_strip_frames_carry_distinct_real_content_and_write_a_contact_sheet() {
+		val probed = MediaProbe.probe(denseGopClip, "video/mp4")
+		val thumbnails = ThumbnailStripGenerator.generate(
+			context = context,
+			assetId = "instrumented-contact-sheet",
+			file = denseGopClip,
+			durationMicros = probed.durationMicros,
+			count = 6,
+			maxEdgePx = 160,
+		)
+		assertEquals(6, thumbnails.size)
+
+		val frames = thumbnails.map { thumbnail ->
+			val bitmap = BitmapFactory.decodeFile(thumbnail.filePath)
+			assertNotNull("frame should decode: ${thumbnail.filePath}", bitmap)
+			bitmap!!
+		}
+
+		// Write the visual evidence first. The sheet is worth having even when
+		// the content check below fails, because "every frame is identical" is
+		// precisely the failure mode this test exists to catch, and the sheet is
+		// what lets a human see which it was. It goes to the app's internal
+		// files dir rather than external storage because `adb shell` cannot read
+		// `/sdcard/Android/data` since Android 11; CI pulls it back with
+		// `adb exec-out run-as app.cutlyra.editor cat ...` instead.
+		val sheet = contactSheet(frames)
+		val evidenceDir = File(context.filesDir, "filmstrip-evidence")
+		assertTrue("evidence dir should exist: $evidenceDir", evidenceDir.isDirectory || evidenceDir.mkdirs())
+		val sheetFile = File(evidenceDir, "thumbnail-strip-contact-sheet.png")
+		FileOutputStream(sheetFile).use { stream ->
+			assertTrue("contact sheet should encode", sheet.compress(Bitmap.CompressFormat.PNG, 100, stream))
+		}
+		assertTrue("contact sheet should be non-empty", sheetFile.length() > 0)
+
+		// Then the content check: 64x64 greyscale fingerprints compared against
+		// the first frame by mean absolute difference. A strip that returns one
+		// frozen or placeholder image measures 0 everywhere. Six samples across
+		// the dense-GOP clip land on keyframes a few tenths of a second apart,
+		// which measured ~2-9 grey levels apart locally; require at least three
+		// of the five followers to differ so a single coincidental keyframe
+		// collision cannot fail the run.
+		val fingerprints = frames.map { frame -> fingerprint(frame) }
+		val deviations = fingerprints.drop(1).map { candidate ->
+			meanAbsoluteDifference(fingerprints.first(), candidate)
+		}
+		val differing = deviations.count { deviation -> deviation > DISTINCT_FRAME_MAD }
+		assertTrue(
+			"expected at least 3 of 5 frames to differ from the first, got $differing " +
+				"(mean abs differences: ${deviations.joinToString()}), " +
+				"contact sheet: ${sheetFile.absolutePath}",
+			differing >= 3,
+		)
+	}
+
+	/** 64x64 greyscale fingerprint of one frame, one 0..255 value per pixel. */
+	private fun fingerprint(bitmap: Bitmap): IntArray {
+		val scaled = Bitmap.createScaledBitmap(bitmap, FINGERPRINT_EDGE, FINGERPRINT_EDGE, true)
+		val pixels = IntArray(FINGERPRINT_EDGE * FINGERPRINT_EDGE)
+		scaled.getPixels(pixels, 0, FINGERPRINT_EDGE, 0, 0, FINGERPRINT_EDGE, FINGERPRINT_EDGE)
+		if (scaled !== bitmap) scaled.recycle()
+		return IntArray(pixels.size) { index ->
+			val pixel = pixels[index]
+			val luminance = 0.299 * Color.red(pixel) + 0.587 * Color.green(pixel) + 0.114 * Color.blue(pixel)
+			luminance.toInt()
+		}
+	}
+
+	private fun meanAbsoluteDifference(left: IntArray, right: IntArray): Double {
+		var total = 0
+		for (index in left.indices) total += kotlin.math.abs(left[index] - right[index])
+		return total.toDouble() / left.size
+	}
+
+	/** Lays the frames out left to right on one black bitmap for eyeball review. */
+	private fun contactSheet(frames: List<Bitmap>): Bitmap {
+		val gap = 6
+		val width = frames.sumOf { it.width } + gap * (frames.size + 1)
+		val height = frames.maxOf { it.height } + gap * 2
+		val sheet = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+		val canvas = Canvas(sheet)
+		canvas.drawColor(Color.BLACK)
+		val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+		var x = gap
+		for (frame in frames) {
+			canvas.drawBitmap(frame, x.toFloat(), gap.toFloat(), paint)
+			x += frame.width + gap
+		}
+		return sheet
+	}
+
+	private companion object {
+		const val FINGERPRINT_EDGE = 64
+
+		/** Grey levels of mean absolute difference that count as a changed frame. */
+		const val DISTINCT_FRAME_MAD = 1.0
 	}
 
 	// -- MediaImporter ----------------------------------------------------------
