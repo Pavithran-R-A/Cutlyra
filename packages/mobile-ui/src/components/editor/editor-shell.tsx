@@ -576,7 +576,7 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 					onSetVolume={(db) => setElementParam({ editor, ref: selectedRef, key: "volume", value: db })}
 					onSetFraming={
 						(selectedElement.type === "video" || selectedElement.type === "image") &&
-						selectedRef.trackId === editor.timeline.getActiveScene()?.tracks.main.id
+						selectedRef.trackId === editor.scenes.getActiveScene()?.tracks.main.id
 							? (mode) =>
 									setElementParam({
 										editor,
