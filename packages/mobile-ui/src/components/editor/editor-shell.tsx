@@ -38,6 +38,8 @@ import {
 	deleteSelected,
 	duplicateSelected,
 	setRetime,
+	rotateVisualElement,
+	flipVisualElement,
 	setElementParam,
 	selectElement,
 	insertTextElement,
@@ -584,6 +586,21 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 										key: "framing",
 										value: mode,
 									})
+							: undefined
+					}
+					onRotate={
+						selectedElement.type === "video" || selectedElement.type === "image"
+							? (deltaDegrees) => rotateVisualElement({ editor, ref: selectedRef, deltaDegrees })
+							: undefined
+					}
+					onFlipHorizontal={
+						selectedElement.type === "video" || selectedElement.type === "image"
+							? () => flipVisualElement({ editor, ref: selectedRef, axis: "horizontal" })
+							: undefined
+					}
+					onFlipVertical={
+						selectedElement.type === "video" || selectedElement.type === "image"
+							? () => flipVisualElement({ editor, ref: selectedRef, axis: "vertical" })
 							: undefined
 					}
 				/>
