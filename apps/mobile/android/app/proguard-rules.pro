@@ -35,6 +35,21 @@
 }
 -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
 
+# Instrumented-suite linkage (GitHub #57). The androidTest APK is
+# minified by a separate R8 run that AGP feeds this app's mapping, so any
+# app member it calls must still EXIST here under the mapped name. Members
+# that only the tests call are exactly what R8 removes in the app (data
+# class `copy`/`componentN`, Kotlin null-check helpers, …), and each one
+# kills the whole run with NoSuchMethodError before a single test starts
+# (measured: Intrinsics.checkNotNullParameter, then Edl.copy). Keeping the
+# module's own members intact leaves class-name obfuscation and every
+# library/resource/native rule below doing their real work.
+-keepclassmembers class app.cutlyra.editor.** { *; }
+
+# Kotlin runtime helper the instrumented APK links through by name after
+# mapping; R8 removes the helpers whose in-app callers were all inlined.
+-keep class kotlin.jvm.internal.Intrinsics { *; }
+
 # JNI: class name and native method names are part of the ABI.
 -keep class app.cutlyra.editor.stt.WhisperJNI { *; }
 -keepclasseswithmembernames,includedescriptorclasses class * { native <methods>; }
