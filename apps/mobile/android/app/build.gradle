@@ -122,7 +122,11 @@ android {
             debuggable false
             minifyEnabled true
             shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // The extra file only keeps the test APK's linkage stable; it
+            // never applies to a distribution build.
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                    'proguard-rules.pro',
+                    'proguard-instrumentation-rules.pro'
         }
     }
     // GitHub #57: AGP creates androidTest variants only for the single
