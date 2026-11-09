@@ -6,7 +6,8 @@
  */
 import { describe, expect, it, mock } from "bun:test";
 import { buildDefaultScene } from "@/timeline/scenes";
-import type { SceneTracks, TimelineElement, VideoElement } from "@/timeline";
+import type { ImageElement, SceneTracks, TimelineElement, VideoElement } from "@/timeline";
+import type { ElementAnimations } from "@/animation/types";
 import type { UpdateElementsCommand } from "@/commands/timeline/element/update-elements";
 import { ZERO_MEDIA_TIME, mediaTime } from "@/wasm";
 
@@ -31,7 +32,7 @@ function videoElement(): VideoElement {
 	};
 }
 
-function buildHarness(element: TimelineElement): Harness {
+function buildHarness(element: VideoElement | ImageElement): Harness {
 	const scene = buildDefaultScene({ name: "Main", isMain: true });
 	scene.tracks.main.elements = [element];
 	const h: Harness = { tracks: scene.tracks, updates: [] };
@@ -87,12 +88,25 @@ describe("transform param updates", () => {
 
 	it("preserves animations field when patching transform params", () => {
 		const el = videoElement();
-		el.animations = { channels: [] } as never;
+		const animations: ElementAnimations = {
+			"transform.rotate": {
+				keys: [
+					{
+						id: "k-rotate",
+						time: ZERO_MEDIA_TIME,
+						value: 45,
+						segmentToNext: "linear",
+						tangentMode: "auto",
+					},
+				],
+			},
+		};
+		el.animations = animations;
 		const h = buildHarness(el);
 		new commandCtor({
 			updates: [{ trackId: h.tracks.main.id, elementId: "v1", patch: { params: { ...getEl(h).params, "transform.rotate": 180 } } }],
 		}).execute();
 		expect(getEl(h).params["transform.rotate"]).toBe(180);
-		expect(getEl(h).animations).toEqual({ channels: [] });
+		expect(getEl(h).animations).toEqual(animations);
 	});
 });
