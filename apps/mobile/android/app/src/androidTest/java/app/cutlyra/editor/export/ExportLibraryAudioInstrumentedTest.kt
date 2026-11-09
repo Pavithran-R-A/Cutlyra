@@ -387,7 +387,9 @@ class ExportLibraryAudioInstrumentedTest {
             }
         }
         assertTrue("exported file has no audio track", audioTrack >= 0)
-        val codec = MediaCodec.createDecoderByType(format!!.getString(MediaFormat.KEY_MIME))
+        val mimeType = format!!.getString(MediaFormat.KEY_MIME)
+            ?: throw IllegalStateException("audio track has no mime type")
+        val codec = MediaCodec.createDecoderByType(mimeType)
         codec.configure(format, null, null, 0)
         codec.start()
         extractor.selectTrack(audioTrack)
@@ -418,7 +420,7 @@ class ExportLibraryAudioInstrumentedTest {
             val outIndex = codec.dequeueOutputBuffer(bufferInfo, 1_000)
             when (outIndex) {
                 MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> codec.outputFormat
-                MediaCodec.INFO_TRY_LATER_AGAIN -> if (sawEos) break
+                MediaCodec.INFO_TRY_AGAIN_LATER -> if (sawEos) break
                 else -> {
                     if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         sawEos = true

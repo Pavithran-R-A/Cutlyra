@@ -50,11 +50,9 @@ import {
 	assertMediaReferencesResolved,
 	findUnresolvedMediaClips,
 } from "@/edl/preflight";
-import type {
-	MediaAsset,
-	MediaTime,
-	TimelineElement,
-} from "@/media/types";
+import type { MediaAsset } from "@/media/types";
+import type { MediaTime } from "@/wasm";
+import type { TimelineElement } from "@/timeline/types";
 import { getLocalSounds } from "@/sounds/local-sounds";
 import type { LibraryAudioSource } from "../library-audio";
 import {
@@ -461,10 +459,7 @@ describe("#63 materializeLibraryAudio", () => {
 		const { source } = fakeAudioSource();
 		await materializeLibraryAudio({ editor, projectId: "p1", source });
 		const scene = editor.scenes.getActiveScene();
-		const roundTripped = deserializeScene({
-			scene: serializeScene({ scene }),
-			sceneId: scene.id,
-		});
+		const roundTripped = deserializeScene({ scene: serializeScene({ scene }) });
 		const element = roundTripped.tracks.audio
 			.flatMap((track) => track.elements)
 			.find((item) => item.type === "audio");
