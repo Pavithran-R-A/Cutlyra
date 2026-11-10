@@ -140,6 +140,9 @@ export class ReplaceClipMediaCommand extends Command {
 	/** Per-clip latest operation id, shared across command instances. */
 	private static readonly activeOps = new Map<string, string>();
 
+	/** Monotonic version bumped by every replacement persistence intent. */
+	private static mutationVersion = 0;
+
 	constructor({
 		projectId,
 		ref,
@@ -182,6 +185,7 @@ export class ReplaceClipMediaCommand extends Command {
 		state.generation += 1;
 		state.intent = "present";
 		this.assetGeneration = state.generation;
+		ReplaceClipMediaCommand.mutationVersion += 1;
 		return state.generation;
 	}
 
@@ -191,6 +195,7 @@ export class ReplaceClipMediaCommand extends Command {
 		state.generation += 1;
 		state.intent = "absent";
 		this.assetGeneration = state.generation;
+		ReplaceClipMediaCommand.mutationVersion += 1;
 		return state.generation;
 	}
 
@@ -541,5 +546,50 @@ export class ReplaceClipMediaCommand extends Command {
 	static resetPendingOperations(): void {
 		ReplaceClipMediaCommand.activeOps.clear();
 		assetCoordination.clear();
+		ReplaceClipMediaCommand.mutationVersion = 0;
+	}
+
+	/** Current replacement-mutation version (for consistency checks). */
+	static getMutationVersion(): number {
+		return ReplaceClipMediaCommand.mutationVersion;
+	}
+
+	/** Wait for a stable, quiescent replacement state (no pending media
+	 *  transactions and no mutation since the wait began). */
+	static async waitForConsistentSnapshot({
+		projectId,
+	}: {
+		projectId: string;
+	}): Promise<void> {
+		await this.readConsistentSnapshot({
+			projectId,
+			read: async () => undefined,
+		});
+	}
+
+	/** Run `read` only after pending replacement media writes have settled and
+	 *  no new replacement mutation has started during the read. Retries if a
+	 *  mutation invalidates the snapshot mid-read. */
+	static async readConsistentSnapshot<T>({
+		projectId,
+		read,
+	}: {
+		projectId: string;
+		read: () => Promise<T> | T;
+	}): Promise<T> {
+		for (let attempt = 0; attempt < 100; attempt++) {
+			const versionBefore = this.getMutationVersion();
+			await this.waitForPendingMediaTransactions({ projectId });
+			if (this.hasPendingMediaTransactions({ projectId })) continue;
+			if (this.getMutationVersion() !== versionBefore) continue;
+			const result = await read();
+			if (
+				this.getMutationVersion() === versionBefore &&
+				!this.hasPendingMediaTransactions({ projectId })
+			) {
+				return result;
+			}
+		}
+		throw new Error("Replace Clip consistency barrier could not reach a stable snapshot");
 	}
 }

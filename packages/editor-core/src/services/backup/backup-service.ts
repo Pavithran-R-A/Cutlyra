@@ -87,6 +87,34 @@ export interface BackupContext {
 
 const ROLES: ArchivedFileRole[] = ["proxy", "source", "thumbnail"];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function collectReferencedMediaIds(project: unknown): Set<string> {
+	const ids = new Set<string>();
+	const scenes = isRecord(project) ? project.scenes : undefined;
+	if (!Array.isArray(scenes)) return ids;
+	for (const scene of scenes) {
+		const tracks = isRecord(scene) ? scene.tracks : undefined;
+		if (!isRecord(tracks)) continue;
+		const trackList = [
+			tracks.main,
+			...(Array.isArray(tracks.overlay) ? tracks.overlay : []),
+			...(Array.isArray(tracks.audio) ? tracks.audio : []),
+		];
+		for (const track of trackList) {
+			const elements = isRecord(track) ? track.elements : undefined;
+			if (!Array.isArray(elements)) continue;
+			for (const element of elements) {
+				const mediaId = isRecord(element) ? element.mediaId : undefined;
+				if (typeof mediaId === "string") ids.add(mediaId);
+			}
+		}
+	}
+	return ids;
+}
+
 function reportProgress({
 	ctx,
 	stage,
@@ -122,14 +150,71 @@ export async function exportProjectArchive({
 	projectId: string;
 	ctx: BackupContext;
 }): Promise<ExportResult> {
-	const serialized = await ctx.storage.getSerializedProject({ id: projectId });
-	if (!serialized) {
+	// Durability + consistency gate (web path): same barrier as the native
+	// recipe, so a web backup cannot snapshot a project while replacement
+	// media is still being persisted or after a failed persistence.
+	const { ReplaceClipMediaCommand } = await import(
+		"@/commands/timeline/element/replace-clip-media"
+	);
+	let serialized: Awaited<ReturnType<StorageService["getSerializedProject"]>> | null = null;
+	let mediaData: Awaited<ReturnType<StorageService["listMediaAssetData"]>> | null = null;
+	for (let attempt = 0; attempt < 50; attempt++) {
+		const versionBefore = ReplaceClipMediaCommand.getMutationVersion();
+		await ReplaceClipMediaCommand.waitForPendingMediaTransactions({
+			projectId,
+		});
+		if (
+			ReplaceClipMediaCommand.hasPendingMediaTransactions({ projectId }) ||
+			ReplaceClipMediaCommand.getMutationVersion() !== versionBefore
+		) {
+			continue;
+		}
+		const failures = ReplaceClipMediaCommand.getFailedMediaTransactions({
+			projectId,
+		});
+		if (failures.length > 0) {
+			throw new BackupError({
+				code: "IO_ERROR",
+				message: "Cannot back up: replacement media persistence failed",
+			});
+		}
+		const candidateSerialized = await ctx.storage.getSerializedProject({
+			id: projectId,
+		});
+		if (!candidateSerialized) {
+			throw new BackupError({
+				code: "IO_ERROR",
+				message: `Cannot back up: project ${projectId} does not exist`,
+			});
+		}
+		const candidateMediaData = await ctx.storage.listMediaAssetData({
+			projectId,
+		});
+		if (
+			ReplaceClipMediaCommand.getMutationVersion() !== versionBefore ||
+			ReplaceClipMediaCommand.hasPendingMediaTransactions({ projectId })
+		) {
+			continue;
+		}
+		const referenced = collectReferencedMediaIds(candidateSerialized);
+		const available = new Set(candidateMediaData.map((asset) => asset.id));
+		const missing = [...referenced].filter((id) => !available.has(id));
+		if (missing.length > 0) {
+			throw new BackupError({
+				code: "IO_ERROR",
+				message: `Cannot back up: referenced media is missing (${missing.join(", ")})`,
+			});
+		}
+		serialized = candidateSerialized;
+		mediaData = candidateMediaData;
+		break;
+	}
+	if (!serialized || !mediaData) {
 		throw new BackupError({
 			code: "IO_ERROR",
-			message: `Cannot back up: project ${projectId} does not exist`,
+			message: "Cannot back up: replacement state changed repeatedly",
 		});
 	}
-	const mediaData = await ctx.storage.listMediaAssetData({ projectId });
 
 	reportProgress({ ctx, stage: "preparing", fraction: 0 });
 
@@ -627,31 +712,78 @@ export async function buildExportRecipe({
 	projectId: string;
 	storage: StorageService;
 }): Promise<{ projectJson: string; projectName: string; media: NativeMediaDescriptor[] }> {
-	// Durability gate (Replace Clip #72): a backup must never snapshot a
-	// project whose replacement media persistence is still pending or has
-	// failed. Wait for pending writes; fail visibly on failure.
+	// Durability + consistency gate (Replace Clip #72/corrective): a backup
+	// must never snapshot a project whose replacement media persistence is
+	// still pending or has failed, and the project/media reads must describe
+	// the same effective state. Retry while a replacement mutates mid-read.
 	const { ReplaceClipMediaCommand } = await import(
 		"@/commands/timeline/element/replace-clip-media"
 	);
-	await ReplaceClipMediaCommand.waitForPendingMediaTransactions({ projectId });
-	const failures = ReplaceClipMediaCommand.getFailedMediaTransactions({
-		projectId,
-	});
-	if (failures.length > 0) {
-		throw new BackupError({
-			code: "IO_ERROR",
-			message: "Cannot back up: replacement media persistence failed",
-		});
-	}
 
-	const serialized = await storage.getSerializedProject({ id: projectId });
-	if (!serialized) {
+	let serialized: Awaited<ReturnType<StorageService["getSerializedProject"]>> | null = null;
+	let mediaData: Awaited<ReturnType<StorageService["listMediaAssetData"]>> | null = null;
+	for (let attempt = 0; attempt < 50; attempt++) {
+		const versionBefore = ReplaceClipMediaCommand.getMutationVersion();
+		await ReplaceClipMediaCommand.waitForPendingMediaTransactions({
+			projectId,
+		});
+		if (
+			ReplaceClipMediaCommand.hasPendingMediaTransactions({ projectId }) ||
+			ReplaceClipMediaCommand.getMutationVersion() !== versionBefore
+		) {
+			continue;
+		}
+
+		const failures = ReplaceClipMediaCommand.getFailedMediaTransactions({
+			projectId,
+		});
+		if (failures.length > 0) {
+			throw new BackupError({
+				code: "IO_ERROR",
+				message: "Cannot back up: replacement media persistence failed",
+			});
+		}
+
+		const candidateSerialized = await storage.getSerializedProject({
+			id: projectId,
+		});
+		if (!candidateSerialized) {
+			throw new BackupError({
+				code: "IO_ERROR",
+				message: `Cannot back up: project ${projectId} does not exist`,
+			});
+		}
+		const candidateMediaData = await storage.listMediaAssetData({
+			projectId,
+		});
+
+		if (
+			ReplaceClipMediaCommand.getMutationVersion() !== versionBefore ||
+			ReplaceClipMediaCommand.hasPendingMediaTransactions({ projectId })
+		) {
+			continue;
+		}
+
+		const referenced = collectReferencedMediaIds(candidateSerialized);
+		const available = new Set(candidateMediaData.map((asset) => asset.id));
+		const missing = [...referenced].filter((id) => !available.has(id));
+		if (missing.length > 0) {
+			throw new BackupError({
+				code: "IO_ERROR",
+				message: `Cannot back up: referenced media is missing (${missing.join(", ")})`,
+			});
+		}
+
+		serialized = candidateSerialized;
+		mediaData = candidateMediaData;
+		break;
+	}
+	if (!serialized || !mediaData) {
 		throw new BackupError({
 			code: "IO_ERROR",
-			message: `Cannot back up: project ${projectId} does not exist`,
+			message: "Cannot back up: replacement state changed repeatedly",
 		});
 	}
-	const mediaData = await storage.listMediaAssetData({ projectId });
 	const media: NativeMediaDescriptor[] = mediaData.map((asset) => ({
 		assetId: asset.id,
 		proxyPath: asset.nativeRelativePath ?? null,

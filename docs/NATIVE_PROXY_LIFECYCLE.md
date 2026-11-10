@@ -58,5 +58,3 @@ user source media or in-use proxies.
 - No large JavaScript in-memory copies of imported video files.
 - No unsafe recursive cleanup or guessed-path deletion.
 - User-selected source media is never deleted.
-EOF
-echo done
