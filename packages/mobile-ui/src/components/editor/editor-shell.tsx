@@ -48,6 +48,9 @@ import {
 	togglePlayback,
 	seekToSeconds,
 	importAndPlaceMedia,
+	pickReplacementMedia,
+	applyClipReplacement,
+	isClipMediaMissing,
 	setProjectResolution,
 	setProjectBackground,
 	commitElementTrim,
@@ -280,6 +283,15 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 	const [deadSpaceProgress, setDeadSpaceProgress] = useState<{
 		percent: number;
 	} | null>(null);
+	/** Pending "replacement is shorter" decision (#74). Holds the picked asset,
+	 *  which is deliberately NOT registered in the media library until the
+	 *  replacement is applied — dismissing this prompt leaves the project
+	 *  byte-for-byte unchanged. */
+	const [replacePrompt, setReplacePrompt] = useState<{
+		ref: ElementRef;
+		asset: Parameters<typeof applyClipReplacement>[0]["asset"];
+		message: string;
+	} | null>(null);
 
 	const runCutDeadSpace = ({ ref }: { ref: ElementRef }) => {
 		if (deadSpaceProgress) return; // one analysis at a time
@@ -297,6 +309,69 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 			.then((outcome) => setChromeNotice(describeDeadSpaceCut({ outcome })))
 			.catch(reportChromeError)
 			.finally(() => setDeadSpaceProgress(null));
+	};
+
+	/** Replace Clip (#74): pick a local file, import it WITHOUT registering it,
+	 *  then either apply it (one undo step) or ask before shortening the clip.
+	 *  A cancelled picker, a refused file or a dismissed prompt all leave the
+	 *  timeline untouched. */
+	const runReplaceClip = ({ ref }: { ref: ElementRef }) => {
+		if (importProgress) return; // one import at a time
+		setChromeError(null);
+		setChromeNotice(null);
+		setReplacePrompt(null);
+		setImportProgress({ percent: 0, label: "Choosing a replacement…" });
+		pickReplacementMedia({
+			editor,
+			ref,
+			onProgress: (p) => {
+				const overall =
+					((p.index + Math.min(1, Math.max(0, p.fraction))) /
+						Math.max(1, p.total)) *
+					100;
+				setImportProgress({
+					percent: Math.round(overall),
+					label:
+						p.stage === "picking"
+							? "Preparing the replacement…"
+							: `Importing ${p.fileName}…`,
+				});
+			},
+		})
+			.then((outcome) => {
+				if (outcome.status === "cancelled") return;
+				if (outcome.status === "error") {
+					setChromeError(outcome.message);
+					return;
+				}
+				if (outcome.status === "refused") {
+					const clamp = outcome.clamp;
+					if (outcome.reason === "source-too-short" && clamp && clamp.durationTicks > 0 && outcome.asset) {
+						const seconds = mediaTimeToSeconds({ time: clamp.durationTicks }).toFixed(1);
+						setReplacePrompt({
+							ref,
+							asset: outcome.asset,
+							message: `The new file is shorter than this clip's edited range. Shorten the clip to ${seconds}s and keep your other edits?`,
+						});
+						return;
+					}
+					setChromeError(outcome.message);
+					return;
+				}
+
+				const applied = applyClipReplacement({ editor, ref, asset: outcome.asset });
+				if (applied.status === "replaced") {
+					setChromeNotice(
+						applied.clamped
+							? "Clip media replaced (shortened to fit the new file)."
+							: "Clip media replaced — your edits were kept.",
+					);
+					return;
+				}
+				if (applied.status === "refused") setChromeError(applied.message);
+			})
+			.catch(reportChromeError)
+			.finally(() => setImportProgress(null));
 	};
 
 	/** Shared picker→custody→proxy import flow with the ProgressOverlay —
@@ -379,6 +454,13 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 	})();
 
 	const closeSheet = () => setActiveSheet(null);
+
+	/** The clamp decision only belongs to the clip that raised it: switching
+	 *  selection hides the prompt instead of applying it to another clip. */
+	const replacePromptForPanel =
+		replacePrompt && replacePrompt.ref.elementId === selectedRef?.elementId
+			? { message: replacePrompt.message, confirmLabel: "Shorten clip" }
+			: null;
 
 	return (
 		<div
@@ -603,6 +685,32 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 							? () => flipVisualElement({ editor, ref: selectedRef, axis: "vertical" })
 							: undefined
 					}
+					onReplace={
+						selectedElement.type === "video" || selectedElement.type === "image"
+							? () => runReplaceClip({ ref: selectedRef })
+							: undefined
+					}
+					replaceLabel={
+						isClipMediaMissing({ editor, ref: selectedRef }) ? "Relink media" : "Replace"
+					}
+					replacePrompt={replacePromptForPanel}
+					onConfirmReplace={() => {
+						const pending = replacePrompt;
+						setReplacePrompt(null);
+						if (!pending) return;
+						const applied = applyClipReplacement({
+							editor,
+							ref: pending.ref,
+							asset: pending.asset,
+							allowClamp: true,
+						});
+						if (applied.status === "replaced") {
+							setChromeNotice("Clip media replaced and shortened to fit the new file.");
+							return;
+						}
+						if (applied.status === "refused") setChromeError(applied.message);
+					}}
+					onDismissReplace={() => setReplacePrompt(null)}
 				/>
 			)}
 

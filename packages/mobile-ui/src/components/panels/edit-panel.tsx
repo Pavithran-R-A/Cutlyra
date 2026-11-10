@@ -1,4 +1,4 @@
-import { Copy, FlipHorizontal2, FlipVertical2, RotateCcw, RotateCw, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
+import { Copy, FlipHorizontal2, FlipVertical2, RefreshCw, RotateCcw, RotateCw, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
 import { CC_ICON_STROKE } from "../../tokens";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
@@ -34,6 +34,16 @@ interface EditPanelProps {
 	onRotate?: (deltaDegrees: number) => void;
 	onFlipHorizontal?: () => void;
 	onFlipVertical?: () => void;
+	/** Nondestructive Replace Clip (#74). Absent for element types whose media
+	 *  cannot be swapped (text, captions, graphics, library audio). */
+	onReplace?: () => void;
+	/** "Relink media" when the clip's media reference is already missing. */
+	replaceLabel?: string;
+	/** Non-null when the picked replacement is shorter than the clip's edited
+	 *  range: the user must choose to shorten the clip or keep it unchanged. */
+	replacePrompt?: { message: string; confirmLabel: string } | null;
+	onConfirmReplace?: () => void;
+	onDismissReplace?: () => void;
 }
 
 /**
@@ -59,6 +69,11 @@ export function EditPanel({
 	onRotate,
 	onFlipHorizontal,
 	onFlipVertical,
+	onReplace,
+	replaceLabel = "Replace",
+	replacePrompt,
+	onConfirmReplace,
+	onDismissReplace,
 }: EditPanelProps) {
 	const isRetimable = RETIMABLE_TYPES.has(element.type);
 	const isFramable = FRAMING_TYPES.has(element.type);
@@ -72,6 +87,28 @@ export function EditPanel({
 
 	return (
 		<PanelSheet onScrimClick={onClose} header={<SheetHeader onClose={onClose} />}>
+			{replacePrompt && (
+				<div className="cc-replace-prompt" role="alert">
+					<p className="cc-replace-prompt__text">{replacePrompt.message}</p>
+					<div className="cc-panel-actions">
+						<button
+							type="button"
+							className="cc-panel-actions__btn"
+							onClick={onConfirmReplace}
+						>
+							<Scissors size={20} strokeWidth={CC_ICON_STROKE} />
+							<span>{replacePrompt.confirmLabel}</span>
+						</button>
+						<button
+							type="button"
+							className="cc-panel-actions__btn"
+							onClick={onDismissReplace}
+						>
+							<span>Keep clip unchanged</span>
+						</button>
+					</div>
+				</div>
+			)}
 			<div className="cc-panel-actions">
 				<button type="button" className="cc-panel-actions__btn" onClick={onSplit}>
 					<Scissors size={20} strokeWidth={CC_ICON_STROKE} />
@@ -89,6 +126,17 @@ export function EditPanel({
 					<button type="button" className="cc-panel-actions__btn" onClick={onCutDeadSpace}>
 						<ScissorsLineDashed size={20} strokeWidth={CC_ICON_STROKE} />
 						<span>Cut gaps</span>
+					</button>
+				)}
+				{onReplace && (
+					<button
+						type="button"
+						className="cc-panel-actions__btn"
+						onClick={onReplace}
+						aria-label={replaceLabel}
+					>
+						<RefreshCw size={20} strokeWidth={CC_ICON_STROKE} />
+						<span>{replaceLabel}</span>
 					</button>
 				)}
 			</div>

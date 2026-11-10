@@ -13,6 +13,7 @@ export * from "./pixel-utils";
 export * from "./transitions";
 export * from "./export-video-end";
 export * from "./group-resize";
+export * from "./replace-media";
 
 export function calculateTotalDuration({
 	tracks,

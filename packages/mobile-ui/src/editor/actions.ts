@@ -22,6 +22,7 @@ import {
 	UpdateProjectSettingsCommand,
 	TransitionsSnapshotCommand,
 	TracksSnapshotCommand,
+	ReplaceClipMediaCommand,
 } from "@cutlyra/editor-core/commands";
 import {
 	buildTextElement,
@@ -85,6 +86,12 @@ import {
 	applyDeadSpaceCutToTracks,
 	planDeadSpaceCut,
 } from "@cutlyra/editor-core/timeline/dead-space-cut";
+import {
+	planClipMediaReplacement,
+	type ReplaceMediaClampPreview,
+	type ReplaceMediaPlanOk,
+	type ReplaceMediaRejectionReason,
+} from "@cutlyra/editor-core/timeline";
 import { getSourceSpanAtClipTime } from "@cutlyra/editor-core/retime";
 import { getMainTrackAppendTime } from "./main-track-append";
 
@@ -1600,3 +1607,137 @@ export function setVisualParamKeyframeAware({
 }
 
 export { hasClipKeyframes };
+
+// --------------------------- Replace clip (#74) ------------------------------
+
+/** What picking a replacement file produced. Nothing here has mutated the
+ *  project yet: a picked-but-unapplied asset is deliberately NOT registered in
+ *  the media library, so a cancelled or refused replacement leaves no trace. */
+export type ReplaceClipPickOutcome =
+	| { status: "cancelled" }
+	| {
+			status: "refused";
+			reason: ReplaceMediaRejectionReason;
+			message: string;
+			clamp?: ReplaceMediaClampPreview;
+			/** The picked-and-refused candidate. Never registered in the library;
+			 *  kept only so a clamp confirmation can apply exactly what was picked. */
+			asset?: MediaAsset;
+	  }
+	| { status: "ready"; asset: MediaAsset; plan: ReplaceMediaPlanOk }
+	| { status: "error"; message: string };
+
+export type ReplaceClipApplyOutcome =
+	| { status: "replaced"; clamped: boolean }
+	| { status: "refused"; reason: ReplaceMediaRejectionReason; message: string; clamp?: ReplaceMediaClampPreview }
+	| { status: "element-missing" };
+
+/**
+ * Open the local media picker and import ONE file as a candidate replacement,
+ * without committing it to the project. The caller decides what to do with the
+ * candidate based on `plan` (apply, ask about clamping, or drop it).
+ */
+export async function pickReplacementMedia({
+	editor,
+	ref,
+	onProgress,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	onProgress?: (progress: NativeImportProgress) => void;
+}): Promise<ReplaceClipPickOutcome> {
+	const element = getElement({ editor, ref });
+	if (!element) return { status: "error", message: "That clip is no longer on the timeline." };
+	if (element.type !== "video" && element.type !== "image") {
+		return {
+			status: "refused",
+			reason: "unsupported-element-type",
+			message: "Only video and image clips can be replaced.",
+		};
+	}
+
+	const bridge = await getNativeBridge();
+	const projectId = editor.project.getActive().metadata.id;
+	const { imported, failed } = await importMediaFromNative({
+		editor,
+		projectId,
+		source: bridge,
+		kinds: [element.type],
+		allowMultiple: false,
+		onProgress,
+		// Deferred commit: the replacement becomes one undo step only when the
+		// command registers the asset itself (see ReplaceClipMediaCommand).
+		commitAsset: false,
+	});
+
+	const asset = imported[0];
+	if (!asset) {
+		if (failed.length > 0) {
+			return { status: "error", message: failed[0]?.error ?? "Couldn't load that file." };
+		}
+		return { status: "cancelled" };
+	}
+
+	const plan = planClipMediaReplacement({ element, asset });
+	if (!plan.ok) {
+		return {
+			status: "refused",
+			reason: plan.reason,
+			message: plan.message,
+			clamp: plan.clamp,
+			asset,
+		};
+	}
+
+	return { status: "ready", asset, plan };
+}
+
+/**
+ * Commit a picked replacement. One command, one undo step: the asset is
+ * registered and the clip repointed together (see ReplaceClipMediaCommand).
+ */
+export function applyClipReplacement({
+	editor,
+	ref,
+	asset,
+	allowClamp = false,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	asset: MediaAsset;
+	allowClamp?: boolean;
+}): ReplaceClipApplyOutcome {
+	const element = getElement({ editor, ref });
+	if (!element) return { status: "element-missing" };
+
+	const plan = planClipMediaReplacement({ element, asset, allowClamp });
+	if (!plan.ok) {
+		return { status: "refused", reason: plan.reason, message: plan.message, clamp: plan.clamp };
+	}
+
+	const projectId = editor.project.getActive().metadata.id;
+	editor.command.execute({
+		command: new ReplaceClipMediaCommand({
+			projectId,
+			ref,
+			asset,
+			allowClamp,
+		}),
+	});
+
+	return { status: "replaced", clamped: plan.clamped };
+}
+
+/** True when a clip's media is no longer resolvable in the project's library —
+ *  the missing-media case Replace exists to repair. */
+export function isClipMediaMissing({
+	editor,
+	ref,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+}): boolean {
+	const element = getElement({ editor, ref });
+	if (!element || !("mediaId" in element)) return false;
+	return !editor.media.getAssets().some((asset) => asset.id === element.mediaId);
+}
