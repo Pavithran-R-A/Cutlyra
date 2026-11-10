@@ -87,28 +87,27 @@ export interface BackupContext {
 
 const ROLES: ArchivedFileRole[] = ["proxy", "source", "thumbnail"];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
 function collectReferencedMediaIds(project: unknown): Set<string> {
 	const ids = new Set<string>();
-	const scenes = (project as { scenes?: unknown }).scenes;
+	const scenes = isRecord(project) ? project.scenes : undefined;
 	if (!Array.isArray(scenes)) return ids;
 	for (const scene of scenes) {
-		const tracks = (scene as { tracks?: unknown }).tracks;
-		if (!tracks || typeof tracks !== "object") continue;
-		const t = tracks as {
-			main?: unknown;
-			overlay?: unknown;
-			audio?: unknown;
-		};
+		const tracks = isRecord(scene) ? scene.tracks : undefined;
+		if (!isRecord(tracks)) continue;
 		const trackList = [
-			t.main,
-			...(Array.isArray(t.overlay) ? t.overlay : []),
-			...(Array.isArray(t.audio) ? t.audio : []),
+			tracks.main,
+			...(Array.isArray(tracks.overlay) ? tracks.overlay : []),
+			...(Array.isArray(tracks.audio) ? tracks.audio : []),
 		];
 		for (const track of trackList) {
-			const elements = (track as { elements?: unknown })?.elements;
+			const elements = isRecord(track) ? track.elements : undefined;
 			if (!Array.isArray(elements)) continue;
 			for (const element of elements) {
-				const mediaId = (element as { mediaId?: unknown })?.mediaId;
+				const mediaId = isRecord(element) ? element.mediaId : undefined;
 				if (typeof mediaId === "string") ids.add(mediaId);
 			}
 		}
