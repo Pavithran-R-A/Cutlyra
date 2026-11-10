@@ -363,8 +363,8 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 				if (applied.status === "replaced") {
 					setChromeNotice(
 						applied.clamped
-							? "Clip media replaced (shortened to fit the new file)."
-							: "Clip media replaced — your edits were kept.",
+							? "Clip media replaced (shortened to fit the new file). Saving media…"
+							: "Clip media replaced — saving media…",
 					);
 					return;
 				}

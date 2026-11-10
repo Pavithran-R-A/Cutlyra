@@ -36,7 +36,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | One-tap delete, duplicate | **SHIP** | `DuplicateElementsCommand` covered in the #55 test (lands on a PiP overlay); delete covered by command suite |
 | Trim without losing source | **SHIP** | Non-destructive `trimStart`/`trimEnd`; `split.test.ts` |
 | Gap removal / ripple | **PARTIAL** | `dead-space.test.ts` + `dead-space-cut.test.ts` cover maths; UI exposure unverified |
-| Replace clip | **SHIP** (video/image only) | `ReplaceClipMediaCommand` + `planClipMediaReplacement`; Edit panel Replace/Relink; 19 unit tests + 3 ExportReplaceClip instrumentation tests; durability races (7 tests). Cross-type and audio-clip replacement are not supported. |
+| Replace clip | **SHIP** (video/image only) | `ReplaceClipMediaCommand` + `planClipMediaReplacement`; Edit panel Replace/Relink; 19 unit tests + 3 ExportReplaceClip instrumentation tests; durability races (12 tests: 7 original + 5 reliability) + per-asset serialized persistence coordinator; project save/backup durability gate. Cross-type and audio-clip replacement are not supported. |
 | Freeze frame | **PARTIAL** | `freeze` handling exists in the engine; no toolbar/panel entry point found |
 | Reverse | **GAP** (hidden in shipping UI) | `packages/mobile-ui` has a `toggleReversed` action and editor-core carries a `reversed` param for project compatibility, but `packages/mobile-ui/src/components/panels/edit-panel.tsx` intentionally hides Reverse in v0.1.0 until preview and native export can honor it. Android native export source (`apps/mobile/android/app/src`) has no reverse implementation. `docs/PHYSICAL-QA-MATRIX.md` records a historical Stage 11 PASS claim; do not treat that as current shipping parity without UI+export proof. |
 | Rotate ±90/180 and H/V flip on a clip | **SHIP** | Edit panel Transform controls (`edit-panel.tsx` Rotate L/R, Flip H/V + degree readout) over `rotateVisualElement`/`flipVisualElement`; one `UpdateElementsCommand` per action, so each is one undo step. Exported pixels are asserted for identity, ±90°, 180°, H, V and rotate+H/V by `ExportTransformParityInstrumentedTest` (12 cases, both instrumentation variants). Emulator-only: physical-device parity remains `BLOCKED` (see the row below). |
@@ -187,3 +187,10 @@ Verified build: `8b3b8786b8d54f8b6cef60944783690ec91bd769` (merge of PR #69). Th
 - Reverse: engine param + hidden action only, native export has no implementation. #50 stays open.
 - Freeze frame: engine handling exists, no toolbar/panel entry point.
 - Speed ramps, new transition types, crop-with-ratio: unchanged, out of scope for #69.
+
+## 2026-11-10 evidence update (PR #72, `feat/replace-clip-reliability`)
+
+- **Durability coordinator:** `ReplaceClipMediaCommand` now tracks per-asset generation/intent/durable-generation/failed-generation and serializes save/delete intents per `projectId:assetId`. `ProjectManager.saveCurrentProject()` awaits pending media writes and aborts the save (with a visible toast) when a replacement's required media persistence failed; `buildExportRecipe()` awaits pending writes and throws `BackupError` on failure so a backup can never silently omit referenced media.
+- **UI truthfulness:** Replace Clip success toast now reads "Clip media replaced — saving media…" (provisional) instead of claiming durable success; the command's existing failure toast surfaces "Couldn't save the replacement" when persistence fails. Single-step Undo/Redo preserved.
+- **Tests:** focused replace-clip suite 31 pass / 0 fail (115 expect); full invariants green (lint 131, 773 pass / 0 fail). Native proxy cleanup remains an explicitly unresolved limitation (no verified safe delete API; no unsafe recursive/guessed-path deletion added). Physical POCO acceptance and real process-crash recovery remain BLOCKED.
+- **Lint:** aggregate 131 errors (baseline preserved, no rule/baseline weakening).
