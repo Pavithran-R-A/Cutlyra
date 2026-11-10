@@ -1,10 +1,12 @@
 # Cutlyra capability matrix — what ships, what is partial, what is absent (#58)
 
-**Method:** every row is classified from the current source on `main@1027a28` plus
-the executed suites (706 unit tests, 39 instrumented tests on the API-35 emulator,
-`scripts/invariants.sh`). A row is `SHIP` only when the code path exists **and**
-something in the repo exercises it — a test, or a shipped panel/toolbar entry
-point. Engine-only support with no UI to reach it is `PARTIAL`, never `SHIP`.
+**Method:** every row is classified from the current source on `main@8b3b878` plus
+the executed suites (unit suites via `scripts/invariants.sh`, and 58 instrumented
+tests on the API-35 emulator in both the normal and R8 test variants). A row is
+`SHIP` only when the code path exists **and** something in the repo exercises it —
+a test, or a shipped panel/toolbar entry point. Engine-only support with no UI to
+reach it is `PARTIAL`, never `SHIP`. Rows that an emulator export test covers are
+still device-unverified; see the `BLOCKED` rows and the rebaseline notes.
 
 **Legend**
 
@@ -37,8 +39,9 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | Replace clip | **GAP** | No command; recovery from a lost asset is "delete + re-import" (see #55) |
 | Freeze frame | **PARTIAL** | `freeze` handling exists in the engine; no toolbar/panel entry point found |
 | Reverse | **GAP** (hidden in shipping UI) | `packages/mobile-ui` has a `toggleReversed` action and editor-core carries a `reversed` param for project compatibility, but `packages/mobile-ui/src/components/panels/edit-panel.tsx` intentionally hides Reverse in v0.1.0 until preview and native export can honor it. Android native export source (`apps/mobile/android/app/src`) has no reverse implementation. `docs/PHYSICAL-QA-MATRIX.md` records a historical Stage 11 PASS claim; do not treat that as current shipping parity without UI+export proof. |
-| Rotate / flip / crop with ratios | **PARTIAL** | Transform + `RATIO_PRESETS` exist; a crop-with-ratio UI was not found |
-| Undo / redo | **PARTIAL** | Every mutation is a `Command`, but no test asserts the undo/redo stack itself |
+| Rotate ±90/180 and H/V flip on a clip | **SHIP** | Edit panel Transform controls (`edit-panel.tsx` Rotate L/R, Flip H/V + degree readout) over `rotateVisualElement`/`flipVisualElement`; one `UpdateElementsCommand` per action, so each is one undo step. Exported pixels are asserted for identity, ±90°, 180°, H, V and rotate+H/V by `ExportTransformParityInstrumentedTest` (12 cases, both instrumentation variants). Emulator-only: physical-device parity remains `BLOCKED` (see the row below). |
+| Crop with aspect-ratio presets | **GAP** | `RATIO_PRESETS` is the *canvas* ratio list, not a per-clip crop tool; no crop-rect UI or crop param exists. Fill+framing is the only cropping behaviour, and it is cover-and-centre, not user-chosen. |
+| Undo / redo | **PARTIAL** | Every mutation is a `Command`. Transform actions now have action-level undo/redo and single-step `BatchCommand` assertions (`transform-params.test.ts`), but the stack itself is still unasserted across other edit kinds (see `timeline-05`) |
 | Import multiple videos at once | **BLOCKED** | Needs the Photo Picker multi-select grid on a device |
 | Battery/disk-hungry states | **BLOCKED** | Needs a device |
 
@@ -71,7 +74,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | --- | --- | --- |
 | Import audio (SAF) | **SHIP** | `library_pick_intent_resolves_to_either_the_photo_picker_or_the_saf_fallback` |
 | Audio in export for file-backed clips | **SHIP** | `export_clamps_audio_that_outlasts_visual_timeline`, `exports_a_video_only_mp4_...` |
-| Bundled sound library audible in export | **GAP (defect)** | `EdlToComposition.audibleClips` drops clips with a null `assetId`; library sounds carry `sourceUrl` and no mediaId, so they play in preview and vanish from the MP4. Separate issue filed with both code sites. |
+| Bundled sound library audible in export | **SHIP** | Fixed under #63 (closed 2026-11-09): library sounds are materialized into a real asset (`materializeLibraryAudio`/`ensureLibraryAudioAsset`, `library-audio.test.ts`) so they no longer reach `audibleClips` with a null `assetId`. `ExportLibraryAudioInstrumentedTest` decodes the exported MP4 and asserts the synthesized library tone is present at the expected amplitude; it is part of the 58-test suite green on `8b3b878`. |
 | Mute / volume / split / extract | **SHIP** | Edit + audio panels; `channel-layout.test.ts` |
 | Fades | **PARTIAL** | Transition/volume plumbing exists; a fade-in/out audio UI was not found |
 | Voiceover recording | **GAP** | No `RECORD_AUDIO`, no recorder |
@@ -137,7 +140,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 
 1. **#54 filmstrip** — turns the first row from PARTIAL to SHIP for every user, every session.
 2. **#55 media-reference pre-flight** — closes the only known way a project becomes unexportable.
-3. **Sound-library export** — one defect stands between the audio panel and parity with preview.
+3. **~~Sound-library export~~** — done: #63's materialization fix and its export test closed this row.
 4. **Undo/redo and project duplicate/delete tests** — cheap rows that are currently PARTIAL only for lack of an assertion.
 5. **A device session (or an API-29 + API-36 CI matrix)** — unblocks 9 BLOCKED rows at once.
 
@@ -153,3 +156,34 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 
 - **Merged-main CI:** Bun CI 42672196713 attempt 3 (3/3 invariants jobs) and Mobile CI 42672197042 attempt 3 (4/4 jobs, 46 tests 0 failures normal + 46 R8 instrumentation) are **green** on `8a76c8aeb31241bf0e650721c2039bc14877d216`. Earlier attempts 1–2 showed GitHub Actions scheduling/execution anomalies (zero/partial jobs; no workflow files changed by merge; PR-head `66f1eb5` had been fully green). Root cause classified as likely GitHub-side scheduling anomaly, not code regression (proven by recovery on rerun).
 - **QA inventory reconciliation:** `docs/qa/beta-case-inventory.json` summary now computed from rows (56 cases: 26 PASS, 0 FAIL, 17 VERIFY, 13 BLOCKED); integrity test added. Historical 2026-11-03 FAIL evidence preserved in `historical_baseline`/per-case baselines. Export-22 automated export geometry is PASS (Mobile CI 42669153296 on PR head + 42672197042 on merged main, both 46/46 normal+R8 incl. framing export test); physical preview↔export parity remains BLOCKED (`export-22b`). Former FAILs (filmstrip, bundled audio export, lost media reference, R8 release readiness) reassessed as VERIFY with build-specific evidence/gaps — not silently closed.
+
+## 2026-11-10 evidence update on `main@8b3b878` (PR #69 merged, rotate/flip)
+
+Verified build: `8b3b8786b8d54f8b6cef60944783690ec91bd769` (merge of PR #69). This note corrects two stale rows and records what the run did and did not prove. Rows above already carry the corrected text; this section is the evidence trail.
+
+### Stale claims corrected
+
+- **Rotate/flip was listed as `PARTIAL` with no rotate UI and no export coverage.** It now has shipped UI (Edit panel Transform: Rotate L, Rotate R, Flip H, Flip V plus a live degree readout), an action per control, and real exported-pixel assertions. Row split into a `SHIP` rotate/flip row and a separate `GAP` row for per-clip crop-with-ratio, which still does not exist (`RATIO_PRESETS` is the canvas ratio list).
+- **"Bundled sound-library audio cannot be exported" was `GAP (defect)`.** #63 is closed: library sounds are materialized into a real asset before the EDL is built, and `ExportLibraryAudioInstrumentedTest` decodes the exported MP4 and finds the synthesized library tone. Row is now `SHIP` with that test named as the evidence.
+
+### PR #69 / merged-main evidence
+
+- **What ships:** rotate ±90°, 180° (as two ±90 steps), horizontal flip, vertical flip, and combined rotate+flip, for video and image clips on the timeline. Each control is one `UpdateElementsCommand` parameter patch, so it is one undo step; flip preserves magnitude and toggles the sign rather than zeroing the transform.
+- **Fit/Fill interaction is tested:** fit on a 9:16 canvas presents 1080x1920 with letterbox bars top/bottom and no pillarbox; fill covers the canvas. Rotation re-frames pixels inside the project canvas — it never reshapes the canvas.
+- **Image and video both covered:** the parity suite includes a 90°-rotated image clip exported through the real native pipeline, not just video.
+- **PR-head CI (`df17b61`):** Mobile CI run 42810540771 success, all 4 jobs — instrumentation API 35 `Tests 58/58 completed. (0 skipped) (0 failed)`, instrumentation R8 `Tests 58/58 completed. (0 skipped) (0 failed)`; Bun CI run 42810541409 success.
+- **Merged-main CI (`8b3b878`):** Bun CI run 42813555378 success (3/3 invariants: ubuntu, macos, windows); Mobile CI run 42813555396 success (4/4: Android debug APK, iOS simulator, instrumentation API 35 `Starting 58 tests` → `Finished 58 tests` → BUILD SUCCESSFUL, instrumentation R8 `Tests 58/58 completed. (0 skipped) (0 failed)`).
+
+### What this evidence does NOT establish
+
+- **No physical-device proof.** CI is an API-35 x86_64 emulator with a software encoder. The owner's POCO M4 Pro 5G has not run this build; preview↔export transform parity on that device stays `BLOCKED` (`export-23b` in the inventory).
+- **Non-zero `positionX`/`positionY` in export is untested.** `EdlTransformEffect` applies `postScale` → `postRotate` → `postTranslate`; the parity suite only ever exports centred clips, so the translate term is exercised only as translation-to-centre. `export-24` records this as `VERIFY`.
+- **Animated/keyframed transform time base in native export is untested.** The effect accepts a `presentationTimeUs`-driven animation path, but no export test drives a keyframed transform.
+- **Source-metadata edge cases stay open.** One case is covered (a source carrying rotation metadata with an identity clip transform exports without crashing); odd dimensions, anamorphic pixel aspect and HDR/10-bit sources are not.
+- **The coded-vs-presented distinction is real, not cosmetic.** Media3 1.11.0 `VideoEncoderWrapper.getSurfaceInfo` always prefers a landscape encode and records a clockwise display rotation, so a correct 9:16 export is stored 1920x1080 with `rotation=90` and *presents* 1080x1920. Any future "portrait output must be coded portrait" assertion would be wrong; assert presented geometry.
+
+### Still absent from this feature area
+
+- Reverse: engine param + hidden action only, native export has no implementation. #50 stays open.
+- Freeze frame: engine handling exists, no toolbar/panel entry point.
+- Speed ramps, new transition types, crop-with-ratio: unchanged, out of scope for #69.

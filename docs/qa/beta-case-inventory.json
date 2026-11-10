@@ -3,9 +3,9 @@
 	"parent": "#47 / Linear PAV-141",
 	"generated": "2026-11-03",
 	"build": {
-		"product_commit": "24ab6c43292987846c4598c10e6c41c5ec623a56",
-		"inventory_date": "2026-11-09",
-		"note": "Current assessed build is merged main after PR #67 (qualification/evidence repair). Computed summary reflects current row statuses. Historical 2026-11-03 snapshot/evidence is preserved in historical_baseline and per-case baseline_2026_11_03 fields and is not silently rewritten."
+		"product_commit": "8b3b8786b8d54f8b6cef60944783690ec91bd769",
+		"inventory_date": "2026-11-10",
+		"note": "Current assessed build is merged main after PR #69 (rotate/flip, #50 focused slice). Computed summary reflects current row statuses. Historical 2026-11-03 snapshot/evidence is preserved in historical_baseline and per-case baseline_2026_11_03 fields; the 2026-11-09 post-#67 assessment is preserved in rebaseline_pr67_postmerge. Nothing is silently rewritten."
 	},
 	"devices": [
 		{
@@ -275,9 +275,9 @@
 			"id": "export-08",
 			"area": "Preview vs export",
 			"case": "Bundled sound-library audio is audible in the exported MP4",
-			"status": "VERIFY",
-			"evidence": "Current assessment (merged main 8a76c8ae includes #64 fix): ExportLibraryAudioInstrumentedTest exists and covers decoded audible output for bundled library sounds (standalone/muted cases). Mobile CI run 42669153296 on PR head 66f1eb5 passed 46/46 normal and 46/46 R8 instrumentation tests including export/library-audio coverage in that suite context; promote to PASS only when suite composition/log explicitly confirms ExportLibraryAudioInstrumentedTest executed on the exact assessed SHA and merged-main CI is verified.",
-			"blocker": "awaiting merged-main full CI verification and explicit test-log confirmation for ExportLibraryAudioInstrumentedTest on assessed SHA",
+			"status": "PASS",
+			"evidence": "Fixed by #63 (closed 2026-11-09) and verified in the assessed build's instrumented suite: bundled library sounds are materialized into a real durable asset (materializeLibraryAudio/ensureLibraryAudioAsset, packages/editor-core/src/media/library-audio.ts with library-audio.test.ts) before the EDL is built, so EdlToComposition.audibleClips no longer sees a null assetId. ExportLibraryAudioInstrumentedTest.standalone_library_sound_appears_in_export_as_decoded_audio decodes the exported MP4 and asserts the synthesized library tone is present at the expected amplitude; it runs inside the 58-test suite that passed in Mobile CI run 42813555396 on 8b3b878 (both the API-35 and the R8 instrumentation variants).",
+			"blocker": null,
 			"baseline_2026_11_03": {
 				"status": "FAIL",
 				"evidence": "EdlToComposition.audibleClips drops every clip whose assetId is null, and the comment there states bundled library sounds ('generated clips, whose sourceUrl has no asset-table entry') are skipped. Library audio elements carry sourceUrl and no mediaId (packages/editor-core/src/sounds/local-sounds.ts), so they play in preview and vanish from the export. Filed as #63 with both code sites."
@@ -490,15 +490,49 @@
 			"status": "BLOCKED",
 			"evidence": "No physical POCO M4 Pro 5G / Android 15-16 device verification executed in this environment. Automated export geometry is PASS (export-22). See docs/qa/physical-device-acceptance-poco-m4-pro-5g.md.",
 			"blocker": "owner device/Play Console access required"
+		},
+		{
+			"id": "transform-01",
+			"area": "Video image tools",
+			"case": "Rotate plus/minus 90 and 180 degrees and horizontal/vertical flip on a selected video or image clip: one undo step per action, redo restores, and the authored transform survives save/reopen",
+			"status": "PASS",
+			"evidence": "Deterministic, executed on 8b3b878: packages/editor-core/src/commands/timeline/element/__tests__/transform-params.test.ts (6 pass) asserts rotate/flip parameter updates, action-level undo/redo and single-step BatchCommand undo; packages/editor-core/src/services/storage/__tests__/transform-persistence-roundtrip.test.ts (3 pass) drives the real saveProject/loadProject pair and rebuilds the EDL to compare; packages/editor-core/src/edl/__tests__/edl.test.ts rotate/mirror propagation block (43 pass in that file) covers EDL emission. Full repo suite green on this build: bun test 742 pass / 0 fail. UI entry points: packages/mobile-ui/src/components/panels/edit-panel.tsx Transform controls (Rotate L/R, Flip H/V, degree readout).",
+			"blocker": null,
+			"baseline_2026_11_03": null
+		},
+		{
+			"id": "export-23",
+			"area": "Preview vs export",
+			"case": "Rotated/flipped clip exports with the authored orientation: decoded exported-frame corner parity for identity, plus/minus 90, 180, flip H, flip V, rotate+H/V, a rotated image clip, and fit/fill framing under rotation (#50)",
+			"status": "PASS",
+			"evidence": "ExportTransformParityInstrumentedTest (12 cases) exports through the real Media3/EDL pipeline and samples decoded corners of the exported MP4 with an asymmetric marker fixture. Mobile CI run 42813555396 on merged main 8b3b878: Android instrumentation (API 35 emulator) ran 58 tests with 0 skipped and 0 failed; Android instrumentation (R8 test variant) reported 'Tests 58/58 completed. (0 skipped) (0 failed)'. The same suite was green on PR head df17b61 in run 42810540771. Assertions are on PRESENTED geometry: Media3 1.11.0 VideoEncoderWrapper.getSurfaceInfo always prefers a landscape encode and records a clockwise display rotation, so a correct 9:16 export is coded 1920x1080 with rotation=90 and presents 1080x1920.",
+			"blocker": null,
+			"baseline_2026_11_03": null
+		},
+		{
+			"id": "export-23b",
+			"area": "Preview vs export",
+			"case": "Rotate/flip physical-device preview-to-export parity on the owner's POCO M4 Pro 5G (#50)",
+			"status": "BLOCKED",
+			"evidence": "Only an API-35 x86_64 emulator with a software encoder is available in CI; no physical-device session was executed for this build. Automated exported-pixel parity is PASS (export-23). See docs/qa/physical-device-acceptance-poco-m4-pro-5g.md.",
+			"blocker": "owner device access required"
+		},
+		{
+			"id": "export-24",
+			"area": "Preview vs export",
+			"case": "Non-zero transform positionX/positionY offsets and the keyframed transform time base in native export (#50)",
+			"status": "VERIFY",
+			"evidence": "EdlTransformEffect applies postScale -> postRotate(-rotateDegrees) -> postTranslate and accepts a presentationTimeUs-driven animation path, but every parity export in ExportTransformParityInstrumentedTest uses a centred, static clip: the translate term is only exercised as translation-to-centre and no keyframed transform is exported. This limitation is documented in EdlTransformEffect's header on 8b3b878.",
+			"blocker": "needs an export test that drives non-zero position and an animated transform"
 		}
 	],
 	"summary": {
-		"total": 56,
-		"pass": 26,
+		"total": 60,
+		"pass": 29,
 		"fail": 0,
 		"verify": 17,
-		"blocked": 13,
-		"note": "Computed from cases. PASS means the named suite/gate executed on the assessed build with cited evidence. VERIFY means code path exists/relevant fix merged but direct criterion evidence on assessed build is incomplete. BLOCKED means required device/hardware/account/access unavailable. Historical 2026-11-03 FAIL evidence preserved in case baseline fields/historical_baseline."
+		"blocked": 14,
+		"note": "Computed from cases on 8b3b878. PASS means the named suite/gate executed on the assessed build with cited evidence. VERIFY means the code path exists but the specific criterion was not executed on this build. BLOCKED means required device/hardware/account/access was unavailable. Historical 2026-11-03 evidence is preserved in case baseline fields and historical_baseline, and the 2026-11-09 post-#67 assessment in rebaseline_pr67_postmerge; changed rows are reassessed with build-specific evidence, never inferred from a green CI run. Emulator evidence is not physical-device evidence: export-23b and export-24 keep the device and animation gaps explicit."
 	},
 	"evidence_links": {
 		"run 41688805558": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/41688805558",
@@ -609,5 +643,84 @@
 			}
 		},
 		"qualification_gate": "GREEN on merged main 24ab6c4 (all 7 expected CI jobs completed successfully)."
+	},
+	"rebaseline_pr69_postmerge": {
+		"date": "2026-11-10",
+		"assessed_build": "8b3b8786b8d54f8b6cef60944783690ec91bd769",
+		"pr": "https://github.com/Pavithran-R-A/Cutlyra/pull/69",
+		"pr_head_sha": "df17b61",
+		"scope": "Focused #50 slice: rotate plus/minus 90/180 and H/V flip for selected video/image clips, with real-export parity tests. Reverse, freeze, speed ramps and new transitions remain unimplemented as shipping features (#50 stays open).",
+		"changed_cases": [
+			{
+				"id": "export-08",
+				"from": "VERIFY",
+				"to": "PASS",
+				"why": "#63 closed; ExportLibraryAudioInstrumentedTest decodes the exported MP4 and runs in the 58-test suite"
+			},
+			{
+				"id": "transform-01",
+				"from": "(new row)",
+				"to": "PASS",
+				"why": "action-level undo/redo, persistence and EDL propagation tests executed on this build"
+			},
+			{
+				"id": "export-23",
+				"from": "(new row)",
+				"to": "PASS",
+				"why": "12-case exported-pixel parity suite green in both instrumentation variants"
+			},
+			{
+				"id": "export-23b",
+				"from": "(new row)",
+				"to": "BLOCKED",
+				"why": "no physical-device session for this build"
+			},
+			{
+				"id": "export-24",
+				"from": "(new row)",
+				"to": "VERIFY",
+				"why": "position offsets and the keyframed transform time base are still not exported by any test"
+			}
+		],
+		"not_promoted": [
+			"timeline-05 (undo/redo across all edit kinds) stays VERIFY: only the transform actions now have action-level undo/redo assertions.",
+			"export-16 (preview/export frame-for-frame parity) stays VERIFY: the transform suite checks static exported frame geometry, not per-frame PTS agreement.",
+			"privacy-04 (R8 readiness) stays VERIFY: the R8 test variant is green, but the release build still has minifyEnabled false."
+		],
+		"ci_pr_head": {
+			"bun_ci": {
+				"run_id": 42810541409,
+				"conclusion": "success",
+				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42810541409"
+			},
+			"mobile_ci": {
+				"run_id": 42810540771,
+				"conclusion": "success",
+				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42810540771",
+				"instrumentation": {
+					"normal": "58/58, 0 skipped, 0 failed (job 129812840516)",
+					"r8_variant": "58/58, 0 skipped, 0 failed (job 129812840461)"
+				}
+			}
+		},
+		"ci_merged_main": {
+			"bun_ci": {
+				"run_id": 42813555378,
+				"conclusion": "success",
+				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42813555378",
+				"jobs": "3/3 invariants ubuntu/macos/windows"
+			},
+			"mobile_ci": {
+				"run_id": 42813555396,
+				"conclusion": "success",
+				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42813555396",
+				"jobs": "4/4 Android debug APK, iOS simulator unsigned, Android instrumentation API 35, Android instrumentation R8 test variant",
+				"instrumentation": {
+					"normal": "58 tests started and finished, 0 failed, BUILD SUCCESSFUL (job 129822839507)",
+					"r8_variant": "58/58, 0 skipped, 0 failed (job 129822839640)"
+				}
+			}
+		},
+		"qualification_gate": "GREEN on merged main 8b3b878: all 7 expected CI jobs succeeded."
 	}
 }
