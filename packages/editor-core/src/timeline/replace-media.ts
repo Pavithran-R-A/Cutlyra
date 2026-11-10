@@ -1,5 +1,9 @@
 import type { MediaAsset } from "@/media/types";
-import { getEffectiveRateAt, getTimelineDurationForSourceSpan } from "@/retime";
+// Import the retime arithmetic from its own module rather than the
+// `@/retime` barrel: the barrel also exports `audio-stretch`, which imports
+// `soundtouchjs`, and dragging that into a package that type-checks
+// editor-core transitively (packages/native-bridge) fails with TS7016 there.
+import { clampRetimeRate } from "@/retime/rate";
 import type { TimelineElement } from "@/timeline";
 import {
 	type MediaTime,
@@ -98,7 +102,7 @@ function sourceTicksForAsset({ asset }: { asset: MediaAsset }): MediaTime {
 
 function rateForElement({ element }: { element: TimelineElement }): number {
 	const retime = "retime" in element ? element.retime : undefined;
-	return getEffectiveRateAt({ retime });
+	return clampRetimeRate({ rate: retime?.rate ?? 1 });
 }
 
 /**
@@ -173,16 +177,10 @@ export function planClipMediaReplacement({
 		a: sourceDurationTicks,
 		b: mediaTime({ ticks: trimStart }),
 	});
+	// Timeline duration for the remaining source span, retime-aware:
+	// source consume = clipTime * rate, so clipTime = source / rate.
 	const clampedDuration = mediaTime({
-		ticks: Math.max(
-			0,
-			Math.round(
-				getTimelineDurationForSourceSpan({
-					sourceSpan: availableSourceTicks,
-					retime: "retime" in element ? element.retime : undefined,
-				}),
-			),
-		),
+		ticks: Math.max(0, Math.round(availableSourceTicks / rate)),
 	});
 
 	const clamp: ReplaceMediaClampPreview = {
