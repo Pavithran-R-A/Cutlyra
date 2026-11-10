@@ -199,3 +199,20 @@ issue instructs.
 - PR #66 (`feat/22-canvas-fit-fill`) addresses #22 canvas fit/fill framing with preview↔EDL↔native export parity plumbing and tests. **No `minifyEnabled`/release R8 enablement, no signing changes, no `versionCode` bump, no AAB upload, and no closed-test changes.** R8 test-APK keep rules remain separate from production (per #57/#64 state).
 - Physical POCO M4 Pro 5G + Android 15/16 edge-to-edge/system-bars acceptance is **prepared, not executed**: see `docs/qa/physical-device-acceptance-poco-m4-pro-5g.md`. Owner blocker.
 - Merge gate: full CI matrix on exact final head SHA (including R8 variant + normal instrumentation) must be green; merged-main CI must be verified after merge.
+
+## 2026-11-10 update: current suite size and R8 gate state (`main@8b3b878`)
+
+The sections above describe the **0.1.0 / `main@1027a28` + PR #64** audit and are kept as that
+record. What is true on merged main `8b3b8786b8d54f8b6cef60944783690ec91bd769`:
+
+- The instrumented suite is now **58 tests**, not 45. Mobile CI run 42813555396 passed it in both
+  variants on this build: API 35 emulator (58 tests started and finished, 0 failed) and the R8
+  `r8test` variant (`Tests 58/58 completed. (0 skipped) (0 failed)`).
+- The `release` build type still has `minifyEnabled false`. Nothing in PR #69 (rotate/flip) or its
+  predecessors changed signing, versionCode, or the release R8 posture. `privacy-04` in
+  `beta-case-inventory.json` therefore stays **VERIFY**: a green minified *test* build is evidence
+  that the keep rules work, not evidence that the shipped AAB is optimised.
+- Play's DEX/obfuscation warning is still open until a separately gated release build flips
+  `minifyEnabled`/`shrinkResources` and is qualified on its own: that is a distinct release gate, not
+  part of a feature PR.
+- `bun test` at repo root (the CI command) is **742 pass / 0 fail** on `8b3b878`.
