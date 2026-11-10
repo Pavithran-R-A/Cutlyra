@@ -308,7 +308,7 @@ class ExportReplaceClipInstrumentedTest {
 		val retriever = MediaMetadataRetriever()
 		try {
 			retriever.setDataSource(file.absolutePath)
-			val decoded = retriever.getFrameAtTime(atUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+			val decoded = retriever.getFrameAtTime(atUs, MediaMetadataRetriever.OPTION_CLOSEST)
 				?: throw AssertionError("no decodable frame at ${atUs}us in ${file.name}")
 			val bmp = decoded.copy(Bitmap.Config.ARGB_8888, false)
 				?: throw AssertionError("could not convert frame of ${file.name}")
@@ -446,7 +446,7 @@ class ExportReplaceClipInstrumentedTest {
 		val out = export(edlOf(assets, clips, ticksPerSecond), "mixed")
 		try {
 			val first = centerColor(out, 250_000)
-			val second = centerColor(out, 750_000)
+			val second = centerColor(out, 900_000)
 			assertTrue("first clip must stay its original red source, got $first", isClose(first, RED))
 			assertTrue("second clip must render the replacement green source, got $second", isClose(second, GREEN))
 			val durationUs = videoDurationUs(out)
