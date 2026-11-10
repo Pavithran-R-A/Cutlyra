@@ -2,6 +2,7 @@ package app.cutlyra.editor.export
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -207,11 +208,19 @@ class ExportTransformParityInstrumentedTest {
         rect(0, 0, hs, hs, Color.RED); rect(hs, 0, size, hs, Color.GREEN)
         rect(0, hs, hs, size, Color.BLUE); rect(hs, hs, size, size, Color.YELLOW)
         rect(0, 0, marker, marker, Color.CYAN)
-        target.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+        // PNG, not JPEG: corner colour identity is the assertion, so the fixture
+        // must be lossless (JPEG 4:2:0 chroma smears the cyan block into RED).
+        target.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bmp.recycle()
         assertTrue("marker image not written", target.exists() && target.length() > 0)
-        val (w, h) = retrieveDims(target)
-        assertTrue("marker image not decodable: ${target.name} ${w}x${h}", w > 0 && h > 0)
+        // MediaMetadataRetriever cannot parse a still image (setDataSource fails with
+        // status 0x80000000), so verify the fixture with BitmapFactory bounds instead.
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(target.absolutePath, bounds)
+        assertTrue(
+            "marker image not decodable: ${target.name} ${bounds.outWidth}x${bounds.outHeight}",
+            bounds.outWidth > 0 && bounds.outHeight > 0,
+        )
         return target
     }
 
@@ -263,6 +272,31 @@ class ExportTransformParityInstrumentedTest {
             val h = mr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() ?: 0
             return w to h
         } finally { mr.release() }
+    }
+
+    /**
+     * Container display rotation, or -1 when unreadable. Export must rotate pixels
+     * in-shader inside the declared canvas; a non-zero display rotation would mean
+     * players show a different geometry than the project canvas.
+     */
+    private fun retrieveRotation(file: File): Int {
+        val mr = MediaMetadataRetriever()
+        try {
+            mr.setDataSource(file.absolutePath)
+            return mr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toInt() ?: 0
+        } catch (_: RuntimeException) {
+            return -1
+        } finally { mr.release() }
+    }
+
+    private fun assertCanvas(file: File, expectW: Int, expectH: Int, label: String) {
+        val (w, h) = retrieveDims(file)
+        val rotation = retrieveRotation(file)
+        assertTrue(
+            "$label: expected declared canvas ${expectW}x$expectH with no display rotation, " +
+                "got ${w}x$h (rotation=$rotation)",
+            abs(w - expectW) <= 10 && abs(h - expectH) <= 10 && rotation % 180 == 0,
+        )
     }
 
     @Test fun identity_preservesMarkerCorners() {
@@ -318,8 +352,9 @@ class ExportTransformParityInstrumentedTest {
     @Test fun fitMismatchedCanvas_preservesPictureWithBars() {
         val src = createMarkerVideo(tmp("src_fit"))
         val out = export(edlFor(src, EdlAssetKind.VIDEO, srcSize, srcSize, 0, 1080, 1920, "fit", t(r = 90.0)), "fit90")
-        val (w, h) = retrieveDims(out)
-        assertTrue("portrait 9:16 output, got ${w}x${h}", w in 1070..1090 && h in 1910..1930)
+        // Rotating a clip re-frames its pixels; it must never re-shape the project
+        // canvas. A 9:16 project stays 9:16 whatever the clip transform is.
+        assertCanvas(out, 1080, 1920, "fit 9:16 with 90° clip rotation")
         val mr = MediaMetadataRetriever()
         try {
             mr.setDataSource(out.absolutePath)
@@ -327,14 +362,15 @@ class ExportTransformParityInstrumentedTest {
             val bmp = frame.copy(Bitmap.Config.ARGB_8888, false) ?: error("no bmp")
             try {
                 fun lum(p: Int) = max(max((p shr 16) and 0xFF, (p shr 8) and 0xFF), p and 0xFF)
-                val center = bmp.getPixel(bmp.width / 2, bmp.height / 2)
-                assertTrue("fit+90 should contain visible picture at center: ${hex(center)}", lum(center) >= 30)
-                val edgeTop = lum(bmp.getPixel(bmp.width / 2, 40))
-                val edgeSide = lum(bmp.getPixel(40, bmp.height / 2))
-                assertTrue(
-                    "fit+90 should show framing/pillarbox behavior (center=${lum(center)} top=$edgeTop side=$edgeSide)",
-                    lum(center) >= 30 && (edgeTop <= lum(center) - 15 || edgeSide <= lum(center) - 15 || edgeTop < 25 || edgeSide < 25),
-                )
+                val center = lum(bmp.getPixel(bmp.width / 2, bmp.height / 2))
+                val top = lum(bmp.getPixel(bmp.width / 2, 40))
+                val bottom = lum(bmp.getPixel(bmp.width / 2, bmp.height - 41))
+                val side = lum(bmp.getPixel(40, bmp.height / 2))
+                // Square picture fitted into 9:16 occupies 1080x1080 centred, i.e.
+                // ~420px letterbox bars top and bottom and NO pillarbox bars.
+                assertTrue("fit should keep a visible picture at center (lum=$center)", center >= 30)
+                assertTrue("fit should letterbox top and bottom (top=$top bottom=$bottom)", top < 25 && bottom < 25)
+                assertTrue("fit must not pillarbox a square source in a 9:16 canvas (side=$side)", side >= 30)
             } finally { bmp.recycle(); frame.recycle() }
         } finally { mr.release() }
     }
@@ -368,8 +404,11 @@ class ExportTransformParityInstrumentedTest {
     }
 
     @Test fun imageClip_rotate90_exportsTransformedImage() {
-        val src = createMarkerImage(tmp("src_img", "jpg"))
+        val src = createMarkerImage(tmp("src_img", "png"))
         val out = export(edlFor(src, EdlAssetKind.IMAGE, srcSize, srcSize, 0, srcSize, srcSize, "fill", t(r = 90.0)), "img90")
+        // Name the stage: a broken image-export container and a wrong-geometry image
+        // export must not look like the same failure.
+        assertCanvas(out, srcSize, srcSize, "image clip export")
         assertCorners("image rotate+90cw", sampleCorners(out), BLUE, RED, YELLOW, GREEN)
     }
 }

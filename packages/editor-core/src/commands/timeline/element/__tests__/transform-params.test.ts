@@ -9,6 +9,7 @@ import { buildDefaultScene } from "@/timeline/scenes";
 import type { ImageElement, SceneTracks, TimelineElement, VideoElement } from "@/timeline";
 import type { ElementAnimations } from "@/animation/types";
 import type { UpdateElementsCommand } from "@/commands/timeline/element/update-elements";
+import { BatchCommand } from "@/commands/batch-command";
 import { ZERO_MEDIA_TIME, mediaTime } from "@/wasm";
 
 type Harness = { tracks: SceneTracks; updates: SceneTracks[] };
@@ -108,5 +109,68 @@ describe("transform param updates", () => {
 		}).execute();
 		expect(getEl(h).params["transform.rotate"]).toBe(180);
 		expect(getEl(h).animations).toEqual(animations);
+	});
+});
+
+describe("consecutive transform actions", () => {
+	it("walks a rotate-then-mirror sequence one undo/redo step at a time", () => {
+		const h = buildHarness(videoElement());
+		const ref = { trackId: h.tracks.main.id, elementId: "v1" };
+		const rotate = new commandCtor({
+			updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.rotate": 90 } } }],
+		});
+		rotate.execute();
+		const mirror = new commandCtor({
+			updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.scaleX": -1 } } }],
+		});
+		mirror.execute();
+		expect(getEl(h).params["transform.rotate"]).toBe(90);
+		expect(getEl(h).params["transform.scaleX"]).toBe(-1);
+
+		// Each action is its own undoable step: undoing the mirror keeps the rotation.
+		mirror.undo();
+		expect(getEl(h).params["transform.scaleX"]).toBe(1);
+		expect(getEl(h).params["transform.rotate"]).toBe(90);
+
+		rotate.undo();
+		expect(getEl(h).params["transform.rotate"]).toBe(0);
+		expect(getEl(h).params["transform.scaleX"]).toBe(1);
+
+		rotate.redo();
+		mirror.redo();
+		expect(getEl(h).params["transform.rotate"]).toBe(90);
+		expect(getEl(h).params["transform.scaleX"]).toBe(-1);
+	});
+
+	it("undoes and redoes a batched rotate+mirror as one step", () => {
+		const h = buildHarness(videoElement());
+		const ref = { trackId: h.tracks.main.id, elementId: "v1" };
+		const batch = new BatchCommand([
+			new commandCtor({
+				updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.rotate": 180 } } }],
+			}),
+			new commandCtor({
+				updates: [
+					{
+						...ref,
+						patch: { params: { ...getEl(h).params, "transform.rotate": 180, "transform.scaleY": -1 } },
+					},
+				],
+			}),
+		]);
+		batch.execute();
+		expect(getEl(h).params["transform.rotate"]).toBe(180);
+		expect(getEl(h).params["transform.scaleY"]).toBe(-1);
+
+		batch.undo();
+		expect(getEl(h).params["transform.rotate"]).toBe(0);
+		expect(getEl(h).params["transform.scaleY"]).toBe(1);
+		// Unrelated params survive the whole round trip.
+		expect(getEl(h).params.framing).toBe("fit");
+		expect(getEl(h).params.volume).toBe(0);
+
+		batch.redo();
+		expect(getEl(h).params["transform.rotate"]).toBe(180);
+		expect(getEl(h).params["transform.scaleY"]).toBe(-1);
 	});
 });
