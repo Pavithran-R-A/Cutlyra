@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
+import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
@@ -289,13 +290,44 @@ class ExportTransformParityInstrumentedTest {
         } finally { mr.release() }
     }
 
+    /**
+     * Coded track geometry as written by the muxer, independent of what
+     * MediaMetadataRetriever reports as "display" dimensions.
+     */
+    private fun codedDims(file: File): Triple<Int, Int, Int> {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            for (index in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(index)
+                val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+                if (!mime.startsWith("video/")) continue
+                val w = if (format.containsKey(MediaFormat.KEY_WIDTH)) format.getInteger(MediaFormat.KEY_WIDTH) else 0
+                val h = if (format.containsKey(MediaFormat.KEY_HEIGHT)) format.getInteger(MediaFormat.KEY_HEIGHT) else 0
+                val rotation = if (format.containsKey(MediaFormat.KEY_ROTATION)) format.getInteger(MediaFormat.KEY_ROTATION) else 0
+                return Triple(w, h, rotation)
+            }
+            return Triple(0, 0, 0)
+        } finally { extractor.release() }
+    }
+
+    /**
+     * The exported file must BE the project canvas: coded pixels at the declared
+     * size with no display-rotation matrix. Rotation is applied once, in-shader,
+     * by EdlTransformEffect, so a container-level rotation would rotate those
+     * pixels a second time for any player that honours it.
+     */
     private fun assertCanvas(file: File, expectW: Int, expectH: Int, label: String) {
-        val (w, h) = retrieveDims(file)
-        val rotation = retrieveRotation(file)
+        val (codedW, codedH, codedRotation) = codedDims(file)
+        val (mmrW, mmrH) = retrieveDims(file)
+        val mmrRotation = retrieveRotation(file)
         assertTrue(
-            "$label: expected declared canvas ${expectW}x$expectH with no display rotation, " +
-                "got ${w}x$h (rotation=$rotation)",
-            abs(w - expectW) <= 10 && abs(h - expectH) <= 10 && rotation % 180 == 0,
+            "$label: expected a ${expectW}x$expectH coded track with no display rotation, " +
+                "got coded ${codedW}x$codedH rotation=$codedRotation " +
+                "(retriever ${mmrW}x$mmrH rotation=$mmrRotation)",
+            abs(codedW - expectW) <= 10 &&
+                abs(codedH - expectH) <= 10 &&
+                codedRotation % 180 == 0,
         )
     }
 
