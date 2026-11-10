@@ -193,6 +193,35 @@ export class ProjectManager {
 	async saveCurrentProject(): Promise<void> {
 		if (!this.active) return;
 
+		const projectId = this.active.metadata.id;
+		// Durability gate (Replace Clip #72): never persist a project snapshot
+		// while a replacement's required media write is still pending or has
+		// failed. Compensation reverts the clip on failure; waiting here keeps
+		// auto-save from racing ahead of that compensation.
+		try {
+			const { ReplaceClipMediaCommand } = await import(
+				"@/commands/timeline/element/replace-clip-media"
+			);
+			await ReplaceClipMediaCommand.waitForPendingMediaTransactions({
+				projectId,
+			});
+			const failures =
+				ReplaceClipMediaCommand.getFailedMediaTransactions({ projectId });
+			if (failures.length > 0) {
+				console.error(
+					"saveCurrentProject: pending media persistence failed",
+					failures,
+				);
+				toast.error({
+					message: "Couldn't save project",
+					description: "Replacement media failed to save",
+				});
+				return;
+			}
+		} catch (error) {
+			console.error("saveCurrentProject: durability wait failed", error);
+		}
+
 		try {
 			const scenes = this.editor.scenes.getScenes();
 			const updatedProject = {

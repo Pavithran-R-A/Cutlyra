@@ -1,726 +1,732 @@
 {
-	"issue": "#56",
-	"parent": "#47 / Linear PAV-141",
-	"generated": "2026-11-03",
-	"build": {
-		"product_commit": "8b3b8786b8d54f8b6cef60944783690ec91bd769",
-		"inventory_date": "2026-11-10",
-		"note": "Current assessed build is merged main after PR #69 (rotate/flip, #50 focused slice). Computed summary reflects current row statuses. Historical 2026-11-03 snapshot/evidence is preserved in historical_baseline and per-case baseline_2026_11_03 fields; the 2026-11-09 post-#67 assessment is preserved in rebaseline_pr67_postmerge. Nothing is silently rewritten."
-	},
-	"devices": [
-		{
-			"id": "ci-api35-emulator",
-			"detail": "GitHub Actions ubuntu-latest, Android API 35 google_apis x86_64, emulator-5554",
-			"evidence": "run 41688805558 on 43dcf42, 40 instrumented tests, 0 failures"
-		},
-		{
-			"id": "local-host",
-			"detail": "Windows 11 host, no emulator (Play-store image needs 7.4 GB, ~6.1 GB free; every GPU/partition variant fails to boot) and no authorized physical device",
-			"evidence": "blocked: no interactive Android runtime available locally"
-		}
-	],
-	"status_legend": {
-		"PASS": "executed on this build by an automated suite or a named check; the evidence field names it",
-		"FAIL": "proven defect on this build; the linked issue carries the evidence",
-		"VERIFY": "implementation exists in source and is reachable from the UI, but was not executed on a device in this pass",
-		"BLOCKED": "cannot be executed with the hardware/accounts available here; the blocker field says what is missing"
-	},
-	"cases": [
-		{
-			"id": "home-01",
-			"area": "Home & intake",
-			"case": "Cold launch reaches the project list, first-run primer shown once",
-			"status": "VERIFY",
-			"evidence": "apps/mobile/android/app/src/main/AndroidManifest.xml:15 FirstRunActivity is the launcher; apps/mobile/src/app/app-root.css renders the list. Not re-executed: no bootable emulator locally.",
-			"blocker": "no interactive Android runtime in this session"
-		},
-		{
-			"id": "home-02",
-			"area": "Home & intake",
-			"case": "Photo/video import resolves to Android Photo Picker, with SAF fallback",
-			"status": "PASS",
-			"evidence": "instrumented library_pick_intent_resolves_to_either_the_photo_picker_or_the_saf_fallback (CI run 41673551147)",
-			"blocker": null
-		},
-		{
-			"id": "home-03",
-			"area": "Home & intake",
-			"case": "Camera capture Intent targets a FileProvider URI this app declares",
-			"status": "PASS",
-			"evidence": "instrumented camera_capture_intent_targets_a_fileprovider_uri_this_app_declared. The UI exposes no camera entry point in v0.1 (AndroidManifest.xml:48-56 documents CAMERA as declared-but-unreached).",
-			"blocker": null
-		},
-		{
-			"id": "home-04",
-			"area": "Home & intake",
-			"case": "content:// import is copied into noBackupFilesDir and reports the true byte size",
-			"status": "PASS",
-			"evidence": "instrumented importer_copies_a_content_uri_into_noBackupFilesDir_and_reports_the_right_size",
-			"blocker": null
-		},
-		{
-			"id": "home-05",
-			"area": "Home & intake",
-			"case": "Proxy transcode on import completes and the proxy is what playback uses",
-			"status": "VERIFY",
-			"evidence": "packages/editor-core/src/media/native-import.ts + instrumented probe_reads_duration_dimensions_and_codec_from_the_fixture_clip; the end-to-end proxy stream was not driven on this build.",
-			"blocker": "native proxy generator needs a device"
-		},
-		{
-			"id": "home-06",
-			"area": "Home & intake",
-			"case": "Unsupported codec is detected and reported instead of crashing",
-			"status": "VERIFY",
-			"evidence": "codec-detect.test.ts (unit, executed in the 706-test suite) covers detection; the user-facing refusal path is not covered by a test.",
-			"blocker": null
-		},
-		{
-			"id": "home-07",
-			"area": "Home & intake",
-			"case": "HEVC / 10-bit import and decode",
-			"status": "BLOCKED",
-			"evidence": "no fixture or hardware decoder available to this session",
-			"blocker": "needs a device with a hardware HEVC/10-bit decoder; the CI emulator is software-decode only"
-		},
-		{
-			"id": "home-08",
-			"area": "Home & intake",
-			"case": "Portrait 9:16 import adopts a portrait canvas without an aspect choice",
-			"status": "PASS",
-			"evidence": "insert-element-canvas-adoption.test.ts + canvas-adoption-parity.test.ts (unit). PR #66 implements per-clip Fit/Fill framing (#22) with framing math/EDL tests and ExportFramingInstrumentedTest; CI evidence pending on exact final head SHA.",
-			"blocker": null
-		},
-		{
-			"id": "home-09",
-			"area": "Home & intake",
-			"case": "Image import gets a sane default duration",
-			"status": "VERIFY",
-			"evidence": "packages/editor-core/src/timeline/element-utils.ts buildImageElement default duration; no dedicated assertion found.",
-			"blocker": null
-		},
-		{
-			"id": "home-10",
-			"area": "Home & intake",
-			"case": "20-clip multi-select import",
-			"status": "BLOCKED",
-			"evidence": "requires driving the system Photo Picker multi-select grid",
-			"blocker": "no interactive device/emulator"
-		},
-		{
-			"id": "home-11",
-			"area": "Home & intake",
-			"case": "Import progress and cancel",
-			"status": "VERIFY",
-			"evidence": "packages/editor-core/src/media/native-import.ts streams NativeProxyProgress with stage/fraction; cancel path untested on device.",
-			"blocker": "no interactive device/emulator"
-		},
-		{
-			"id": "home-12",
-			"area": "Home & intake",
-			"case": "Android 10-16 OS matrix",
-			"status": "BLOCKED",
-			"evidence": "CI runs a single API 35 image",
-			"blocker": "needs API 29-36 images; only API 35 is available"
-		},
-		{
-			"id": "timeline-01",
-			"area": "Timeline",
-			"case": "Real filmstrip frames in the timeline (not gradients/filenames)",
-			"status": "VERIFY",
-			"evidence": "Current assessment (build-specific, merged main 8a76c8ae includes #60/#64): real filmstrip frames/contact-sheet instrumentation was merged per PR chain; however this row is not marked PASS here without direct CI run/log evidence for the rendering/frame-distinctness criterion on the assessed build. Requires appropriate rendering evidence (instrumentation log/artifact or equivalent) before PASS.",
-			"blocker": "needs direct rendering/contact-sheet evidence tied to assessed build; merged-main CI not yet verified green",
-			"baseline_2026_11_03": {
-				"status": "FAIL",
-				"evidence": "On main the strip renders placeholder tiles; real per-clip frames are pending in #54 / PR #60, which adds a 40-test instrumentation run plus a contact-sheet PNG artifact asserting distinct decoded frames."
-			}
-		},
-		{
-			"id": "timeline-02",
-			"area": "Timeline",
-			"case": "Waveform rendering for imported and library audio",
-			"status": "VERIFY",
-			"evidence": "waveform decoding exists in packages/editor-core/src/media (17 files reference it); visual rendering was not exercised on this build.",
-			"blocker": "no interactive device/emulator"
-		},
-		{
-			"id": "timeline-03",
-			"area": "Timeline",
-			"case": "Split at playhead preserves the removed source (non-destructive trim)",
-			"status": "PASS",
-			"evidence": "split.test.ts + edl.test.ts (unit, executed); split is also exercised end-to-end in asset-reference-integrity.test.ts (#55).",
-			"blocker": null
-		},
-		{
-			"id": "timeline-04",
-			"area": "Timeline",
-			"case": "Trim handles, ripple/delete, gap cut",
-			"status": "VERIFY",
-			"evidence": "dead-space-cut.test.ts + dead-space.test.ts cover the maths; handle interaction not exercised on device.",
-			"blocker": "no interactive device/emulator"
-		},
-		{
-			"id": "timeline-05",
-			"area": "Timeline",
-			"case": "Undo then redo across edit kinds",
-			"status": "VERIFY",
-			"evidence": "command history lives in packages/editor-core/src/core/managers; update-pipeline.test.ts and split.test.ts cover command application, but no test asserts the undo/redo stack itself.",
-			"blocker": null
-		},
-		{
-			"id": "timeline-06",
-			"area": "Timeline",
-			"case": "Drag scroll vs long-press drag, edge snapping",
-			"status": "PASS",
-			"evidence": "snap.test.ts (snapping maths) + the strict mouse-event invariant gate in scripts/invariants.sh (no raw mouse listeners). Gesture feel on a real finger is BLOCKED.",
-			"blocker": null
-		},
-		{
-			"id": "timeline-07",
-			"area": "Timeline",
-			"case": "Zoom out over a 10-minute source without stalling",
-			"status": "BLOCKED",
-			"evidence": "needs a long source and a real device to measure",
-			"blocker": "no device; no long-source fixture"
-		},
-		{
-			"id": "timeline-08",
-			"area": "Timeline",
-			"case": "Appending a second clip to the main track does not silently become an overlay",
-			"status": "PASS",
-			"evidence": "insert-element-canvas-adoption.test.ts asserts the placement mode per call; asset-reference-integrity.test.ts appends video+image+audio and asserts the main track holds three clips. Historical QA fix remains intact in source.",
-			"blocker": null
-		},
-		{
-			"id": "timeline-09",
-			"area": "Timeline",
-			"case": "Captions stay windowed correctly against their clip after trim/move",
-			"status": "PASS",
-			"evidence": "caption-window-integrity.test.ts + caption-pipeline-integration.test.ts + caption-smoothing.test.ts (unit, executed)",
-			"blocker": null
-		},
-		{
-			"id": "timeline-10",
-			"area": "Timeline",
-			"case": "Reopen a saved project restores the timeline",
-			"status": "PASS",
-			"evidence": "persistence.test.ts plus the v0-v31 migration suite (30 files) run in the 706-test suite; asset-reference-integrity.test.ts round-trips through serializeScene/deserializeScene.",
-			"blocker": null
-		},
-		{
-			"id": "timeline-11",
-			"area": "Timeline",
-			"case": "Accessibility, small-screen layout, touch-target size",
-			"status": "BLOCKED",
-			"evidence": "needs TalkBack, a small display, and measured hit areas",
-			"blocker": "no interactive device/emulator"
-		},
-		{
-			"id": "export-01",
-			"area": "Preview vs export",
-			"case": "1920x1080 landscape output geometry is exact",
-			"status": "PASS",
-			"evidence": "instrumented exports_exact_1920x1080_landscape_geometry (CI run 41673551147)",
-			"blocker": null
-		},
-		{
-			"id": "export-02",
-			"area": "Preview vs export",
-			"case": "1280x720 landscape output geometry is exact",
-			"status": "PASS",
-			"evidence": "instrumented exports_exact_1280x720_landscape_geometry",
-			"blocker": null
-		},
-		{
-			"id": "export-03",
-			"area": "Preview vs export",
-			"case": "1080x1920 portrait output geometry is exact",
-			"status": "PASS",
-			"evidence": "instrumented exports_exact_1080x1920_portrait_geometry",
-			"blocker": null
-		},
-		{
-			"id": "export-04",
-			"area": "Preview vs export",
-			"case": "No letterbox border is introduced for a same-aspect source",
-			"status": "PASS",
-			"evidence": "instrumented export_1080p_from_same_aspect_source_has_no_introduced_border, export_720p_..., export_portrait_..., export_1080p_through_a_crossfade_has_no_introduced_border",
-			"blocker": null,
-			"note": "Same-aspect border regression remains covered by existing instrumented tests. PR #66 adds mismatched-aspect Fit/Fill export geometry coverage (ExportFramingInstrumentedTest); CI evidence pending on exact final head SHA."
-		},
-		{
-			"id": "export-05",
-			"area": "Preview vs export",
-			"case": "A crossfade plus text overlay EDL exports to a playable file",
-			"status": "PASS",
-			"evidence": "instrumented exports_a_two_clip_crossfade_and_text_overlay_edl_to_a_playable_file",
-			"blocker": null
-		},
-		{
-			"id": "export-06",
-			"area": "Preview vs export",
-			"case": "Crossfade luminance follows the linear blend at each pixel window",
-			"status": "PASS",
-			"evidence": "instrumented crossfade_window_luminance_follows_the_linear_blend (+ text overlay, BT.709 limited, prerendered overlay variants)",
-			"blocker": null
-		},
-		{
-			"id": "export-07",
-			"area": "Preview vs export",
-			"case": "Captions appear in the exported file and are clamped to the visual timeline",
-			"status": "PASS",
-			"evidence": "instrumented caption_window_frame_by_frame_diagnostics + export_clamps_caption_tail_that_outlasts_visual_timeline + exports_a_two_clip_crossfade_and_text_overlay_edl_to_a_playable_file",
-			"blocker": null
-		},
-		{
-			"id": "export-08",
-			"area": "Preview vs export",
-			"case": "Bundled sound-library audio is audible in the exported MP4",
-			"status": "PASS",
-			"evidence": "Fixed by #63 (closed 2026-11-09) and verified in the assessed build's instrumented suite: bundled library sounds are materialized into a real durable asset (materializeLibraryAudio/ensureLibraryAudioAsset, packages/editor-core/src/media/library-audio.ts with library-audio.test.ts) before the EDL is built, so EdlToComposition.audibleClips no longer sees a null assetId. ExportLibraryAudioInstrumentedTest.standalone_library_sound_appears_in_export_as_decoded_audio decodes the exported MP4 and asserts the synthesized library tone is present at the expected amplitude; it runs inside the 58-test suite that passed in Mobile CI run 42813555396 on 8b3b878 (both the API-35 and the R8 instrumentation variants).",
-			"blocker": null,
-			"baseline_2026_11_03": {
-				"status": "FAIL",
-				"evidence": "EdlToComposition.audibleClips drops every clip whose assetId is null, and the comment there states bundled library sounds ('generated clips, whose sourceUrl has no asset-table entry') are skipped. Library audio elements carry sourceUrl and no mediaId (packages/editor-core/src/sounds/local-sounds.ts), so they play in preview and vanish from the export. Filed as #63 with both code sites."
-			}
-		},
-		{
-			"id": "export-09",
-			"area": "Preview vs export",
-			"case": "Video-only source exports as a video-only MP4 without an impossible audio item",
-			"status": "PASS",
-			"evidence": "instrumented exports_a_video_only_mp4_without_creating_an_impossible_audio_item",
-			"blocker": null
-		},
-		{
-			"id": "export-10",
-			"area": "Preview vs export",
-			"case": "Audio that outlasts the visual timeline is clamped, never truncated silently",
-			"status": "PASS",
-			"evidence": "instrumented export_clamps_audio_that_outlasts_visual_timeline",
-			"blocker": null
-		},
-		{
-			"id": "export-11",
-			"area": "Preview vs export",
-			"case": "24 / 30 / 60 fps selection behaves honestly (no silent upscale)",
-			"status": "PASS",
-			"evidence": "instrumented exports_24fps_by_dropping_frames_from_the_30fps_source, exports_30fps_unchanged_from_the_30fps_source, exports_60fps_selection_with_30fps_source_honestly_stays_30fps, exports_crossfade_composition_at_24fps; the pre-export warning is export-frame-rate.ts + export-frame-rate.test.ts",
-			"blocker": null
-		},
-		{
-			"id": "export-12",
-			"area": "Preview vs export",
-			"case": "Filters / adjust export with the same grade as the preview, and refuse unmappable params",
-			"status": "PASS",
-			"evidence": "instrumented effect_bearing_clip_exports_and_its_grade_is_visible_and_matches_preview + an_unmappable_adjust_param_refuses_the_export_with_a_named_message + unit color-grade.test.ts",
-			"blocker": null
-		},
-		{
-			"id": "export-13",
-			"area": "Preview vs export",
-			"case": "User cancels an export in progress",
-			"status": "VERIFY",
-			"evidence": "cancel plumbing exists in the export sheet + native plugin; no automated assertion.",
-			"blocker": "no interactive device/emulator"
-		},
-		{
-			"id": "export-14",
-			"area": "Preview vs export",
-			"case": "Storage exhaustion mid-export",
-			"status": "BLOCKED",
-			"evidence": "needs a device with a fillable volume",
-			"blocker": "no device"
-		},
-		{
-			"id": "export-15",
-			"area": "Preview vs export",
-			"case": "Hardware codec failure falls back instead of failing the export",
-			"status": "BLOCKED",
-			"evidence": "needs a device whose encoder rejects the requested profile",
-			"blocker": "no device"
-		},
-		{
-			"id": "export-16",
-			"area": "Preview vs export",
-			"case": "Preview and export agree frame-for-frame (pixel + PTS)",
-			"status": "VERIFY",
-			"evidence": "export pixel tests exist (geometry, blend, grade) but no test diffs a preview frame against the exported frame at the same PTS.",
-			"blocker": null
-		},
-		{
-			"id": "export-17",
-			"area": "Preview vs export",
-			"case": "A project stays exportable after media elements are inserted, and a broken reference is reported with the clip named",
-			"status": "VERIFY",
-			"evidence": "Current assessment (merged main 8a76c8ae includes #61/#64): EdlToComposition now reports missing assetId/asset with the clip named and instructs replace/delete before export; insert-time rejection/export pre-flight landed per PR chain. Repair of existing already-damaged projects remains a separate gap and is not claimed fixed. Mark PASS only with targeted regression evidence on assessed build.",
-			"blocker": "needs targeted regression evidence (named-clip error/preflight) on assessed build; existing-damaged-project repair remains separate",
-			"baseline_2026_11_03": {
-				"status": "FAIL",
-				"evidence": "Reproduced on main@1027a28: creating a clip through the insert path could store a media element with no assetId, after which native export fails with 'clip ... has no assetId' (EdlToComposition.requireAsset) and the project cannot be exported. Fixed on PR #61 with a native error that names the clip, an insert-time rejection, and an export pre-flight; not merged into this build. Report: issue #55 comment 6610436554."
-			}
-		},
-		{
-			"id": "reliability-01",
-			"area": "Reliability",
-			"case": "Background / foreground / force-stop mid-edit does not lose the project",
-			"status": "BLOCKED",
-			"evidence": "needs process death on a device",
-			"blocker": "no device"
-		},
-		{
-			"id": "reliability-02",
-			"area": "Reliability",
-			"case": "Upgrade preserves on-device projects (schema migrations)",
-			"status": "PASS",
-			"evidence": "v0-v31 migration suite (30 test files) + persistence.test.ts, all executed in the 706-test run; the on-device upgrade itself is BLOCKED.",
-			"blocker": null
-		},
-		{
-			"id": "reliability-03",
-			"area": "Reliability",
-			"case": "Project archive export then reimport restores the project",
-			"status": "PASS",
-			"evidence": "backup-service.test.ts + backup-cleanup.test.ts (unit, executed)",
-			"blocker": null
-		},
-		{
-			"id": "reliability-04",
-			"area": "Reliability",
-			"case": "Corrupt import is refused rather than crashing",
-			"status": "VERIFY",
-			"evidence": "archive import validates through the same schema gate as load (services/storage); no corrupt-archive fixture is asserted.",
-			"blocker": null
-		},
-		{
-			"id": "reliability-05",
-			"area": "Reliability",
-			"case": "Memory / battery / free-disk behaviour on a long project",
-			"status": "BLOCKED",
-			"evidence": "needs device instrumentation and battery stats",
-			"blocker": "no device"
-		},
-		{
-			"id": "reliability-06",
-			"area": "Reliability",
-			"case": "Crash-free session logs across the journey",
-			"status": "BLOCKED",
-			"evidence": "needs a running device and logcat",
-			"blocker": "no device"
-		},
-		{
-			"id": "privacy-01",
-			"area": "Privacy & release",
-			"case": "No outbound network calls from source or the built bundle",
-			"status": "PASS",
-			"evidence": "bash scripts/invariants.sh offline-audit gate: 'clean — no outbound-network references found in source or the built bundle'",
-			"blocker": null
-		},
-		{
-			"id": "privacy-02",
-			"area": "Privacy & release",
-			"case": "No telemetry, ads or payment SDK ships",
-			"status": "PASS",
-			"evidence": "same offline gate plus app/build.gradle dependency list: no analytics/ads/billing dependency, no google-services.json required (build.gradle guards its absence).",
-			"blocker": null
-		},
-		{
-			"id": "privacy-03",
-			"area": "Privacy & release",
-			"case": "Manifest permissions match the Data Safety / privacy claims",
-			"status": "VERIFY",
-			"evidence": "AndroidManifest.xml declares INTERNET, CAMERA (declared but unreachable in v0.1), no READ_MEDIA_* and no RECORD_AUDIO; allowBackup=false. INTERNET is declared although nothing in source uses the network — harmless at runtime but worth aligning with the Data Safety wording.",
-			"blocker": null
-		},
-		{
-			"id": "privacy-04",
-			"area": "Privacy & release",
-			"case": "DEX optimisation / R8 readiness",
-			"status": "VERIFY",
-			"evidence": "Current assessment (merged main 8a76c8ae includes #64): CI-only optimized `r8test` variant exists and passed Android instrumentation (R8 test variant) 46/46 in Mobile CI run 42669153296 on PR head 66f1eb5. Signed Play release remains not minified (release build still ships with minification disabled per build config/release process) — DEX optimisation/R8 readiness for the actual Play release is not fully satisfied.",
-			"blocker": "signed Play release minification/R8 enablement and release verification remain outstanding; no versionCode/AAB/upload changes made",
-			"baseline_2026_11_03": {
-				"status": "FAIL",
-				"evidence": "app/build.gradle sets minifyEnabled false with the stock proguard-rules.pro, so the shipped DEX is unobfuscated — exactly Play's 1% obfuscation warning. Analysis and the keep-rule worklist are in docs/qa/release-quality-audit.md (#57)."
-			}
-		},
-		{
-			"id": "privacy-05",
-			"area": "Privacy & release",
-			"case": "16 KB page-size native alignment",
-			"status": "PASS",
-			"evidence": "app/src/main/cpp/CMakeLists.txt:111 links libcutlyra_whisper with -Wl,-z,max-page-size=16384; it is the only shipped native library.",
-			"blocker": null
-		},
-		{
-			"id": "privacy-06",
-			"area": "Privacy & release",
-			"case": "Android 15+ edge-to-edge: system bars never cover top chrome",
-			"status": "VERIFY",
-			"evidence": "New EdgeToEdgeSystemBarInstrumentedTest asserts it on API 35; result is in the CI run attached to PR #62.",
-			"blocker": null
-		},
-		{
-			"id": "privacy-07",
-			"area": "Privacy & release",
-			"case": "Signing continuity and closed-test versionCode 1",
-			"status": "BLOCKED",
-			"evidence": "release keystore is only in the owner's environment (CUTLYRA_RELEASE_KEYSTORE_* not set here)",
-			"blocker": "no access to the release keystore; inspecting it would be a credential-handling risk"
-		},
-		{
-			"id": "privacy-08",
-			"area": "Privacy & release",
-			"case": "Closed test with >= 12 testers and no accidental upload",
-			"status": "BLOCKED",
-			"evidence": "Play Console state is owner-side; nothing in this session touched uploads.",
-			"blocker": "Console access is not available here, and uploading is not authorized"
-		},
-		{
-			"id": "export-22",
-			"area": "Preview vs export",
-			"case": "Per-clip Fit/Fill export geometry for mismatched aspect: automated exported-frame edge/bar check (#22)",
-			"status": "PASS",
-			"evidence": "Mobile CI run 42669153296 (success) on PR head 66f1eb5cd7594f10b86a42a8dfa64e5c732c23bd, merged as 8a76c8ae: Android instrumentation (API 35 emulator) and Android instrumentation (R8 test variant) both ran 46 tests with 0 failures (emulator-5554). Suite includes ExportFramingInstrumentedTest.fitLetterboxesMismatchedSource_and_fillCoversCanvas, which exports a 4:3 source to a 9:16 canvas via Media3Exporter/EDL and asserts fit produces substantial letterbox bars while fill covers without letterbox bars. Physical preview↔export parity is tracked separately (export-22b).",
-			"baseline_2026_11_03": null
-		},
-		{
-			"id": "export-22b",
-			"area": "Preview vs export",
-			"case": "Per-clip Fit/Fill physical preview↔export parity, edge-to-edge/system bars, save/reopen/undo acceptance on device (#22)",
-			"status": "BLOCKED",
-			"evidence": "No physical POCO M4 Pro 5G / Android 15-16 device verification executed in this environment. Automated export geometry is PASS (export-22). See docs/qa/physical-device-acceptance-poco-m4-pro-5g.md.",
-			"blocker": "owner device/Play Console access required"
-		},
-		{
-			"id": "transform-01",
-			"area": "Video image tools",
-			"case": "Rotate plus/minus 90 and 180 degrees and horizontal/vertical flip on a selected video or image clip: one undo step per action, redo restores, and the authored transform survives save/reopen",
-			"status": "PASS",
-			"evidence": "Deterministic, executed on 8b3b878: packages/editor-core/src/commands/timeline/element/__tests__/transform-params.test.ts (6 pass) asserts rotate/flip parameter updates, action-level undo/redo and single-step BatchCommand undo; packages/editor-core/src/services/storage/__tests__/transform-persistence-roundtrip.test.ts (3 pass) drives the real saveProject/loadProject pair and rebuilds the EDL to compare; packages/editor-core/src/edl/__tests__/edl.test.ts rotate/mirror propagation block (43 pass in that file) covers EDL emission. Full repo suite green on this build: bun test 742 pass / 0 fail. UI entry points: packages/mobile-ui/src/components/panels/edit-panel.tsx Transform controls (Rotate L/R, Flip H/V, degree readout).",
-			"blocker": null,
-			"baseline_2026_11_03": null
-		},
-		{
-			"id": "export-23",
-			"area": "Preview vs export",
-			"case": "Rotated/flipped clip exports with the authored orientation: decoded exported-frame corner parity for identity, plus/minus 90, 180, flip H, flip V, rotate+H/V, a rotated image clip, and fit/fill framing under rotation (#50)",
-			"status": "PASS",
-			"evidence": "ExportTransformParityInstrumentedTest (12 cases) exports through the real Media3/EDL pipeline and samples decoded corners of the exported MP4 with an asymmetric marker fixture. Mobile CI run 42813555396 on merged main 8b3b878: Android instrumentation (API 35 emulator) ran 58 tests with 0 skipped and 0 failed; Android instrumentation (R8 test variant) reported 'Tests 58/58 completed. (0 skipped) (0 failed)'. The same suite was green on PR head df17b61 in run 42810540771. Assertions are on PRESENTED geometry: Media3 1.11.0 VideoEncoderWrapper.getSurfaceInfo always prefers a landscape encode and records a clockwise display rotation, so a correct 9:16 export is coded 1920x1080 with rotation=90 and presents 1080x1920.",
-			"blocker": null,
-			"baseline_2026_11_03": null
-		},
-		{
-			"id": "export-23b",
-			"area": "Preview vs export",
-			"case": "Rotate/flip physical-device preview-to-export parity on the owner's POCO M4 Pro 5G (#50)",
-			"status": "BLOCKED",
-			"evidence": "Only an API-35 x86_64 emulator with a software encoder is available in CI; no physical-device session was executed for this build. Automated exported-pixel parity is PASS (export-23). See docs/qa/physical-device-acceptance-poco-m4-pro-5g.md.",
-			"blocker": "owner device access required"
-		},
-		{
-			"id": "export-24",
-			"area": "Preview vs export",
-			"case": "Non-zero transform positionX/positionY offsets and the keyframed transform time base in native export (#50)",
-			"status": "VERIFY",
-			"evidence": "EdlTransformEffect applies postScale -> postRotate(-rotateDegrees) -> postTranslate and accepts a presentationTimeUs-driven animation path, but every parity export in ExportTransformParityInstrumentedTest uses a centred, static clip: the translate term is only exercised as translation-to-centre and no keyframed transform is exported. This limitation is documented in EdlTransformEffect's header on 8b3b878.",
-			"blocker": "needs an export test that drives non-zero position and an animated transform"
-		}
-	],
-	"summary": {
-		"total": 60,
-		"pass": 29,
-		"fail": 0,
-		"verify": 17,
-		"blocked": 14,
-		"note": "Computed from cases on 8b3b878. PASS means the named suite/gate executed on the assessed build with cited evidence. VERIFY means the code path exists but the specific criterion was not executed on this build. BLOCKED means required device/hardware/account/access was unavailable. Historical 2026-11-03 evidence is preserved in case baseline fields and historical_baseline, and the 2026-11-09 post-#67 assessment in rebaseline_pr67_postmerge; changed rows are reassessed with build-specific evidence, never inferred from a green CI run. Emulator evidence is not physical-device evidence: export-23b and export-24 keep the device and animation gaps explicit."
-	},
-	"evidence_links": {
-		"run 41688805558": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/41688805558",
-		"#60 filmstrip (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/60",
-		"#61 media references (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/61",
-		"#62 this evidence pack": "https://github.com/Pavithran-R-A/Cutlyra/pull/62",
-		"#63 sound library silent": "https://github.com/Pavithran-R-A/Cutlyra/issues/63"
-	},
-	"rebaseline_pr66": {
-		"date": "2026-11-09",
-		"branch": "feat/22-canvas-fit-fill",
-		"final_tested_pr_head_sha": "66f1eb5cd7594f10b86a42a8dfa64e5c732c23bd",
-		"merged_main_commit": "8a76c8aeb31241bf0e650721c2039bc14877d216",
-		"pr": "https://github.com/Pavithran-R-A/Cutlyra/pull/66",
-		"ci_runs_pr_head_green": [
-			{
-				"workflow": "Bun CI",
-				"run_id": 42669154309,
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42669154309",
-				"conclusion": "success",
-				"jobs": [
-					"invariants (ubuntu-latest)",
-					"invariants (macos-latest)",
-					"invariants (windows-latest)"
-				]
-			},
-			{
-				"workflow": "Mobile CI",
-				"run_id": 42669153296,
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42669153296",
-				"conclusion": "success",
-				"jobs": [
-					"Android (debug APK)",
-					"iOS (simulator, unsigned)",
-					"Android instrumentation (API 35 emulator)",
-					"Android instrumentation (R8 test variant)"
-				],
-				"instrumentation": {
-					"normal": "46 tests, 0 failures (emulator-5554)",
-					"r8_variant": "46 tests, 0 failures (emulator-5554)"
-				}
-			}
-		],
-		"merged_main_ci_status": "GREEN (verified): Bun CI run 42672196713 attempt 3 success (3/3 jobs: invariants ubuntu/macos/windows) on 8a76c8aeb31241bf0e650721c2039bc14877d216. Mobile CI run 42672197042 attempt 3 success (4/4 jobs: Android debug APK, iOS simulator unsigned, Android instrumentation API 35 emulator 46 tests 0 failures, Android instrumentation R8 test variant 46 tests 0 failures) on same SHA. Earlier attempts 1-2 had GitHub-side scheduling/execution anomalies (zero/partial jobs; no workflow files changed by merge); full-workflow reruns recovered qualification.",
-		"note": "PR-head evidence is validated. Merged-main qualification requires successful full-workflow reruns on 8a76c8ae (all 7 expected jobs).",
-		"ci_runs_merged_main_green": [
-			{
-				"workflow": "Bun CI",
-				"run_id": 42672196713,
-				"attempt": 3,
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42672196713",
-				"conclusion": "success",
-				"headSha": "8a76c8aeb31241bf0e650721c2039bc14877d216"
-			},
-			{
-				"workflow": "Mobile CI",
-				"run_id": 42672197042,
-				"attempt": 3,
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42672197042",
-				"conclusion": "success",
-				"headSha": "8a76c8aeb31241bf0e650721c2039bc14877d216",
-				"instrumentation": {
-					"normal": "46 tests, 0 failures (emulator-5554, job 129360091840)",
-					"r8_variant": "46 tests, 0 failures (emulator-5554, job 129360091931)"
-				}
-			}
-		],
-		"root_cause_merged_main_initial_failures": "Likely GitHub Actions scheduling/execution anomaly during push event (not code regression): PR head 66f1eb5 passed all 7 jobs; merge 8a76c8ae changed no workflow files and has identical product/workflow content. Attempt 1 produced zero/partial jobs; Bun CI attempt 2 completed with only windows-latest job (that job passed all steps including invariants) while overall workflow failed; Mobile CI attempt 2 produced zero jobs. Full-workflow reruns (attempt 3) scheduled all expected jobs and passed. Proven: scheduling gap and final green on rerun. Not proven: specific GitHub internal cause (no definitive annotation beyond Node 20 deprecation warning)."
-	},
-	"historical_baseline": {
-		"generated": "2026-11-03",
-		"build": {
-			"versionName": "0.1.0",
-			"versionCode": 1,
-			"product_commit": "1027a28",
-			"minSdk": 29,
-			"targetSdk": 36,
-			"note": "Product code as merged on main. Two P0 fixes are open, unmerged PRs and are marked FAIL against this build: #54 filmstrip (PR #60) and #55 lost media reference (PR #61)."
-		},
-		"summary_as_recorded_2026_11_03": {
-			"total": 54,
-			"pass": 25,
-			"fail": 4,
-			"verify": 13,
-			"blocked": 12,
-			"note": "PASS means the named suite or gate executed on this build. VERIFY means the code path exists and is reachable but was not executed on a device in this pass. BLOCKED means no device, emulator, keystore or Console access was available. No row is inferred from another row."
-		},
-		"note": "Preserved as historical 2026-11-03 main@1027a28 baseline evidence. Current assessments below are build-specific and must cite proof for current status changes; historical FAIL rows are not silently rewritten as if they never happened."
-	},
-	"rebaseline_pr67_postmerge": {
-		"headSha": "24ab6c43292987846c4598c10e6c41c5ec623a56",
-		"pr": 67,
-		"pr_head_sha": "12cf7d450aa7e4e0726dc436606bfa43b75aaf60",
-		"merged_main_ci": {
-			"bun_ci": {
-				"run_id": 42683711950,
-				"attempt": 1,
-				"conclusion": "success",
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42683711950",
-				"jobs": "3/3 invariants ubuntu/macos/windows"
-			},
-			"mobile_ci": {
-				"run_id": 42683712239,
-				"attempt": 1,
-				"conclusion": "success",
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42683712239",
-				"jobs": "4/4 Android debug APK, iOS simulator unsigned, Android instrumentation API 35 (46 tests, 0 failures, job 129386849408), Android instrumentation R8 test variant (46 tests, 0 failures, job 129386849414)"
-			}
-		},
-		"qualification_gate": "GREEN on merged main 24ab6c4 (all 7 expected CI jobs completed successfully)."
-	},
-	"rebaseline_pr69_postmerge": {
-		"date": "2026-11-10",
-		"assessed_build": "8b3b8786b8d54f8b6cef60944783690ec91bd769",
-		"pr": "https://github.com/Pavithran-R-A/Cutlyra/pull/69",
-		"pr_head_sha": "df17b61",
-		"scope": "Focused #50 slice: rotate plus/minus 90/180 and H/V flip for selected video/image clips, with real-export parity tests. Reverse, freeze, speed ramps and new transitions remain unimplemented as shipping features (#50 stays open).",
-		"changed_cases": [
-			{
-				"id": "export-08",
-				"from": "VERIFY",
-				"to": "PASS",
-				"why": "#63 closed; ExportLibraryAudioInstrumentedTest decodes the exported MP4 and runs in the 58-test suite"
-			},
-			{
-				"id": "transform-01",
-				"from": "(new row)",
-				"to": "PASS",
-				"why": "action-level undo/redo, persistence and EDL propagation tests executed on this build"
-			},
-			{
-				"id": "export-23",
-				"from": "(new row)",
-				"to": "PASS",
-				"why": "12-case exported-pixel parity suite green in both instrumentation variants"
-			},
-			{
-				"id": "export-23b",
-				"from": "(new row)",
-				"to": "BLOCKED",
-				"why": "no physical-device session for this build"
-			},
-			{
-				"id": "export-24",
-				"from": "(new row)",
-				"to": "VERIFY",
-				"why": "position offsets and the keyframed transform time base are still not exported by any test"
-			}
-		],
-		"not_promoted": [
-			"timeline-05 (undo/redo across all edit kinds) stays VERIFY: only the transform actions now have action-level undo/redo assertions.",
-			"export-16 (preview/export frame-for-frame parity) stays VERIFY: the transform suite checks static exported frame geometry, not per-frame PTS agreement.",
-			"privacy-04 (R8 readiness) stays VERIFY: the R8 test variant is green, but the release build still has minifyEnabled false."
-		],
-		"ci_pr_head": {
-			"bun_ci": {
-				"run_id": 42810541409,
-				"conclusion": "success",
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42810541409"
-			},
-			"mobile_ci": {
-				"run_id": 42810540771,
-				"conclusion": "success",
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42810540771",
-				"instrumentation": {
-					"normal": "58/58, 0 skipped, 0 failed (job 129812840516)",
-					"r8_variant": "58/58, 0 skipped, 0 failed (job 129812840461)"
-				}
-			}
-		},
-		"ci_merged_main": {
-			"bun_ci": {
-				"run_id": 42813555378,
-				"conclusion": "success",
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42813555378",
-				"jobs": "3/3 invariants ubuntu/macos/windows"
-			},
-			"mobile_ci": {
-				"run_id": 42813555396,
-				"conclusion": "success",
-				"url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42813555396",
-				"jobs": "4/4 Android debug APK, iOS simulator unsigned, Android instrumentation API 35, Android instrumentation R8 test variant",
-				"instrumentation": {
-					"normal": "58 tests started and finished, 0 failed, BUILD SUCCESSFUL (job 129822839507)",
-					"r8_variant": "58/58, 0 skipped, 0 failed (job 129822839640)"
-				}
-			}
-		},
-		"qualification_gate": "GREEN on merged main 8b3b878: all 7 expected CI jobs succeeded."
-	}
+  "issue": "#56",
+  "parent": "#47 / Linear PAV-141",
+  "generated": "2026-11-03",
+  "build": {
+    "product_commit": "8b3b8786b8d54f8b6cef60944783690ec91bd769",
+    "inventory_date": "2026-11-10",
+    "note": "Current assessed build is merged main after PR #69 (rotate/flip, #50 focused slice). Computed summary reflects current row statuses. Historical 2026-11-03 snapshot/evidence is preserved in historical_baseline and per-case baseline_2026_11_03 fields; the 2026-11-09 post-#67 assessment is preserved in rebaseline_pr67_postmerge. Nothing is silently rewritten."
+  },
+  "devices": [
+    {
+      "id": "ci-api35-emulator",
+      "detail": "GitHub Actions ubuntu-latest, Android API 35 google_apis x86_64, emulator-5554",
+      "evidence": "run 41688805558 on 43dcf42, 40 instrumented tests, 0 failures"
+    },
+    {
+      "id": "local-host",
+      "detail": "Windows 11 host, no emulator (Play-store image needs 7.4 GB, ~6.1 GB free; every GPU/partition variant fails to boot) and no authorized physical device",
+      "evidence": "blocked: no interactive Android runtime available locally"
+    }
+  ],
+  "status_legend": {
+    "PASS": "executed on this build by an automated suite or a named check; the evidence field names it",
+    "FAIL": "proven defect on this build; the linked issue carries the evidence",
+    "VERIFY": "implementation exists in source and is reachable from the UI, but was not executed on a device in this pass",
+    "BLOCKED": "cannot be executed with the hardware/accounts available here; the blocker field says what is missing"
+  },
+  "cases": [
+    {
+      "id": "home-01",
+      "area": "Home & intake",
+      "case": "Cold launch reaches the project list, first-run primer shown once",
+      "status": "VERIFY",
+      "evidence": "apps/mobile/android/app/src/main/AndroidManifest.xml:15 FirstRunActivity is the launcher; apps/mobile/src/app/app-root.css renders the list. Not re-executed: no bootable emulator locally.",
+      "blocker": "no interactive Android runtime in this session"
+    },
+    {
+      "id": "home-02",
+      "area": "Home & intake",
+      "case": "Photo/video import resolves to Android Photo Picker, with SAF fallback",
+      "status": "PASS",
+      "evidence": "instrumented library_pick_intent_resolves_to_either_the_photo_picker_or_the_saf_fallback (CI run 41673551147)",
+      "blocker": null
+    },
+    {
+      "id": "home-03",
+      "area": "Home & intake",
+      "case": "Camera capture Intent targets a FileProvider URI this app declares",
+      "status": "PASS",
+      "evidence": "instrumented camera_capture_intent_targets_a_fileprovider_uri_this_app_declared. The UI exposes no camera entry point in v0.1 (AndroidManifest.xml:48-56 documents CAMERA as declared-but-unreached).",
+      "blocker": null
+    },
+    {
+      "id": "home-04",
+      "area": "Home & intake",
+      "case": "content:// import is copied into noBackupFilesDir and reports the true byte size",
+      "status": "PASS",
+      "evidence": "instrumented importer_copies_a_content_uri_into_noBackupFilesDir_and_reports_the_right_size",
+      "blocker": null
+    },
+    {
+      "id": "home-05",
+      "area": "Home & intake",
+      "case": "Proxy transcode on import completes and the proxy is what playback uses",
+      "status": "VERIFY",
+      "evidence": "packages/editor-core/src/media/native-import.ts + instrumented probe_reads_duration_dimensions_and_codec_from_the_fixture_clip; the end-to-end proxy stream was not driven on this build.",
+      "blocker": "native proxy generator needs a device"
+    },
+    {
+      "id": "home-06",
+      "area": "Home & intake",
+      "case": "Unsupported codec is detected and reported instead of crashing",
+      "status": "VERIFY",
+      "evidence": "codec-detect.test.ts (unit, executed in the 706-test suite) covers detection; the user-facing refusal path is not covered by a test.",
+      "blocker": null
+    },
+    {
+      "id": "home-07",
+      "area": "Home & intake",
+      "case": "HEVC / 10-bit import and decode",
+      "status": "BLOCKED",
+      "evidence": "no fixture or hardware decoder available to this session",
+      "blocker": "needs a device with a hardware HEVC/10-bit decoder; the CI emulator is software-decode only"
+    },
+    {
+      "id": "home-08",
+      "area": "Home & intake",
+      "case": "Portrait 9:16 import adopts a portrait canvas without an aspect choice",
+      "status": "PASS",
+      "evidence": "insert-element-canvas-adoption.test.ts + canvas-adoption-parity.test.ts (unit). PR #66 implements per-clip Fit/Fill framing (#22) with framing math/EDL tests and ExportFramingInstrumentedTest; CI evidence pending on exact final head SHA.",
+      "blocker": null
+    },
+    {
+      "id": "home-09",
+      "area": "Home & intake",
+      "case": "Image import gets a sane default duration",
+      "status": "VERIFY",
+      "evidence": "packages/editor-core/src/timeline/element-utils.ts buildImageElement default duration; no dedicated assertion found.",
+      "blocker": null
+    },
+    {
+      "id": "home-10",
+      "area": "Home & intake",
+      "case": "20-clip multi-select import",
+      "status": "BLOCKED",
+      "evidence": "requires driving the system Photo Picker multi-select grid",
+      "blocker": "no interactive device/emulator"
+    },
+    {
+      "id": "home-11",
+      "area": "Home & intake",
+      "case": "Import progress and cancel",
+      "status": "VERIFY",
+      "evidence": "packages/editor-core/src/media/native-import.ts streams NativeProxyProgress with stage/fraction; cancel path untested on device.",
+      "blocker": "no interactive device/emulator"
+    },
+    {
+      "id": "home-12",
+      "area": "Home & intake",
+      "case": "Android 10-16 OS matrix",
+      "status": "BLOCKED",
+      "evidence": "CI runs a single API 35 image",
+      "blocker": "needs API 29-36 images; only API 35 is available"
+    },
+    {
+      "id": "timeline-01",
+      "area": "Timeline",
+      "case": "Real filmstrip frames in the timeline (not gradients/filenames)",
+      "status": "VERIFY",
+      "evidence": "Current assessment (build-specific, merged main 8a76c8ae includes #60/#64): real filmstrip frames/contact-sheet instrumentation was merged per PR chain; however this row is not marked PASS here without direct CI run/log evidence for the rendering/frame-distinctness criterion on the assessed build. Requires appropriate rendering evidence (instrumentation log/artifact or equivalent) before PASS.",
+      "blocker": "needs direct rendering/contact-sheet evidence tied to assessed build; merged-main CI not yet verified green",
+      "baseline_2026_11_03": {
+        "status": "FAIL",
+        "evidence": "On main the strip renders placeholder tiles; real per-clip frames are pending in #54 / PR #60, which adds a 40-test instrumentation run plus a contact-sheet PNG artifact asserting distinct decoded frames."
+      }
+    },
+    {
+      "id": "timeline-02",
+      "area": "Timeline",
+      "case": "Waveform rendering for imported and library audio",
+      "status": "VERIFY",
+      "evidence": "waveform decoding exists in packages/editor-core/src/media (17 files reference it); visual rendering was not exercised on this build.",
+      "blocker": "no interactive device/emulator"
+    },
+    {
+      "id": "timeline-03",
+      "area": "Timeline",
+      "case": "Split at playhead preserves the removed source (non-destructive trim)",
+      "status": "PASS",
+      "evidence": "split.test.ts + edl.test.ts (unit, executed); split is also exercised end-to-end in asset-reference-integrity.test.ts (#55).",
+      "blocker": null
+    },
+    {
+      "id": "timeline-04",
+      "area": "Timeline",
+      "case": "Trim handles, ripple/delete, gap cut",
+      "status": "VERIFY",
+      "evidence": "dead-space-cut.test.ts + dead-space.test.ts cover the maths; handle interaction not exercised on device.",
+      "blocker": "no interactive device/emulator"
+    },
+    {
+      "id": "timeline-05",
+      "area": "Timeline",
+      "case": "Undo then redo across edit kinds",
+      "status": "VERIFY",
+      "evidence": "command history lives in packages/editor-core/src/core/managers; update-pipeline.test.ts and split.test.ts cover command application, but no test asserts the undo/redo stack itself.",
+      "blocker": null
+    },
+    {
+      "id": "timeline-06",
+      "area": "Timeline",
+      "case": "Drag scroll vs long-press drag, edge snapping",
+      "status": "PASS",
+      "evidence": "snap.test.ts (snapping maths) + the strict mouse-event invariant gate in scripts/invariants.sh (no raw mouse listeners). Gesture feel on a real finger is BLOCKED.",
+      "blocker": null
+    },
+    {
+      "id": "timeline-07",
+      "area": "Timeline",
+      "case": "Zoom out over a 10-minute source without stalling",
+      "status": "BLOCKED",
+      "evidence": "needs a long source and a real device to measure",
+      "blocker": "no device; no long-source fixture"
+    },
+    {
+      "id": "timeline-08",
+      "area": "Timeline",
+      "case": "Appending a second clip to the main track does not silently become an overlay",
+      "status": "PASS",
+      "evidence": "insert-element-canvas-adoption.test.ts asserts the placement mode per call; asset-reference-integrity.test.ts appends video+image+audio and asserts the main track holds three clips. Historical QA fix remains intact in source.",
+      "blocker": null
+    },
+    {
+      "id": "timeline-09",
+      "area": "Timeline",
+      "case": "Captions stay windowed correctly against their clip after trim/move",
+      "status": "PASS",
+      "evidence": "caption-window-integrity.test.ts + caption-pipeline-integration.test.ts + caption-smoothing.test.ts (unit, executed)",
+      "blocker": null
+    },
+    {
+      "id": "timeline-10",
+      "area": "Timeline",
+      "case": "Reopen a saved project restores the timeline",
+      "status": "PASS",
+      "evidence": "persistence.test.ts plus the v0-v31 migration suite (30 files) run in the 706-test suite; asset-reference-integrity.test.ts round-trips through serializeScene/deserializeScene.",
+      "blocker": null
+    },
+    {
+      "id": "timeline-11",
+      "area": "Timeline",
+      "case": "Accessibility, small-screen layout, touch-target size",
+      "status": "BLOCKED",
+      "evidence": "needs TalkBack, a small display, and measured hit areas",
+      "blocker": "no interactive device/emulator"
+    },
+    {
+      "id": "export-01",
+      "area": "Preview vs export",
+      "case": "1920x1080 landscape output geometry is exact",
+      "status": "PASS",
+      "evidence": "instrumented exports_exact_1920x1080_landscape_geometry (CI run 41673551147)",
+      "blocker": null
+    },
+    {
+      "id": "export-02",
+      "area": "Preview vs export",
+      "case": "1280x720 landscape output geometry is exact",
+      "status": "PASS",
+      "evidence": "instrumented exports_exact_1280x720_landscape_geometry",
+      "blocker": null
+    },
+    {
+      "id": "export-03",
+      "area": "Preview vs export",
+      "case": "1080x1920 portrait output geometry is exact",
+      "status": "PASS",
+      "evidence": "instrumented exports_exact_1080x1920_portrait_geometry",
+      "blocker": null
+    },
+    {
+      "id": "export-04",
+      "area": "Preview vs export",
+      "case": "No letterbox border is introduced for a same-aspect source",
+      "status": "PASS",
+      "evidence": "instrumented export_1080p_from_same_aspect_source_has_no_introduced_border, export_720p_..., export_portrait_..., export_1080p_through_a_crossfade_has_no_introduced_border",
+      "blocker": null,
+      "note": "Same-aspect border regression remains covered by existing instrumented tests. PR #66 adds mismatched-aspect Fit/Fill export geometry coverage (ExportFramingInstrumentedTest); CI evidence pending on exact final head SHA."
+    },
+    {
+      "id": "export-05",
+      "area": "Preview vs export",
+      "case": "A crossfade plus text overlay EDL exports to a playable file",
+      "status": "PASS",
+      "evidence": "instrumented exports_a_two_clip_crossfade_and_text_overlay_edl_to_a_playable_file",
+      "blocker": null
+    },
+    {
+      "id": "export-06",
+      "area": "Preview vs export",
+      "case": "Crossfade luminance follows the linear blend at each pixel window",
+      "status": "PASS",
+      "evidence": "instrumented crossfade_window_luminance_follows_the_linear_blend (+ text overlay, BT.709 limited, prerendered overlay variants)",
+      "blocker": null
+    },
+    {
+      "id": "export-07",
+      "area": "Preview vs export",
+      "case": "Captions appear in the exported file and are clamped to the visual timeline",
+      "status": "PASS",
+      "evidence": "instrumented caption_window_frame_by_frame_diagnostics + export_clamps_caption_tail_that_outlasts_visual_timeline + exports_a_two_clip_crossfade_and_text_overlay_edl_to_a_playable_file",
+      "blocker": null
+    },
+    {
+      "id": "export-08",
+      "area": "Preview vs export",
+      "case": "Bundled sound-library audio is audible in the exported MP4",
+      "status": "PASS",
+      "evidence": "Fixed by #63 (closed 2026-11-09) and verified in the assessed build's instrumented suite: bundled library sounds are materialized into a real durable asset (materializeLibraryAudio/ensureLibraryAudioAsset, packages/editor-core/src/media/library-audio.ts with library-audio.test.ts) before the EDL is built, so EdlToComposition.audibleClips no longer sees a null assetId. ExportLibraryAudioInstrumentedTest.standalone_library_sound_appears_in_export_as_decoded_audio decodes the exported MP4 and asserts the synthesized library tone is present at the expected amplitude; it runs inside the 58-test suite that passed in Mobile CI run 42813555396 on 8b3b878 (both the API-35 and the R8 instrumentation variants).",
+      "blocker": null,
+      "baseline_2026_11_03": {
+        "status": "FAIL",
+        "evidence": "EdlToComposition.audibleClips drops every clip whose assetId is null, and the comment there states bundled library sounds ('generated clips, whose sourceUrl has no asset-table entry') are skipped. Library audio elements carry sourceUrl and no mediaId (packages/editor-core/src/sounds/local-sounds.ts), so they play in preview and vanish from the export. Filed as #63 with both code sites."
+      }
+    },
+    {
+      "id": "export-09",
+      "area": "Preview vs export",
+      "case": "Video-only source exports as a video-only MP4 without an impossible audio item",
+      "status": "PASS",
+      "evidence": "instrumented exports_a_video_only_mp4_without_creating_an_impossible_audio_item",
+      "blocker": null
+    },
+    {
+      "id": "export-10",
+      "area": "Preview vs export",
+      "case": "Audio that outlasts the visual timeline is clamped, never truncated silently",
+      "status": "PASS",
+      "evidence": "instrumented export_clamps_audio_that_outlasts_visual_timeline",
+      "blocker": null
+    },
+    {
+      "id": "export-11",
+      "area": "Preview vs export",
+      "case": "24 / 30 / 60 fps selection behaves honestly (no silent upscale)",
+      "status": "PASS",
+      "evidence": "instrumented exports_24fps_by_dropping_frames_from_the_30fps_source, exports_30fps_unchanged_from_the_30fps_source, exports_60fps_selection_with_30fps_source_honestly_stays_30fps, exports_crossfade_composition_at_24fps; the pre-export warning is export-frame-rate.ts + export-frame-rate.test.ts",
+      "blocker": null
+    },
+    {
+      "id": "export-12",
+      "area": "Preview vs export",
+      "case": "Filters / adjust export with the same grade as the preview, and refuse unmappable params",
+      "status": "PASS",
+      "evidence": "instrumented effect_bearing_clip_exports_and_its_grade_is_visible_and_matches_preview + an_unmappable_adjust_param_refuses_the_export_with_a_named_message + unit color-grade.test.ts",
+      "blocker": null
+    },
+    {
+      "id": "export-13",
+      "area": "Preview vs export",
+      "case": "User cancels an export in progress",
+      "status": "VERIFY",
+      "evidence": "cancel plumbing exists in the export sheet + native plugin; no automated assertion.",
+      "blocker": "no interactive device/emulator"
+    },
+    {
+      "id": "export-14",
+      "area": "Preview vs export",
+      "case": "Storage exhaustion mid-export",
+      "status": "BLOCKED",
+      "evidence": "needs a device with a fillable volume",
+      "blocker": "no device"
+    },
+    {
+      "id": "export-15",
+      "area": "Preview vs export",
+      "case": "Hardware codec failure falls back instead of failing the export",
+      "status": "BLOCKED",
+      "evidence": "needs a device whose encoder rejects the requested profile",
+      "blocker": "no device"
+    },
+    {
+      "id": "export-16",
+      "area": "Preview vs export",
+      "case": "Preview and export agree frame-for-frame (pixel + PTS)",
+      "status": "VERIFY",
+      "evidence": "export pixel tests exist (geometry, blend, grade) but no test diffs a preview frame against the exported frame at the same PTS.",
+      "blocker": null
+    },
+    {
+      "id": "export-17",
+      "area": "Preview vs export",
+      "case": "A project stays exportable after media elements are inserted, and a broken reference is reported with the clip named",
+      "status": "VERIFY",
+      "evidence": "Current assessment (merged main 8a76c8ae includes #61/#64): EdlToComposition now reports missing assetId/asset with the clip named and instructs replace/delete before export; insert-time rejection/export pre-flight landed per PR chain. Repair of existing already-damaged projects remains a separate gap and is not claimed fixed. Mark PASS only with targeted regression evidence on assessed build.",
+      "blocker": "needs targeted regression evidence (named-clip error/preflight) on assessed build; existing-damaged-project repair remains separate",
+      "baseline_2026_11_03": {
+        "status": "FAIL",
+        "evidence": "Reproduced on main@1027a28: creating a clip through the insert path could store a media element with no assetId, after which native export fails with 'clip ... has no assetId' (EdlToComposition.requireAsset) and the project cannot be exported. Fixed on PR #61 with a native error that names the clip, an insert-time rejection, and an export pre-flight; not merged into this build. Report: issue #55 comment 6610436554."
+      }
+    },
+    {
+      "id": "reliability-01",
+      "area": "Reliability",
+      "case": "Background / foreground / force-stop mid-edit does not lose the project",
+      "status": "BLOCKED",
+      "evidence": "needs process death on a device",
+      "blocker": "no device"
+    },
+    {
+      "id": "reliability-02",
+      "area": "Reliability",
+      "case": "Upgrade preserves on-device projects (schema migrations)",
+      "status": "PASS",
+      "evidence": "v0-v31 migration suite (30 test files) + persistence.test.ts, all executed in the 706-test run; the on-device upgrade itself is BLOCKED.",
+      "blocker": null
+    },
+    {
+      "id": "reliability-03",
+      "area": "Reliability",
+      "case": "Project archive export then reimport restores the project",
+      "status": "PASS",
+      "evidence": "backup-service.test.ts + backup-cleanup.test.ts (unit, executed)",
+      "blocker": null
+    },
+    {
+      "id": "reliability-04",
+      "area": "Reliability",
+      "case": "Corrupt import is refused rather than crashing",
+      "status": "VERIFY",
+      "evidence": "archive import validates through the same schema gate as load (services/storage); no corrupt-archive fixture is asserted.",
+      "blocker": null
+    },
+    {
+      "id": "reliability-05",
+      "area": "Reliability",
+      "case": "Memory / battery / free-disk behaviour on a long project",
+      "status": "BLOCKED",
+      "evidence": "needs device instrumentation and battery stats",
+      "blocker": "no device"
+    },
+    {
+      "id": "reliability-06",
+      "area": "Reliability",
+      "case": "Crash-free session logs across the journey",
+      "status": "BLOCKED",
+      "evidence": "needs a running device and logcat",
+      "blocker": "no device"
+    },
+    {
+      "id": "privacy-01",
+      "area": "Privacy & release",
+      "case": "No outbound network calls from source or the built bundle",
+      "status": "PASS",
+      "evidence": "bash scripts/invariants.sh offline-audit gate: 'clean \u00e2\u20ac\u201d no outbound-network references found in source or the built bundle'",
+      "blocker": null
+    },
+    {
+      "id": "privacy-02",
+      "area": "Privacy & release",
+      "case": "No telemetry, ads or payment SDK ships",
+      "status": "PASS",
+      "evidence": "same offline gate plus app/build.gradle dependency list: no analytics/ads/billing dependency, no google-services.json required (build.gradle guards its absence).",
+      "blocker": null
+    },
+    {
+      "id": "privacy-03",
+      "area": "Privacy & release",
+      "case": "Manifest permissions match the Data Safety / privacy claims",
+      "status": "VERIFY",
+      "evidence": "AndroidManifest.xml declares INTERNET, CAMERA (declared but unreachable in v0.1), no READ_MEDIA_* and no RECORD_AUDIO; allowBackup=false. INTERNET is declared although nothing in source uses the network \u00e2\u20ac\u201d harmless at runtime but worth aligning with the Data Safety wording.",
+      "blocker": null
+    },
+    {
+      "id": "privacy-04",
+      "area": "Privacy & release",
+      "case": "DEX optimisation / R8 readiness",
+      "status": "VERIFY",
+      "evidence": "Current assessment (merged main 8a76c8ae includes #64): CI-only optimized `r8test` variant exists and passed Android instrumentation (R8 test variant) 46/46 in Mobile CI run 42669153296 on PR head 66f1eb5. Signed Play release remains not minified (release build still ships with minification disabled per build config/release process) \u00e2\u20ac\u201d DEX optimisation/R8 readiness for the actual Play release is not fully satisfied.",
+      "blocker": "signed Play release minification/R8 enablement and release verification remain outstanding; no versionCode/AAB/upload changes made",
+      "baseline_2026_11_03": {
+        "status": "FAIL",
+        "evidence": "app/build.gradle sets minifyEnabled false with the stock proguard-rules.pro, so the shipped DEX is unobfuscated \u00e2\u20ac\u201d exactly Play's 1% obfuscation warning. Analysis and the keep-rule worklist are in docs/qa/release-quality-audit.md (#57)."
+      }
+    },
+    {
+      "id": "privacy-05",
+      "area": "Privacy & release",
+      "case": "16 KB page-size native alignment",
+      "status": "PASS",
+      "evidence": "app/src/main/cpp/CMakeLists.txt:111 links libcutlyra_whisper with -Wl,-z,max-page-size=16384; it is the only shipped native library.",
+      "blocker": null
+    },
+    {
+      "id": "privacy-06",
+      "area": "Privacy & release",
+      "case": "Android 15+ edge-to-edge: system bars never cover top chrome",
+      "status": "VERIFY",
+      "evidence": "New EdgeToEdgeSystemBarInstrumentedTest asserts it on API 35; result is in the CI run attached to PR #62.",
+      "blocker": null
+    },
+    {
+      "id": "privacy-07",
+      "area": "Privacy & release",
+      "case": "Signing continuity and closed-test versionCode 1",
+      "status": "BLOCKED",
+      "evidence": "release keystore is only in the owner's environment (CUTLYRA_RELEASE_KEYSTORE_* not set here)",
+      "blocker": "no access to the release keystore; inspecting it would be a credential-handling risk"
+    },
+    {
+      "id": "privacy-08",
+      "area": "Privacy & release",
+      "case": "Closed test with >= 12 testers and no accidental upload",
+      "status": "BLOCKED",
+      "evidence": "Play Console state is owner-side; nothing in this session touched uploads.",
+      "blocker": "Console access is not available here, and uploading is not authorized"
+    },
+    {
+      "id": "export-22",
+      "area": "Preview vs export",
+      "case": "Per-clip Fit/Fill export geometry for mismatched aspect: automated exported-frame edge/bar check (#22)",
+      "status": "PASS",
+      "evidence": "Mobile CI run 42669153296 (success) on PR head 66f1eb5cd7594f10b86a42a8dfa64e5c732c23bd, merged as 8a76c8ae: Android instrumentation (API 35 emulator) and Android instrumentation (R8 test variant) both ran 46 tests with 0 failures (emulator-5554). Suite includes ExportFramingInstrumentedTest.fitLetterboxesMismatchedSource_and_fillCoversCanvas, which exports a 4:3 source to a 9:16 canvas via Media3Exporter/EDL and asserts fit produces substantial letterbox bars while fill covers without letterbox bars. Physical preview\u00e2\u2020\u201dexport parity is tracked separately (export-22b).",
+      "baseline_2026_11_03": null
+    },
+    {
+      "id": "export-22b",
+      "area": "Preview vs export",
+      "case": "Per-clip Fit/Fill physical preview\u00e2\u2020\u201dexport parity, edge-to-edge/system bars, save/reopen/undo acceptance on device (#22)",
+      "status": "BLOCKED",
+      "evidence": "No physical POCO M4 Pro 5G / Android 15-16 device verification executed in this environment. Automated export geometry is PASS (export-22). See docs/qa/physical-device-acceptance-poco-m4-pro-5g.md.",
+      "blocker": "owner device/Play Console access required"
+    },
+    {
+      "id": "transform-01",
+      "area": "Video image tools",
+      "case": "Rotate plus/minus 90 and 180 degrees and horizontal/vertical flip on a selected video or image clip: one undo step per action, redo restores, and the authored transform survives save/reopen",
+      "status": "PASS",
+      "evidence": "Deterministic, executed on 8b3b878: packages/editor-core/src/commands/timeline/element/__tests__/transform-params.test.ts (6 pass) asserts rotate/flip parameter updates, action-level undo/redo and single-step BatchCommand undo; packages/editor-core/src/services/storage/__tests__/transform-persistence-roundtrip.test.ts (3 pass) drives the real saveProject/loadProject pair and rebuilds the EDL to compare; packages/editor-core/src/edl/__tests__/edl.test.ts rotate/mirror propagation block (43 pass in that file) covers EDL emission. Full repo suite green on this build: bun test 742 pass / 0 fail. UI entry points: packages/mobile-ui/src/components/panels/edit-panel.tsx Transform controls (Rotate L/R, Flip H/V, degree readout).",
+      "blocker": null,
+      "baseline_2026_11_03": null
+    },
+    {
+      "id": "export-23",
+      "area": "Preview vs export",
+      "case": "Rotated/flipped clip exports with the authored orientation: decoded exported-frame corner parity for identity, plus/minus 90, 180, flip H, flip V, rotate+H/V, a rotated image clip, and fit/fill framing under rotation (#50)",
+      "status": "PASS",
+      "evidence": "ExportTransformParityInstrumentedTest (12 cases) exports through the real Media3/EDL pipeline and samples decoded corners of the exported MP4 with an asymmetric marker fixture. Mobile CI run 42813555396 on merged main 8b3b878: Android instrumentation (API 35 emulator) ran 58 tests with 0 skipped and 0 failed; Android instrumentation (R8 test variant) reported 'Tests 58/58 completed. (0 skipped) (0 failed)'. The same suite was green on PR head df17b61 in run 42810540771. Assertions are on PRESENTED geometry: Media3 1.11.0 VideoEncoderWrapper.getSurfaceInfo always prefers a landscape encode and records a clockwise display rotation, so a correct 9:16 export is coded 1920x1080 with rotation=90 and presents 1080x1920.",
+      "blocker": null,
+      "baseline_2026_11_03": null
+    },
+    {
+      "id": "export-23b",
+      "area": "Preview vs export",
+      "case": "Rotate/flip physical-device preview-to-export parity on the owner's POCO M4 Pro 5G (#50)",
+      "status": "BLOCKED",
+      "evidence": "Only an API-35 x86_64 emulator with a software encoder is available in CI; no physical-device session was executed for this build. Automated exported-pixel parity is PASS (export-23). See docs/qa/physical-device-acceptance-poco-m4-pro-5g.md.",
+      "blocker": "owner device access required"
+    },
+    {
+      "id": "export-24",
+      "area": "Preview vs export",
+      "case": "Non-zero transform positionX/positionY offsets and the keyframed transform time base in native export (#50)",
+      "status": "VERIFY",
+      "evidence": "EdlTransformEffect applies postScale -> postRotate(-rotateDegrees) -> postTranslate and accepts a presentationTimeUs-driven animation path, but every parity export in ExportTransformParityInstrumentedTest uses a centred, static clip: the translate term is only exercised as translation-to-centre and no keyframed transform is exported. This limitation is documented in EdlTransformEffect's header on 8b3b878.",
+      "blocker": "needs an export test that drives non-zero position and an animated transform"
+    }
+  ],
+  "summary": {
+    "total": 60,
+    "pass": 29,
+    "fail": 0,
+    "verify": 17,
+    "blocked": 14,
+    "note": "Computed from cases on 8b3b878. PASS means the named suite/gate executed on the assessed build with cited evidence. VERIFY means the code path exists but the specific criterion was not executed on this build. BLOCKED means required device/hardware/account/access was unavailable. Historical 2026-11-03 evidence is preserved in case baseline fields and historical_baseline, and the 2026-11-09 post-#67 assessment in rebaseline_pr67_postmerge; changed rows are reassessed with build-specific evidence, never inferred from a green CI run. Emulator evidence is not physical-device evidence: export-23b and export-24 keep the device and animation gaps explicit."
+  },
+  "evidence_links": {
+    "run 41688805558": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/41688805558",
+    "#60 filmstrip (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/60",
+    "#61 media references (open)": "https://github.com/Pavithran-R-A/Cutlyra/pull/61",
+    "#62 this evidence pack": "https://github.com/Pavithran-R-A/Cutlyra/pull/62",
+    "#63 sound library silent": "https://github.com/Pavithran-R-A/Cutlyra/issues/63"
+  },
+  "rebaseline_pr66": {
+    "date": "2026-11-09",
+    "branch": "feat/22-canvas-fit-fill",
+    "final_tested_pr_head_sha": "66f1eb5cd7594f10b86a42a8dfa64e5c732c23bd",
+    "merged_main_commit": "8a76c8aeb31241bf0e650721c2039bc14877d216",
+    "pr": "https://github.com/Pavithran-R-A/Cutlyra/pull/66",
+    "ci_runs_pr_head_green": [
+      {
+        "workflow": "Bun CI",
+        "run_id": 42669154309,
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42669154309",
+        "conclusion": "success",
+        "jobs": [
+          "invariants (ubuntu-latest)",
+          "invariants (macos-latest)",
+          "invariants (windows-latest)"
+        ]
+      },
+      {
+        "workflow": "Mobile CI",
+        "run_id": 42669153296,
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42669153296",
+        "conclusion": "success",
+        "jobs": [
+          "Android (debug APK)",
+          "iOS (simulator, unsigned)",
+          "Android instrumentation (API 35 emulator)",
+          "Android instrumentation (R8 test variant)"
+        ],
+        "instrumentation": {
+          "normal": "46 tests, 0 failures (emulator-5554)",
+          "r8_variant": "46 tests, 0 failures (emulator-5554)"
+        }
+      }
+    ],
+    "merged_main_ci_status": "GREEN (verified): Bun CI run 42672196713 attempt 3 success (3/3 jobs: invariants ubuntu/macos/windows) on 8a76c8aeb31241bf0e650721c2039bc14877d216. Mobile CI run 42672197042 attempt 3 success (4/4 jobs: Android debug APK, iOS simulator unsigned, Android instrumentation API 35 emulator 46 tests 0 failures, Android instrumentation R8 test variant 46 tests 0 failures) on same SHA. Earlier attempts 1-2 had GitHub-side scheduling/execution anomalies (zero/partial jobs; no workflow files changed by merge); full-workflow reruns recovered qualification.",
+    "note": "PR-head evidence is validated. Merged-main qualification requires successful full-workflow reruns on 8a76c8ae (all 7 expected jobs).",
+    "ci_runs_merged_main_green": [
+      {
+        "workflow": "Bun CI",
+        "run_id": 42672196713,
+        "attempt": 3,
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42672196713",
+        "conclusion": "success",
+        "headSha": "8a76c8aeb31241bf0e650721c2039bc14877d216"
+      },
+      {
+        "workflow": "Mobile CI",
+        "run_id": 42672197042,
+        "attempt": 3,
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42672197042",
+        "conclusion": "success",
+        "headSha": "8a76c8aeb31241bf0e650721c2039bc14877d216",
+        "instrumentation": {
+          "normal": "46 tests, 0 failures (emulator-5554, job 129360091840)",
+          "r8_variant": "46 tests, 0 failures (emulator-5554, job 129360091931)"
+        }
+      }
+    ],
+    "root_cause_merged_main_initial_failures": "Likely GitHub Actions scheduling/execution anomaly during push event (not code regression): PR head 66f1eb5 passed all 7 jobs; merge 8a76c8ae changed no workflow files and has identical product/workflow content. Attempt 1 produced zero/partial jobs; Bun CI attempt 2 completed with only windows-latest job (that job passed all steps including invariants) while overall workflow failed; Mobile CI attempt 2 produced zero jobs. Full-workflow reruns (attempt 3) scheduled all expected jobs and passed. Proven: scheduling gap and final green on rerun. Not proven: specific GitHub internal cause (no definitive annotation beyond Node 20 deprecation warning)."
+  },
+  "historical_baseline": {
+    "generated": "2026-11-03",
+    "build": {
+      "versionName": "0.1.0",
+      "versionCode": 1,
+      "product_commit": "1027a28",
+      "minSdk": 29,
+      "targetSdk": 36,
+      "note": "Product code as merged on main. Two P0 fixes are open, unmerged PRs and are marked FAIL against this build: #54 filmstrip (PR #60) and #55 lost media reference (PR #61)."
+    },
+    "summary_as_recorded_2026_11_03": {
+      "total": 54,
+      "pass": 25,
+      "fail": 4,
+      "verify": 13,
+      "blocked": 12,
+      "note": "PASS means the named suite or gate executed on this build. VERIFY means the code path exists and is reachable but was not executed on a device in this pass. BLOCKED means no device, emulator, keystore or Console access was available. No row is inferred from another row."
+    },
+    "note": "Preserved as historical 2026-11-03 main@1027a28 baseline evidence. Current assessments below are build-specific and must cite proof for current status changes; historical FAIL rows are not silently rewritten as if they never happened."
+  },
+  "rebaseline_pr67_postmerge": {
+    "headSha": "24ab6c43292987846c4598c10e6c41c5ec623a56",
+    "pr": 67,
+    "pr_head_sha": "12cf7d450aa7e4e0726dc436606bfa43b75aaf60",
+    "merged_main_ci": {
+      "bun_ci": {
+        "run_id": 42683711950,
+        "attempt": 1,
+        "conclusion": "success",
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42683711950",
+        "jobs": "3/3 invariants ubuntu/macos/windows"
+      },
+      "mobile_ci": {
+        "run_id": 42683712239,
+        "attempt": 1,
+        "conclusion": "success",
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42683712239",
+        "jobs": "4/4 Android debug APK, iOS simulator unsigned, Android instrumentation API 35 (46 tests, 0 failures, job 129386849408), Android instrumentation R8 test variant (46 tests, 0 failures, job 129386849414)"
+      }
+    },
+    "qualification_gate": "GREEN on merged main 24ab6c4 (all 7 expected CI jobs completed successfully)."
+  },
+  "rebaseline_pr69_postmerge": {
+    "date": "2026-11-10",
+    "assessed_build": "8b3b8786b8d54f8b6cef60944783690ec91bd769",
+    "pr": "https://github.com/Pavithran-R-A/Cutlyra/pull/69",
+    "pr_head_sha": "df17b61",
+    "scope": "Focused #50 slice: rotate plus/minus 90/180 and H/V flip for selected video/image clips, with real-export parity tests. Reverse, freeze, speed ramps and new transitions remain unimplemented as shipping features (#50 stays open).",
+    "changed_cases": [
+      {
+        "id": "export-08",
+        "from": "VERIFY",
+        "to": "PASS",
+        "why": "#63 closed; ExportLibraryAudioInstrumentedTest decodes the exported MP4 and runs in the 58-test suite"
+      },
+      {
+        "id": "transform-01",
+        "from": "(new row)",
+        "to": "PASS",
+        "why": "action-level undo/redo, persistence and EDL propagation tests executed on this build"
+      },
+      {
+        "id": "export-23",
+        "from": "(new row)",
+        "to": "PASS",
+        "why": "12-case exported-pixel parity suite green in both instrumentation variants"
+      },
+      {
+        "id": "export-23b",
+        "from": "(new row)",
+        "to": "BLOCKED",
+        "why": "no physical-device session for this build"
+      },
+      {
+        "id": "export-24",
+        "from": "(new row)",
+        "to": "VERIFY",
+        "why": "position offsets and the keyframed transform time base are still not exported by any test"
+      }
+    ],
+    "not_promoted": [
+      "timeline-05 (undo/redo across all edit kinds) stays VERIFY: only the transform actions now have action-level undo/redo assertions.",
+      "export-16 (preview/export frame-for-frame parity) stays VERIFY: the transform suite checks static exported frame geometry, not per-frame PTS agreement.",
+      "privacy-04 (R8 readiness) stays VERIFY: the R8 test variant is green, but the release build still has minifyEnabled false."
+    ],
+    "ci_pr_head": {
+      "bun_ci": {
+        "run_id": 42810541409,
+        "conclusion": "success",
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42810541409"
+      },
+      "mobile_ci": {
+        "run_id": 42810540771,
+        "conclusion": "success",
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42810540771",
+        "instrumentation": {
+          "normal": "58/58, 0 skipped, 0 failed (job 129812840516)",
+          "r8_variant": "58/58, 0 skipped, 0 failed (job 129812840461)"
+        }
+      }
+    },
+    "ci_merged_main": {
+      "bun_ci": {
+        "run_id": 42813555378,
+        "conclusion": "success",
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42813555378",
+        "jobs": "3/3 invariants ubuntu/macos/windows"
+      },
+      "mobile_ci": {
+        "run_id": 42813555396,
+        "conclusion": "success",
+        "url": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/42813555396",
+        "jobs": "4/4 Android debug APK, iOS simulator unsigned, Android instrumentation API 35, Android instrumentation R8 test variant",
+        "instrumentation": {
+          "normal": "58 tests started and finished, 0 failed, BUILD SUCCESSFUL (job 129822839507)",
+          "r8_variant": "58/58, 0 skipped, 0 failed (job 129822839640)"
+        }
+      }
+    },
+    "qualification_gate": "GREEN on merged main 8b3b878: all 7 expected CI jobs succeeded."
+  },
+  "rebaseline_pr71_postmerge": {
+    "merged_main_sha": "ec2bf4486ab11acd352e5fdb9b8aaef76b6f5429",
+    "pr71_sha": "6296959bc995687b090821510909fdb6256d1eb8",
+    "reliability_pr": "feat/replace-clip-reliability",
+    "note": "Replace Clip functional/export evidence (PR #71) and durability/failure-injection evidence (ReplaceClipMediaCommand persistence races: 7 tests) are separate from the 60-row beta inventory, which remains assessed against 8b3b878. Replace Clip is implemented for video/image clips only; cross-type and audio-clip replacement are not supported. Device-specific cases remain VERIFY/BLOCKED pending POCO M4 Pro acceptance."
+  }
 }

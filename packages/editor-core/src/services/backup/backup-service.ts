@@ -627,6 +627,23 @@ export async function buildExportRecipe({
 	projectId: string;
 	storage: StorageService;
 }): Promise<{ projectJson: string; projectName: string; media: NativeMediaDescriptor[] }> {
+	// Durability gate (Replace Clip #72): a backup must never snapshot a
+	// project whose replacement media persistence is still pending or has
+	// failed. Wait for pending writes; fail visibly on failure.
+	const { ReplaceClipMediaCommand } = await import(
+		"@/commands/timeline/element/replace-clip-media"
+	);
+	await ReplaceClipMediaCommand.waitForPendingMediaTransactions({ projectId });
+	const failures = ReplaceClipMediaCommand.getFailedMediaTransactions({
+		projectId,
+	});
+	if (failures.length > 0) {
+		throw new BackupError({
+			code: "IO_ERROR",
+			message: "Cannot back up: replacement media persistence failed",
+		});
+	}
+
 	const serialized = await storage.getSerializedProject({ id: projectId });
 	if (!serialized) {
 		throw new BackupError({
