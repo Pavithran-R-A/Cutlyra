@@ -2,21 +2,28 @@
  * Rotation/flip transform params (#50): UpdateElementsCommand must update
  * transform.* params as real editor commands (single undoable step per batch),
  * preserve unrelated params/animations, and restore prior state on undo.
- * Uses the same mocked EditorCore seam as insert-element-canvas-adoption.test.ts.
+ *
+ * Drives the REAL `EditorCore` (real scene manager, real track bookkeeping).
+ * This file used to install `mock.module("@/core", …)`; Bun module mocks are
+ * process-wide and `mock.restore()` cannot undo them, so any later test file
+ * needing a real editor broke depending on discovery order. See
+ * `insert-element-canvas-adoption.test.ts` for the same conversion.
  */
-import { describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import { EditorCore } from "@/core";
 import { buildDefaultScene } from "@/timeline/scenes";
+import { buildFixtureProject } from "@/edl/__tests__/fixture";
 import type { ImageElement, SceneTracks, TimelineElement, VideoElement } from "@/timeline";
 import type { ElementAnimations } from "@/animation/types";
-import type { UpdateElementsCommand } from "@/commands/timeline/element/update-elements";
+import { UpdateElementsCommand } from "@/commands/timeline/element/update-elements";
 import { BatchCommand } from "@/commands/batch-command";
 import { ZERO_MEDIA_TIME, mediaTime } from "@/wasm";
 
-type Harness = { tracks: SceneTracks; updates: SceneTracks[] };
-
-const commandCtor: typeof UpdateElementsCommand = (
-	await import("@/commands/timeline/element/update-elements")
-).UpdateElementsCommand;
+type Harness = {
+	/** Always the engine's CURRENT tracks: commands replace them, so a value
+	 *  captured at setup would go stale after the first mutation. */
+	readonly tracks: SceneTracks;
+};
 
 function videoElement(): VideoElement {
 	return {
@@ -28,25 +35,40 @@ function videoElement(): VideoElement {
 		duration: mediaTime({ ticks: 120_000 }),
 		trimStart: ZERO_MEDIA_TIME,
 		trimEnd: ZERO_MEDIA_TIME,
-		params: { volume: 0, framing: "fit", "transform.rotate": 0, "transform.scaleX": 1, "transform.scaleY": 1 },
+		params: {
+			volume: 0,
+			framing: "fit",
+			"transform.rotate": 0,
+			"transform.scaleX": 1,
+			"transform.scaleY": 1,
+		},
 		animations: undefined,
 	};
 }
 
 function buildHarness(element: VideoElement | ImageElement): Harness {
-	const scene = buildDefaultScene({ name: "Main", isMain: true });
-	scene.tracks.main.elements = [element];
-	const h: Harness = { tracks: scene.tracks, updates: [] };
-	const editor = {
-		scenes: { getActiveScene: () => ({ tracks: h.tracks }) },
-		timeline: { updateTracks: (tracks: SceneTracks) => { h.tracks = tracks; h.updates.push(tracks); } },
+	EditorCore.reset();
+	const editor = EditorCore.getInstance();
+	editor.project.setActiveProject({ project: buildFixtureProject() });
+	const scene = {
+		...buildDefaultScene({ name: "Main", isMain: true }),
+		id: "scene-transform-params",
 	};
-	mock.module("@/core", () => ({ EditorCore: { getInstance: () => editor } }));
-	return h;
+	scene.tracks.main.elements = [element];
+	editor.scenes.initializeScenes({ scenes: [scene], currentSceneId: scene.id });
+	return {
+		get tracks() {
+			return editor.scenes.getActiveScene().tracks;
+		},
+	};
 }
 
+afterEach(() => {
+	EditorCore.reset();
+});
+
 function getEl(h: Harness): TimelineElement {
-	const el = h.tracks.main.elements.find((e) => e.id === "v1");
+	const el = h.tracks.main.elements.find((candidate) => candidate.id === "v1");
 	if (!el) throw new Error("missing element");
 	return el;
 }
@@ -54,8 +76,14 @@ function getEl(h: Harness): TimelineElement {
 describe("transform param updates", () => {
 	it("rotates 90 degrees and restores on undo, preserving unrelated params", () => {
 		const h = buildHarness(videoElement());
-		const cmd = new commandCtor({
-			updates: [{ trackId: h.tracks.main.id, elementId: "v1", patch: { params: { ...getEl(h).params, "transform.rotate": 90 } } }],
+		const cmd = new UpdateElementsCommand({
+			updates: [
+				{
+					trackId: h.tracks.main.id,
+					elementId: "v1",
+					patch: { params: { ...getEl(h).params, "transform.rotate": 90 } },
+				},
+			],
 		});
 		cmd.execute();
 		expect(getEl(h).params["transform.rotate"]).toBe(90);
@@ -70,8 +98,14 @@ describe("transform param updates", () => {
 		const el = videoElement();
 		el.params["transform.scaleX"] = 0.75;
 		const h = buildHarness(el);
-		new commandCtor({
-			updates: [{ trackId: h.tracks.main.id, elementId: "v1", patch: { params: { ...getEl(h).params, "transform.scaleX": -0.75 } } }],
+		new UpdateElementsCommand({
+			updates: [
+				{
+					trackId: h.tracks.main.id,
+					elementId: "v1",
+					patch: { params: { ...getEl(h).params, "transform.scaleX": -0.75 } },
+				},
+			],
 		}).execute();
 		expect(getEl(h).params["transform.scaleX"]).toBe(-0.75);
 		expect(getEl(h).params["transform.scaleY"]).toBe(1);
@@ -80,8 +114,12 @@ describe("transform param updates", () => {
 	it("flips vertical and supports combined rotation+flip state", () => {
 		const h = buildHarness(videoElement());
 		const ref = { trackId: h.tracks.main.id, elementId: "v1" };
-		new commandCtor({ updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.rotate": 90 } } }] }).execute();
-		new commandCtor({ updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.scaleY": -1 } } }] }).execute();
+		new UpdateElementsCommand({
+			updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.rotate": 90 } } }],
+		}).execute();
+		new UpdateElementsCommand({
+			updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.scaleY": -1 } } }],
+		}).execute();
 		expect(getEl(h).params["transform.rotate"]).toBe(90);
 		expect(getEl(h).params["transform.scaleY"]).toBe(-1);
 		expect(getEl(h).params["transform.scaleX"]).toBe(1);
@@ -104,8 +142,14 @@ describe("transform param updates", () => {
 		};
 		el.animations = animations;
 		const h = buildHarness(el);
-		new commandCtor({
-			updates: [{ trackId: h.tracks.main.id, elementId: "v1", patch: { params: { ...getEl(h).params, "transform.rotate": 180 } } }],
+		new UpdateElementsCommand({
+			updates: [
+				{
+					trackId: h.tracks.main.id,
+					elementId: "v1",
+					patch: { params: { ...getEl(h).params, "transform.rotate": 180 } },
+				},
+			],
 		}).execute();
 		expect(getEl(h).params["transform.rotate"]).toBe(180);
 		expect(getEl(h).animations).toEqual(animations);
@@ -116,11 +160,11 @@ describe("consecutive transform actions", () => {
 	it("walks a rotate-then-mirror sequence one undo/redo step at a time", () => {
 		const h = buildHarness(videoElement());
 		const ref = { trackId: h.tracks.main.id, elementId: "v1" };
-		const rotate = new commandCtor({
+		const rotate = new UpdateElementsCommand({
 			updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.rotate": 90 } } }],
 		});
 		rotate.execute();
-		const mirror = new commandCtor({
+		const mirror = new UpdateElementsCommand({
 			updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.scaleX": -1 } } }],
 		});
 		mirror.execute();
@@ -146,14 +190,16 @@ describe("consecutive transform actions", () => {
 		const h = buildHarness(videoElement());
 		const ref = { trackId: h.tracks.main.id, elementId: "v1" };
 		const batch = new BatchCommand([
-			new commandCtor({
+			new UpdateElementsCommand({
 				updates: [{ ...ref, patch: { params: { ...getEl(h).params, "transform.rotate": 180 } } }],
 			}),
-			new commandCtor({
+			new UpdateElementsCommand({
 				updates: [
 					{
 						...ref,
-						patch: { params: { ...getEl(h).params, "transform.rotate": 180, "transform.scaleY": -1 } },
+						patch: {
+							params: { ...getEl(h).params, "transform.rotate": 180, "transform.scaleY": -1 },
+						},
 					},
 				],
 			}),

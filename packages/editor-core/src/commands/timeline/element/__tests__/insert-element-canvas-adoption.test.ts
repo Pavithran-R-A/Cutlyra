@@ -8,10 +8,17 @@
  * `getAdoptedCanvasSizeForImportedMedia` (guarded); the TIMELINE INSERT
  * command called `normalizeAdoptedCanvasSize` directly and overwrote it.
  *
- * These tests drive the REAL `InsertElementCommand.execute()` — real
- * placement, real track bookkeeping — against a stubbed `EditorCore`, so the
- * regression is pinned at the seam that actually misbehaved rather than only
- * at the pure decision function.
+ * These tests drive the REAL `InsertElementCommand.execute()` against the REAL
+ * `EditorCore` — real placement, real track bookkeeping, real project settings
+ * command — so the regression is pinned at the seam that actually misbehaved.
+ *
+ * This file used to install `mock.module("@/core", …)`. Bun module mocks are
+ * PROCESS-wide and `mock.restore()` does not undo them, so every test file that
+ * ran afterwards received the stub and any suite using a real `EditorCore`
+ * failed depending on discovery order. Driving the real engine removes both the
+ * leak and the stub's drift from real project-manager behaviour; the "no canvas
+ * write" assertions are kept by spying on `project.updateSettings` and still
+ * calling through to the real implementation.
  *
  * Save/reopen is covered in
  * `services/storage/__tests__/canvas-settings-roundtrip.test.ts` and
@@ -22,40 +29,32 @@
  * The wasm stub is preloaded repo-wide via bunfig.toml.
  */
 
-import { describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { EditorCore } from "@/core";
 import { DEFAULT_CANVAS_SIZE } from "@/canvas/sizes";
 import { buildDefaultScene } from "@/timeline/scenes";
-import type {
-	AudioElement,
-	AudioTrack,
-	CreateVideoElement,
-	SceneTracks,
-} from "@/timeline";
+import { buildFixtureProject } from "@/edl/__tests__/fixture";
+import type { AudioElement, AudioTrack, CreateVideoElement } from "@/timeline";
+import type { MediaAsset } from "@/media/types";
 import type { InsertElementCommand } from "@/commands/timeline/element/insert-element";
 import { ZERO_MEDIA_TIME, mediaTime } from "@/wasm";
 
-type Settings = {
-	canvasSize: { width: number; height: number };
-	canvasSizeMode: "preset" | "custom";
-	originalCanvasSize: { width: number; height: number } | null;
+type AssetSpec = {
+	id: string;
+	type: "video" | "image";
+	width: number;
+	height: number;
+	sourceWidth?: number;
+	sourceHeight?: number;
+	fps?: number;
 };
 
 type Harness = {
-	settings: Settings;
-	updates: Settings[];
-	tracks: SceneTracks;
-	assets: Array<{
-		id: string;
-		type: "video" | "image";
-		width: number;
-		height: number;
-		sourceWidth?: number;
-		sourceHeight?: number;
-		fps?: number;
-	}>;
+	editor: EditorCore;
+	/** Canvas sizes the command asked the project manager to adopt, in order. */
+	canvasWrites: Array<{ width: number; height: number }>;
 };
 
-/** Resolved once; the `@/core` module mock is re-pointed per harness. */
 const commandCtor: typeof InsertElementCommand = (
 	await import("@/commands/timeline/element/insert-element")
 ).InsertElementCommand;
@@ -74,16 +73,44 @@ function videoElement({ mediaId }: { mediaId: string }): CreateVideoElement {
 	};
 }
 
+function toMediaAsset(spec: AssetSpec): MediaAsset {
+	return {
+		id: spec.id,
+		name: `${spec.id}.${spec.type === "image" ? "png" : "mp4"}`,
+		type: spec.type,
+		width: spec.width,
+		height: spec.height,
+		...(spec.sourceWidth !== undefined ? { sourceWidth: spec.sourceWidth } : {}),
+		...(spec.sourceHeight !== undefined ? { sourceHeight: spec.sourceHeight } : {}),
+		...(spec.fps !== undefined ? { fps: spec.fps } : {}),
+		file: new File([], `${spec.id}.mp4`),
+	};
+}
+
 function buildHarness({
 	canvasSize = { ...DEFAULT_CANVAS_SIZE },
-	mode = "preset" as const,
+	mode = "preset",
 	withAudioElement = false,
+	assets = [],
 }: {
 	canvasSize?: { width: number; height: number };
 	mode?: "preset" | "custom";
 	withAudioElement?: boolean;
-}): Harness {
-	const scene = buildDefaultScene({ name: "Main scene", isMain: true });
+	assets?: AssetSpec[];
+} = {}): Harness {
+	EditorCore.reset();
+	const editor = EditorCore.getInstance();
+
+	const project = buildFixtureProject();
+	project.settings.canvasSize = { ...canvasSize };
+	project.settings.canvasSizeMode = mode;
+	project.settings.originalCanvasSize = null;
+	editor.project.setActiveProject({ project });
+
+	const scene = {
+		...buildDefaultScene({ name: "Main scene", isMain: true }),
+		id: "scene-canvas-adoption",
+	};
 	if (withAudioElement) {
 		const audioElement: AudioElement = {
 			id: "audio-1",
@@ -106,57 +133,28 @@ function buildHarness({
 		};
 		scene.tracks.audio = [audioTrack];
 	}
+	editor.scenes.initializeScenes({ scenes: [scene], currentSceneId: scene.id });
+	editor.media.setAssets({ assets: assets.map(toMediaAsset) });
 
-	const h: Harness = {
-		settings: {
-			canvasSize,
-			canvasSizeMode: mode,
-			originalCanvasSize: null,
+	// Record adoption requests while still letting the real project manager
+	// apply them (a spy that swallowed the call would make every assertion below
+	// vacuous).
+	const harness: Harness = { editor, canvasWrites: [] };
+	const realUpdateSettings = editor.project.updateSettings.bind(editor.project);
+	spyOn(editor.project, "updateSettings").mockImplementation(
+		async (args: Parameters<typeof realUpdateSettings>[0]) => {
+			const canvas = args?.settings?.canvasSize;
+			if (canvas) harness.canvasWrites.push({ ...canvas });
+			await realUpdateSettings(args);
 		},
-		updates: [],
-		tracks: scene.tracks,
-		assets: [],
-	};
+	);
 
-	const editor = {
-		scenes: { getActiveScene: () => ({ tracks: h.tracks }) },
-		media: { getAssets: () => h.assets },
-		project: {
-			getActive: () => ({ settings: h.settings }),
-			updateSettings: ({ settings }: { settings: Partial<Settings> }) => {
-				h.settings = { ...h.settings, ...settings };
-				h.updates.push(h.settings);
-			},
-		},
-		timeline: {
-			updateTracks: (tracks: SceneTracks) => {
-				h.tracks = tracks;
-			},
-		},
-	};
-
-	mock.module("@/core", () => ({
-		EditorCore: {
-			getInstance: () => editor,
-			reset: () => {},
-		},
-	}));
-
-	return h;
+	return harness;
 }
 
-/** Fresh harness per case; the module mock is re-pointed each time. */
-function fresh({
-	options = {},
-	assets = [],
-}: {
-	options?: Parameters<typeof buildHarness>[0];
-	assets?: Harness["assets"];
-} = {}): Harness {
-	const h = buildHarness(options);
-	h.assets = assets;
-	return h;
-}
+afterEach(() => {
+	EditorCore.reset();
+});
 
 function runInsert({ mediaId }: { mediaId: string }): void {
 	const command = new commandCtor({
@@ -166,103 +164,102 @@ function runInsert({ mediaId }: { mediaId: string }): void {
 	command.execute();
 }
 
-function canvasWrites(h: Harness): string {
-	return h.updates
-		.map((u) => `${u.canvasSize.width}x${u.canvasSize.height}`)
-		.join(",");
+function canvasOf(h: Harness): { width: number; height: number } {
+	return h.editor.project.getActive().settings.canvasSize;
 }
 
-// The command module is only CONSTRUCTED inside tests, after every harness
-// has re-pointed the `@/core` mock (Bun's mock.module patches live bindings).
+function canvasWrites(h: Harness): string {
+	return h.canvasWrites.map((write) => `${write.width}x${write.height}`).join(",");
+}
+
 describe("InsertElementCommand canvas adoption (GitHub #30)", () => {
 	it("adopts a portrait canvas for the first clip in a factory-default project", () => {
-		const h = fresh({ assets: [{ id: "a", type: "video", width: 1080, height: 1920 }] });
+		const h = buildHarness({ assets: [{ id: "a", type: "video", width: 1080, height: 1920 }] });
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1080, height: 1920 });
+		expect(canvasOf(h)).toEqual({ width: 1080, height: 1920 });
 	});
 
 	it("leaves a factory-default landscape canvas untouched for a landscape clip", () => {
-		const h = fresh({ assets: [{ id: "a", type: "video", width: 1920, height: 1080 }] });
+		const h = buildHarness({ assets: [{ id: "a", type: "video", width: 1920, height: 1080 }] });
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1920, height: 1080 });
+		expect(canvasOf(h)).toEqual({ width: 1920, height: 1080 });
 		expect(canvasWrites(h)).toBe(""); // no settings write at all
 	});
 
 	// --- the Stage-6 device failure, one case per offered aspect ratio ---
 	it("preserves an explicit 1:1 choice (the exact device reproduction)", () => {
-		const h = fresh({
-			options: { canvasSize: { width: 1080, height: 1080 } },
+		const h = buildHarness({
+			canvasSize: { width: 1080, height: 1080 },
 			assets: [{ id: "a", type: "video", width: 1080, height: 1920 }],
 		});
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1080, height: 1080 });
+		expect(canvasOf(h)).toEqual({ width: 1080, height: 1080 });
 		expect(canvasWrites(h)).toBe("");
 	});
 
 	it("preserves an explicit 9:16 choice", () => {
-		const h = fresh({
-			options: { canvasSize: { width: 1080, height: 1920 } },
+		const h = buildHarness({
+			canvasSize: { width: 1080, height: 1920 },
 			assets: [{ id: "a", type: "video", width: 720, height: 1280 }],
 		});
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1080, height: 1920 });
+		expect(canvasOf(h)).toEqual({ width: 1080, height: 1920 });
 		expect(canvasWrites(h)).toBe("");
 	});
 
 	it("preserves an explicit 16:9 choice whose size differs from the default", () => {
-		const h = fresh({
-			options: { canvasSize: { width: 1280, height: 720 } },
+		const h = buildHarness({
+			canvasSize: { width: 1280, height: 720 },
 			assets: [{ id: "a", type: "video", width: 1080, height: 1920 }],
 		});
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1280, height: 720 });
+		expect(canvasOf(h)).toEqual({ width: 1280, height: 720 });
 		expect(canvasWrites(h)).toBe("");
 	});
 
 	it("preserves an explicit custom resolution", () => {
-		const h = fresh({
-			options: {
-				canvasSize: { width: 1440, height: 1080 },
-				mode: "custom",
-			},
+		const h = buildHarness({
+			canvasSize: { width: 1440, height: 1080 },
+			mode: "custom",
 			assets: [{ id: "a", type: "video", width: 1080, height: 1920 }],
 		});
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1440, height: 1080 });
+		expect(canvasOf(h)).toEqual({ width: 1440, height: 1080 });
 		expect(canvasWrites(h)).toBe("");
 	});
 
 	it("adopts once, then never again for later imports (multiple imports)", () => {
-		const h = fresh({
+		const h = buildHarness({
 			assets: [
 				{ id: "a", type: "video", width: 1080, height: 1920 },
 				{ id: "b", type: "video", width: 3000, height: 3000 },
 			],
 		});
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1080, height: 1920 });
-		const writesAfterFirst = h.updates.length;
+		expect(canvasOf(h)).toEqual({ width: 1080, height: 1920 });
+		const writesAfterFirst = h.canvasWrites.length;
+		expect(writesAfterFirst).toBeGreaterThan(0);
 
 		runInsert({ mediaId: "b" });
-		expect(h.settings.canvasSize).toEqual({ width: 1080, height: 1920 });
-		expect(h.updates.length).toBe(writesAfterFirst);
+		expect(canvasOf(h)).toEqual({ width: 1080, height: 1920 });
+		expect(h.canvasWrites.length).toBe(writesAfterFirst);
 	});
 
 	it("still adopts when an AUDIO clip was inserted first (visual-terms rule)", () => {
-		const h = fresh({
-			options: { withAudioElement: true },
+		const h = buildHarness({
+			withAudioElement: true,
 			assets: [{ id: "a", type: "video", width: 1080, height: 1920 }],
 		});
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1080, height: 1920 });
+		expect(canvasOf(h)).toEqual({ width: 1080, height: 1920 });
 	});
 
 	it("does not touch the canvas when the insert itself fails (failed import rollback)", () => {
 		// An explicit placement at a track that does not exist aborts the
 		// command before any settings write — the canvas must stay as the
 		// user left it, exactly as a failed import leaves the project alone.
-		const h = fresh({
-			options: { canvasSize: { width: 1080, height: 1080 } },
+		const h = buildHarness({
+			canvasSize: { width: 1080, height: 1080 },
 			assets: [{ id: "a", type: "video", width: 1080, height: 1920 }],
 		});
 		const command = new commandCtor({
@@ -270,12 +267,12 @@ describe("InsertElementCommand canvas adoption (GitHub #30)", () => {
 			placement: { mode: "explicit", trackId: "does-not-exist" },
 		});
 		command.execute();
-		expect(h.settings.canvasSize).toEqual({ width: 1080, height: 1080 });
+		expect(canvasOf(h)).toEqual({ width: 1080, height: 1080 });
 		expect(canvasWrites(h)).toBe("");
 	});
 
 	it("sizes from SOURCE dims, not the mobile preview proxy's", () => {
-		const h = fresh({
+		const h = buildHarness({
 			assets: [
 				{
 					id: "a",
@@ -288,6 +285,6 @@ describe("InsertElementCommand canvas adoption (GitHub #30)", () => {
 			],
 		});
 		runInsert({ mediaId: "a" });
-		expect(h.settings.canvasSize).toEqual({ width: 1080, height: 1920 });
+		expect(canvasOf(h)).toEqual({ width: 1080, height: 1920 });
 	});
 });

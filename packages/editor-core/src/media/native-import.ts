@@ -7,6 +7,7 @@ import {
 } from "@/media/native-paths";
 import type { MediaAsset, MediaType } from "@/media/types";
 import type { MediaThumbnailStripFrame } from "@/services/storage/types";
+import { generateUUID } from "@/utils/id";
 
 /**
  * Cutlyra M4 — wires the editor's import flow to a `NativeBridge`
@@ -293,6 +294,18 @@ export interface ImportMediaFromNativeParams {
 	 * pick a video" report from the founder's device (2026-08-19).
 	 */
 	onProgress?: (progress: NativeImportProgress) => void;
+	/**
+	 * Commit each imported asset to the project's media library (default).
+	 *
+	 * Replace Clip passes `false`: it must decide whether the replacement can
+	 * honour the clip's existing edit (see `planClipMediaReplacement`) BEFORE
+	 * anything is registered, and the whole replacement has to land as ONE
+	 * undo step. Registering here would also ratchet the project frame rate /
+	 * adopt a canvas aspect, which a replacement must never do. The returned
+	 * assets are fully built (id included) but not persisted; the caller owns
+	 * committing them.
+	 */
+	commitAsset?: boolean;
 }
 
 export interface NativeImportFailure {
@@ -321,6 +334,7 @@ export async function importMediaFromNative({
 	allowMultiple,
 	proxySpec = { targetHeight: 540, shortGop: true },
 	onProgress,
+	commitAsset = true,
 }: ImportMediaFromNativeParams): Promise<ImportMediaFromNativeResult> {
 	let pickFailures = 0;
 	const handles = await source.pickMedia({
@@ -442,6 +456,13 @@ export async function importMediaFromNative({
 			toPlaybackUri: source.toPlaybackUri,
 			mediaRoot,
 		});
+
+		if (!commitAsset) {
+			// Deferred commit (Replace Clip): hand back a complete asset the
+			// caller will register inside its own single-undo-step command.
+			imported.push({ ...assetInput, id: generateUUID() });
+			continue;
+		}
 
 		const command = new AddMediaAssetCommand({ projectId, asset: assetInput });
 		editor.command.execute({ command });
