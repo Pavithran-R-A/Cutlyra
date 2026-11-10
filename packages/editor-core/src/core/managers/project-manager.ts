@@ -194,17 +194,40 @@ export class ProjectManager {
 		if (!this.active) return;
 
 		const projectId = this.active.metadata.id;
-		// Durability gate (Replace Clip #72): never persist a project snapshot
-		// while a replacement's required media write is still pending or has
-		// failed. Compensation reverts the clip on failure; waiting here keeps
-		// auto-save from racing ahead of that compensation.
-		try {
-			const { ReplaceClipMediaCommand } = await import(
-				"@/commands/timeline/element/replace-clip-media"
-			);
-			await ReplaceClipMediaCommand.waitForPendingMediaTransactions({
-				projectId,
-			});
+		const { ReplaceClipMediaCommand } = await import(
+			"@/commands/timeline/element/replace-clip-media"
+		);
+
+		// Fail closed: a coordinator or media-persistence failure must never
+		// fall through into storageService.saveProject(). The consistency
+		// barrier also retries when a replacement mutates mid-save, so the
+		// persisted snapshot cannot be invalidated by a concurrent operation.
+		for (let attempt = 0; attempt < 50; attempt++) {
+			const versionBefore = ReplaceClipMediaCommand.getMutationVersion();
+
+			try {
+				await ReplaceClipMediaCommand.waitForPendingMediaTransactions({
+					projectId,
+				});
+			} catch (error) {
+				console.error(
+					"saveCurrentProject: durability coordinator failed",
+					error,
+				);
+				toast.error({
+					message: "Couldn't save project",
+					description: "Replacement durability check failed",
+				});
+				return;
+			}
+
+			if (
+				ReplaceClipMediaCommand.hasPendingMediaTransactions({ projectId }) ||
+				ReplaceClipMediaCommand.getMutationVersion() !== versionBefore
+			) {
+				continue;
+			}
+
 			const failures =
 				ReplaceClipMediaCommand.getFailedMediaTransactions({ projectId });
 			if (failures.length > 0) {
@@ -218,11 +241,9 @@ export class ProjectManager {
 				});
 				return;
 			}
-		} catch (error) {
-			console.error("saveCurrentProject: durability wait failed", error);
-		}
 
-		try {
+			if (this.active?.metadata.id !== projectId) return;
+
 			const scenes = this.editor.scenes.getScenes();
 			const updatedProject = {
 				...this.active,
@@ -234,12 +255,39 @@ export class ProjectManager {
 				},
 			};
 
-			await storageService.saveProject({ project: updatedProject });
+			if (
+				ReplaceClipMediaCommand.getMutationVersion() !== versionBefore ||
+				ReplaceClipMediaCommand.hasPendingMediaTransactions({ projectId })
+			) {
+				continue;
+			}
+
+			try {
+				await storageService.saveProject({ project: updatedProject });
+			} catch (error) {
+				console.error("Failed to save project:", error);
+				return;
+			}
+
+			if (
+				ReplaceClipMediaCommand.getMutationVersion() !== versionBefore ||
+				ReplaceClipMediaCommand.hasPendingMediaTransactions({ projectId })
+			) {
+				// A replacement started while saving; retry so the final durable
+				// project state wins instead of a stale snapshot.
+				continue;
+			}
+
 			this.active = updatedProject;
 			this.updateMetadata(updatedProject);
-		} catch (error) {
-			console.error("Failed to save project:", error);
+			return;
 		}
+
+		console.error("saveCurrentProject: consistency barrier exhausted");
+		toast.error({
+			message: "Couldn't save project",
+			description: "Replacement state changed repeatedly",
+		});
 	}
 
 	async export({ options }: { options: ExportOptions }): Promise<ExportResult> {

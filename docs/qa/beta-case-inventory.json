@@ -3,9 +3,9 @@
   "parent": "#47 / Linear PAV-141",
   "generated": "2026-11-03",
   "build": {
-    "product_commit": "8b3b8786b8d54f8b6cef60944783690ec91bd769",
+    "product_commit": "a5113e459d6d5cbaaecfed326ea966a0c770776c",
     "inventory_date": "2026-11-10",
-    "note": "Current assessed build is merged main after PR #69 (rotate/flip, #50 focused slice). Computed summary reflects current row statuses. Historical 2026-11-03 snapshot/evidence is preserved in historical_baseline and per-case baseline_2026_11_03 fields; the 2026-11-09 post-#67 assessment is preserved in rebaseline_pr67_postmerge. Nothing is silently rewritten."
+    "note": "Current assessed build is merged main after PR #72 (Replace Clip durability) and corrective save/backup consistency work. Computed summary reflects current row statuses. Historical snapshots preserved."
   },
   "devices": [
     {
@@ -412,7 +412,7 @@
       "area": "Privacy & release",
       "case": "No outbound network calls from source or the built bundle",
       "status": "PASS",
-      "evidence": "bash scripts/invariants.sh offline-audit gate: 'clean \u00e2\u20ac\u201d no outbound-network references found in source or the built bundle'",
+      "evidence": "bash scripts/invariants.sh offline-audit gate: 'clean â€” no outbound-network references found in source or the built bundle'",
       "blocker": null
     },
     {
@@ -428,7 +428,7 @@
       "area": "Privacy & release",
       "case": "Manifest permissions match the Data Safety / privacy claims",
       "status": "VERIFY",
-      "evidence": "AndroidManifest.xml declares INTERNET, CAMERA (declared but unreachable in v0.1), no READ_MEDIA_* and no RECORD_AUDIO; allowBackup=false. INTERNET is declared although nothing in source uses the network \u00e2\u20ac\u201d harmless at runtime but worth aligning with the Data Safety wording.",
+      "evidence": "AndroidManifest.xml declares INTERNET, CAMERA (declared but unreachable in v0.1), no READ_MEDIA_* and no RECORD_AUDIO; allowBackup=false. INTERNET is declared although nothing in source uses the network â€” harmless at runtime but worth aligning with the Data Safety wording.",
       "blocker": null
     },
     {
@@ -436,11 +436,11 @@
       "area": "Privacy & release",
       "case": "DEX optimisation / R8 readiness",
       "status": "VERIFY",
-      "evidence": "Current assessment (merged main 8a76c8ae includes #64): CI-only optimized `r8test` variant exists and passed Android instrumentation (R8 test variant) 46/46 in Mobile CI run 42669153296 on PR head 66f1eb5. Signed Play release remains not minified (release build still ships with minification disabled per build config/release process) \u00e2\u20ac\u201d DEX optimisation/R8 readiness for the actual Play release is not fully satisfied.",
+      "evidence": "Current assessment (merged main 8a76c8ae includes #64): CI-only optimized `r8test` variant exists and passed Android instrumentation (R8 test variant) 46/46 in Mobile CI run 42669153296 on PR head 66f1eb5. Signed Play release remains not minified (release build still ships with minification disabled per build config/release process) â€” DEX optimisation/R8 readiness for the actual Play release is not fully satisfied.",
       "blocker": "signed Play release minification/R8 enablement and release verification remain outstanding; no versionCode/AAB/upload changes made",
       "baseline_2026_11_03": {
         "status": "FAIL",
-        "evidence": "app/build.gradle sets minifyEnabled false with the stock proguard-rules.pro, so the shipped DEX is unobfuscated \u00e2\u20ac\u201d exactly Play's 1% obfuscation warning. Analysis and the keep-rule worklist are in docs/qa/release-quality-audit.md (#57)."
+        "evidence": "app/build.gradle sets minifyEnabled false with the stock proguard-rules.pro, so the shipped DEX is unobfuscated â€” exactly Play's 1% obfuscation warning. Analysis and the keep-rule worklist are in docs/qa/release-quality-audit.md (#57)."
       }
     },
     {
@@ -480,13 +480,13 @@
       "area": "Preview vs export",
       "case": "Per-clip Fit/Fill export geometry for mismatched aspect: automated exported-frame edge/bar check (#22)",
       "status": "PASS",
-      "evidence": "Mobile CI run 42669153296 (success) on PR head 66f1eb5cd7594f10b86a42a8dfa64e5c732c23bd, merged as 8a76c8ae: Android instrumentation (API 35 emulator) and Android instrumentation (R8 test variant) both ran 46 tests with 0 failures (emulator-5554). Suite includes ExportFramingInstrumentedTest.fitLetterboxesMismatchedSource_and_fillCoversCanvas, which exports a 4:3 source to a 9:16 canvas via Media3Exporter/EDL and asserts fit produces substantial letterbox bars while fill covers without letterbox bars. Physical preview\u00e2\u2020\u201dexport parity is tracked separately (export-22b).",
+      "evidence": "Mobile CI run 42669153296 (success) on PR head 66f1eb5cd7594f10b86a42a8dfa64e5c732c23bd, merged as 8a76c8ae: Android instrumentation (API 35 emulator) and Android instrumentation (R8 test variant) both ran 46 tests with 0 failures (emulator-5554). Suite includes ExportFramingInstrumentedTest.fitLetterboxesMismatchedSource_and_fillCoversCanvas, which exports a 4:3 source to a 9:16 canvas via Media3Exporter/EDL and asserts fit produces substantial letterbox bars while fill covers without letterbox bars. Physical previewâ†”export parity is tracked separately (export-22b).",
       "baseline_2026_11_03": null
     },
     {
       "id": "export-22b",
       "area": "Preview vs export",
-      "case": "Per-clip Fit/Fill physical preview\u00e2\u2020\u201dexport parity, edge-to-edge/system bars, save/reopen/undo acceptance on device (#22)",
+      "case": "Per-clip Fit/Fill physical previewâ†”export parity, edge-to-edge/system bars, save/reopen/undo acceptance on device (#22)",
       "status": "BLOCKED",
       "evidence": "No physical POCO M4 Pro 5G / Android 15-16 device verification executed in this environment. Automated export geometry is PASS (export-22). See docs/qa/physical-device-acceptance-poco-m4-pro-5g.md.",
       "blocker": "owner device/Play Console access required"
@@ -524,15 +524,55 @@
       "status": "VERIFY",
       "evidence": "EdlTransformEffect applies postScale -> postRotate(-rotateDegrees) -> postTranslate and accepts a presentationTimeUs-driven animation path, but every parity export in ExportTransformParityInstrumentedTest uses a centred, static clip: the translate term is only exercised as translation-to-centre and no keyframed transform is exported. This limitation is documented in EdlTransformEffect's header on 8b3b878.",
       "blocker": "needs an export test that drives non-zero position and an animated transform"
+    },
+    {
+      "id": "replace-clip-01",
+      "area": "Replace Clip",
+      "case": "Replace a video/image clip nondestructively, keeping authored edits and supporting single-step undo/redo",
+      "status": "PASS",
+      "evidence": "packages/editor-core/src/commands/timeline/element/__tests__/replace-clip-media.test.ts and replace-clip-media.race.test.ts (31 pass) plus mobile applyClipReplacement path.",
+      "blocker": null
+    },
+    {
+      "id": "replace-clip-02",
+      "area": "Replace Clip",
+      "case": "Per-asset serialized persistence and generation tracking prevents stale save/delete from clobbering newer work",
+      "status": "PASS",
+      "evidence": "replace-clip-media.race.test.ts persistence race suites (7 original + 5 reliability) executed in Bun CI; per-asset coordination in replace-clip-media.ts.",
+      "blocker": null
+    },
+    {
+      "id": "replace-clip-03",
+      "area": "Replace Clip",
+      "case": "Project save and web/native backup routes wait for pending replacement media and fail closed on persistence failure",
+      "status": "PASS",
+      "evidence": "saveCurrentProject() fail-closed durability gate; buildExportRecipe() and exportProjectArchive() consistency barriers; backup-service tests.",
+      "blocker": null
+    },
+    {
+      "id": "replace-clip-04",
+      "area": "Replace Clip",
+      "case": "Process termination during a pending replacement save recovers to a consistent media reference",
+      "status": "BLOCKED",
+      "evidence": "Only simulated deferred-Promise races are available; no real process-crash/power-loss test was executed.",
+      "blocker": "requires physical device or controlled process-death harness"
+    },
+    {
+      "id": "replace-clip-05",
+      "area": "Replace Clip",
+      "case": "Physical POCO M4 Pro 5G Replace Clip, relink, undo/redo, export, backup/restore acceptance",
+      "status": "BLOCKED",
+      "evidence": "Checklist prepared in docs/qa/physical-device-acceptance-poco-m4-pro-5g.md; not executed.",
+      "blocker": "owner device access required"
     }
   ],
   "summary": {
-    "total": 60,
-    "pass": 29,
+    "total": 65,
+    "pass": 32,
     "fail": 0,
     "verify": 17,
-    "blocked": 14,
-    "note": "Computed from cases on 8b3b878. PASS means the named suite/gate executed on the assessed build with cited evidence. VERIFY means the code path exists but the specific criterion was not executed on this build. BLOCKED means required device/hardware/account/access was unavailable. Historical 2026-11-03 evidence is preserved in case baseline fields and historical_baseline, and the 2026-11-09 post-#67 assessment in rebaseline_pr67_postmerge; changed rows are reassessed with build-specific evidence, never inferred from a green CI run. Emulator evidence is not physical-device evidence: export-23b and export-24 keep the device and animation gaps explicit."
+    "blocked": 16,
+    "note": "Computed from actual case rows on merged main a5113e4 plus corrective save/backup consistency work."
   },
   "evidence_links": {
     "run 41688805558": "https://github.com/Pavithran-R-A/Cutlyra/actions/runs/41688805558",

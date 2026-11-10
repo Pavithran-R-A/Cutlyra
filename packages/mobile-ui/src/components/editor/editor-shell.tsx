@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { TICKS_PER_SECOND, type EditorCore, type NativeImportProgress } from "@cutlyra/editor-core";
+import { ReplaceClipMediaCommand } from "@cutlyra/editor-core/commands";
 import { cn } from "../../lib/cn";
 import { isVisualElement, type ElementRef, type TimelineElement, type VisualElement } from "@cutlyra/editor-core/timeline";
 import { mediaTime, mediaTimeToSeconds, type MediaTime } from "@cutlyra/editor-core/wasm";
@@ -361,11 +362,37 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 
 				const applied = applyClipReplacement({ editor, ref, asset: outcome.asset });
 				if (applied.status === "replaced") {
-					setChromeNotice(
-						applied.clamped
-							? "Clip media replaced (shortened to fit the new file). Saving media…"
-							: "Clip media replaced — saving media…",
-					);
+					const clamped = applied.clamped;
+					const provisional = clamped
+						? "Clip media replaced (shortened to fit the new file). Saving media…"
+						: "Clip media replaced — saving media…";
+					setChromeNotice(provisional);
+					const projectId = editor.project.getActive().metadata.id;
+					const assetId = outcome.asset.id;
+					void (async () => {
+						try {
+							await ReplaceClipMediaCommand.waitForPendingMediaTransactions({
+								projectId,
+							});
+							const failures =
+								ReplaceClipMediaCommand.getFailedMediaTransactions({
+									projectId,
+								});
+							if (failures.some((failure) => failure.assetId === assetId)) {
+								setChromeNotice(
+									"Couldn't save the replacement — the clip was left unchanged",
+								);
+								return;
+							}
+							setChromeNotice(
+								clamped
+									? "Clip media replaced, shortened, and saved."
+									: "Clip media replaced and saved.",
+							);
+						} catch {
+							setChromeNotice("Couldn't verify replacement save");
+						}
+					})();
 					return;
 				}
 				if (applied.status === "refused") setChromeError(applied.message);
@@ -705,7 +732,37 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 							allowClamp: true,
 						});
 						if (applied.status === "replaced") {
-							setChromeNotice("Clip media replaced and shortened to fit the new file.");
+							const provisional =
+								"Clip media replaced (shortened to fit the new file). Saving media…";
+							setChromeNotice(provisional);
+							const projectId = editor.project.getActive().metadata.id;
+							const assetId = pending.asset.id;
+							void (async () => {
+								try {
+									await ReplaceClipMediaCommand.waitForPendingMediaTransactions(
+										{ projectId },
+									);
+									const failures =
+										ReplaceClipMediaCommand.getFailedMediaTransactions({
+											projectId,
+										});
+									if (
+										failures.some(
+											(failure) => failure.assetId === assetId,
+										)
+									) {
+										setChromeNotice(
+											"Couldn't save the replacement — the clip was left unchanged",
+										);
+										return;
+									}
+									setChromeNotice(
+										"Clip media replaced, shortened, and saved.",
+									);
+								} catch {
+									setChromeNotice("Couldn't verify replacement save");
+								}
+							})();
 							return;
 						}
 						if (applied.status === "refused") setChromeError(applied.message);

@@ -129,6 +129,7 @@ mock.module("@/services/storage/opfs-adapter", () => ({ OPFSAdapter: FakeOPFSAda
 mock.module("@/services/storage/migrations", () => ({
 	migrations: [],
 	runStorageMigrations: async () => {},
+	CURRENT_PROJECT_VERSION: 31,
 }));
 mock.module("@/services/storage/quota", () => ({
 	readStorageQuotaStatus: async () => ({
