@@ -36,7 +36,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | One-tap delete, duplicate | **SHIP** | `DuplicateElementsCommand` covered in the #55 test (lands on a PiP overlay); delete covered by command suite |
 | Trim without losing source | **SHIP** | Non-destructive `trimStart`/`trimEnd`; `split.test.ts` |
 | Gap removal / ripple | **PARTIAL** | `dead-space.test.ts` + `dead-space-cut.test.ts` cover maths; UI exposure unverified |
-| Replace clip | **GAP** | No command; recovery from a lost asset is "delete + re-import" (see #55) |
+| Replace clip | **SHIP** (video/image only) | `ReplaceClipMediaCommand` + `planClipMediaReplacement`; Edit panel Replace/Relink; 19 unit tests + 3 ExportReplaceClip instrumentation tests; durability races (7 tests). Cross-type and audio-clip replacement are not supported. |
 | Freeze frame | **PARTIAL** | `freeze` handling exists in the engine; no toolbar/panel entry point found |
 | Reverse | **GAP** (hidden in shipping UI) | `packages/mobile-ui` has a `toggleReversed` action and editor-core carries a `reversed` param for project compatibility, but `packages/mobile-ui/src/components/panels/edit-panel.tsx` intentionally hides Reverse in v0.1.0 until preview and native export can honor it. Android native export source (`apps/mobile/android/app/src`) has no reverse implementation. `docs/PHYSICAL-QA-MATRIX.md` records a historical Stage 11 PASS claim; do not treat that as current shipping parity without UI+export proof. |
 | Rotate ±90/180 and H/V flip on a clip | **SHIP** | Edit panel Transform controls (`edit-panel.tsx` Rotate L/R, Flip H/V + degree readout) over `rotateVisualElement`/`flipVisualElement`; one `UpdateElementsCommand` per action, so each is one undo step. Exported pixels are asserted for identity, ±90°, 180°, H, V and rotate+H/V by `ExportTransformParityInstrumentedTest` (12 cases, both instrumentation variants). Emulator-only: physical-device parity remains `BLOCKED` (see the row below). |
@@ -114,7 +114,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | Project list with real thumbnails | **PARTIAL** | List renders; thumbnail generation for projects not verified |
 | Project duplicate/delete | **VERIFY** | No dedicated test found for either action |
 | Archive export/import | **SHIP** | `backup-service.test.ts`, `backup-cleanup.test.ts` |
-| Missing-source repair / relink UI | **GAP** | #55 adds the *message*, not a relinker; recovery is delete + re-import |
+| Missing-source repair / relink UI | **SHIP** (relink) | Edit panel relabels to "Relink media" when a clip's media is missing and `ReplaceClipMediaCommand` re-points it; EDL goes unresolved→clean. |
 | Non-destructive migrations | **SHIP** | 30 migration test files (v0→v31) + `persistence.test.ts` |
 | Android 10–16 coverage | **BLOCKED** | Only an API-35 CI emulator is available |
 | 16 KB page-size ELF | **SHIP** | `-Wl,-z,max-page-size=16384` on the only shipped `.so` |
