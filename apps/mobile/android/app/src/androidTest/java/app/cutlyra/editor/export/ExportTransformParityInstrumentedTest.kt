@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
@@ -312,23 +313,62 @@ class ExportTransformParityInstrumentedTest {
     }
 
     /**
-     * The exported file must BE the project canvas: coded pixels at the declared
-     * size with no display-rotation matrix. Rotation is applied once, in-shader,
-     * by EdlTransformEffect, so a container-level rotation would rotate those
-     * pixels a second time for any player that honours it.
+     * The exported file must PRESENT the project canvas.
+     *
+     * Media3 1.11.0 deliberately encodes portrait frames as landscape + a
+     * clockwise display rotation: `VideoEncoderWrapper.getSurfaceInfo` swaps
+     * any request where width < height ("Encoders commonly support higher
+     * maximum widths than maximum heights ... the VideoGraph rotates the
+     * decoded video frames counter-clockwise, and the muxer adds a clockwise
+     * rotation to the metadata"). So a 9:16 project is stored 1920x1080 with
+     * `rotation=90`, and every player that honours the display matrix shows
+     * 1080x1920. Asserting coded pixels equal the canvas would fail on a
+     * correct file; what must hold is that coded size + display rotation ==
+     * the declared canvas, for any rotation Media3 is allowed to pick.
      */
     private fun assertCanvas(file: File, expectW: Int, expectH: Int, label: String) {
         val (codedW, codedH, codedRotation) = codedDims(file)
-        val (mmrW, mmrH) = retrieveDims(file)
-        val mmrRotation = retrieveRotation(file)
+        val quarterTurn = ((codedRotation % 360) + 360) % 360 % 180 == 90
+        val shownW = if (quarterTurn) codedH else codedW
+        val shownH = if (quarterTurn) codedW else codedH
         assertTrue(
-            "$label: expected a ${expectW}x$expectH coded track with no display rotation, " +
-                "got coded ${codedW}x$codedH rotation=$codedRotation " +
-                "(retriever ${mmrW}x$mmrH rotation=$mmrRotation)",
-            abs(codedW - expectW) <= 10 &&
-                abs(codedH - expectH) <= 10 &&
-                codedRotation % 180 == 0,
+            "$label: expected the declared ${expectW}x$expectH canvas to be presented, " +
+                "got coded ${codedW}x$codedH rotation=$codedRotation (presents ${shownW}x$shownH)",
+            abs(shownW - expectW) <= 10 && abs(shownH - expectH) <= 10,
         )
+    }
+
+    /**
+     * Decodes a frame and expresses it in the project canvas orientation, so
+     * pixel assertions are stated in the same coordinates the editor preview
+     * and the EDL canvas use. See [assertCanvas] for why the decoded frame can
+     * arrive rotated.
+     */
+    private fun canvasFrame(
+        file: File,
+        canvasW: Int,
+        canvasH: Int,
+        atUs: Long = 250_000L,
+    ): Bitmap {
+        val mr = MediaMetadataRetriever()
+        try {
+            mr.setDataSource(file.absolutePath)
+            val decoded = mr.getFrameAtTime(atUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: error("no decodable frame in ${file.name}")
+            val frame = decoded.copy(Bitmap.Config.ARGB_8888, false)
+                ?: error("cannot copy frame from ${file.name}")
+            decoded.recycle()
+            if (frame.width == canvasW && frame.height == canvasH) return frame
+            val rotation = retrieveRotation(file)
+            val quarterTurn = ((rotation % 360) + 360) % 360 % 180 == 90
+            if (!quarterTurn) return frame
+            val rotated = Bitmap.createBitmap(
+                frame, 0, 0, frame.width, frame.height,
+                Matrix().apply { postRotate(rotation.toFloat()) }, false,
+            )
+            frame.recycle()
+            return rotated
+        } finally { mr.release() }
     }
 
     @Test fun identity_preservesMarkerCorners() {
@@ -387,41 +427,36 @@ class ExportTransformParityInstrumentedTest {
         // Rotating a clip re-frames its pixels; it must never re-shape the project
         // canvas. A 9:16 project stays 9:16 whatever the clip transform is.
         assertCanvas(out, 1080, 1920, "fit 9:16 with 90° clip rotation")
-        val mr = MediaMetadataRetriever()
+        val bmp = canvasFrame(out, 1080, 1920)
         try {
-            mr.setDataSource(out.absolutePath)
-            val frame = mr.getFrameAtTime(250_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: error("no frame")
-            val bmp = frame.copy(Bitmap.Config.ARGB_8888, false) ?: error("no bmp")
-            try {
-                fun lum(p: Int) = max(max((p shr 16) and 0xFF, (p shr 8) and 0xFF), p and 0xFF)
-                val center = lum(bmp.getPixel(bmp.width / 2, bmp.height / 2))
-                val top = lum(bmp.getPixel(bmp.width / 2, 40))
-                val bottom = lum(bmp.getPixel(bmp.width / 2, bmp.height - 41))
-                val side = lum(bmp.getPixel(40, bmp.height / 2))
-                // Square picture fitted into 9:16 occupies 1080x1080 centred, i.e.
-                // ~420px letterbox bars top and bottom and NO pillarbox bars.
-                assertTrue("fit should keep a visible picture at center (lum=$center)", center >= 30)
-                assertTrue("fit should letterbox top and bottom (top=$top bottom=$bottom)", top < 25 && bottom < 25)
-                assertTrue("fit must not pillarbox a square source in a 9:16 canvas (side=$side)", side >= 30)
-            } finally { bmp.recycle(); frame.recycle() }
-        } finally { mr.release() }
+            assertTrue(
+                "decoded frame must be the declared canvas: ${bmp.width}x${bmp.height}",
+                abs(bmp.width - 1080) <= 10 && abs(bmp.height - 1920) <= 10,
+            )
+            fun lum(p: Int) = max(max((p shr 16) and 0xFF, (p shr 8) and 0xFF), p and 0xFF)
+            val center = lum(bmp.getPixel(bmp.width / 2, bmp.height / 2))
+            val top = lum(bmp.getPixel(bmp.width / 2, 40))
+            val bottom = lum(bmp.getPixel(bmp.width / 2, bmp.height - 41))
+            val side = lum(bmp.getPixel(40, bmp.height / 2))
+            // Square picture fitted into 9:16 occupies 1080x1080 centred, i.e.
+            // ~420px letterbox bars top and bottom and NO pillarbox bars.
+            assertTrue("fit should keep a visible picture at center (lum=$center)", center >= 30)
+            assertTrue("fit should letterbox top and bottom (top=$top bottom=$bottom)", top < 25 && bottom < 25)
+            assertTrue("fit must not pillarbox a square source in a 9:16 canvas (side=$side)", side >= 30)
+        } finally { bmp.recycle() }
     }
 
     @Test fun fillMismatchedCanvas_coversCanvas() {
         val src = createMarkerVideo(tmp("src_fill"))
         val out = export(edlFor(src, EdlAssetKind.VIDEO, srcSize, srcSize, 0, 1080, 1920, "fill", t(r = 90.0)), "fill90")
-        val mr = MediaMetadataRetriever()
+        assertCanvas(out, 1080, 1920, "fill 9:16 with 90° clip rotation")
+        val bmp = canvasFrame(out, 1080, 1920)
         try {
-            mr.setDataSource(out.absolutePath)
-            val frame = mr.getFrameAtTime(250_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: error("no frame")
-            val bmp = frame.copy(Bitmap.Config.ARGB_8888, false) ?: error("no bmp")
-            try {
-                fun lum(p: Int) = max(max((p shr 16) and 0xFF, (p shr 8) and 0xFF), p and 0xFF)
-                val corners = listOf(bmp.getPixel(24, 24), bmp.getPixel(bmp.width - 25, 24), bmp.getPixel(24, bmp.height - 25), bmp.getPixel(bmp.width - 25, bmp.height - 25))
-                val bright = corners.count { lum(it) >= 30 }
-                assertTrue("fill+90 should cover canvas (bright corners=$bright): ${corners.map(::hex)}", bright >= 4)
-            } finally { bmp.recycle(); frame.recycle() }
-        } finally { mr.release() }
+            fun lum(p: Int) = max(max((p shr 16) and 0xFF, (p shr 8) and 0xFF), p and 0xFF)
+            val corners = listOf(bmp.getPixel(24, 24), bmp.getPixel(bmp.width - 25, 24), bmp.getPixel(24, bmp.height - 25), bmp.getPixel(bmp.width - 25, bmp.height - 25))
+            val bright = corners.count { lum(it) >= 30 }
+            assertTrue("fill+90 should cover canvas (bright corners=$bright): ${corners.map(::hex)}", bright >= 4)
+        } finally { bmp.recycle() }
     }
 
     @Test fun sourceRotationMetadata_identityTransform_exportsWithoutCrash() {
