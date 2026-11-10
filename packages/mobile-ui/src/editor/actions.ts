@@ -699,6 +699,69 @@ export function setRetime({
 	});
 }
 
+function readTransformParam({ element, key, fallback }: { element: TimelineElement; key: string; fallback: number }): number {
+	const value = element.params[key];
+	return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function updateTransformParams({
+	editor,
+	ref,
+	patch,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	patch: Record<string, number>;
+}): void {
+	const element = getElement({ editor, ref });
+	if (!element) return;
+	editor.command.execute({
+		command: new UpdateElementsCommand({
+			updates: [{
+				trackId: ref.trackId,
+				elementId: ref.elementId,
+				patch: { params: { ...element.params, ...patch } },
+			}],
+		}),
+	});
+}
+
+export function rotateVisualElement({
+	editor,
+	ref,
+	deltaDegrees,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	deltaDegrees: number;
+}): void {
+	const element = getElement({ editor, ref });
+	if (!element) return;
+	const current = readTransformParam({ element, key: "transform.rotate", fallback: 0 });
+	const next = ((current + deltaDegrees) % 360 + 360) % 360;
+	const normalized = next > 180 ? next - 360 : next; // keep range intuitive (-180,180]
+	if (Object.is(normalized, current)) return;
+	updateTransformParams({ editor, ref, patch: { "transform.rotate": normalized } });
+}
+
+export function flipVisualElement({
+	editor,
+	ref,
+	axis,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	axis: "horizontal" | "vertical";
+}): void {
+	const element = getElement({ editor, ref });
+	if (!element) return;
+	const key = axis === "horizontal" ? "transform.scaleX" : "transform.scaleY";
+	const current = readTransformParam({ element, key, fallback: 1 });
+	const magnitude = Math.abs(current) || 1;
+	const sign = current < 0 ? 1 : -1;
+	updateTransformParams({ editor, ref, patch: { [key]: sign * magnitude } });
+}
+
 export function toggleReversed({ editor, ref }: { editor: EditorCore; ref: ElementRef }): void {
 	const element = getElement({ editor, ref });
 	if (!element) return;

@@ -491,6 +491,11 @@ object EdlToComposition {
             // to this exact output size per-item, so crop-vs-fit only ever
             // differ on the alignment padding, never on content aspect — the
             // crop removes padding, not picture.
+            //
+            // The output canvas is the PROJECT canvas (`edl.output.*`) and does
+            // not depend on clip rotation: rotating a clip re-frames its pixels
+            // inside that canvas (see EdlTransformEffect) and must never swap
+            // the declared portrait/landscape shape of the project.
             compositionVideoEffects.add(
                 Presentation.createForWidthAndHeight(
                     edl.output.resolutionWidth,

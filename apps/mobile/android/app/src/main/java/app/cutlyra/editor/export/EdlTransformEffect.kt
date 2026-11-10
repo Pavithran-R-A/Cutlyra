@@ -25,23 +25,34 @@ import app.cutlyra.editor.edl.EdlTransform
  * If a device run shows item-relative timestamps instead, the fix is
  * `itemStartUs = 0` at the call sites; the first frame's numbers are
  * logged under `cutlyra-export` precisely so that can be read off adb.
+ * * GEOMETRY CONVENTION — VERIFIED FOR ROTATION AND MIRROR, NOT FOR OFFSETS:
+ * `ExportTransformParityInstrumentedTest` exports real MP4s through the actual
+ * `Media3Exporter`/EDL pipeline on the API-35 CI emulator, decodes frames and
+ * reads corner colours of an asymmetric marker. Those decoded pixels confirm
+ * (a) positive `rotateDegrees` is CLOCKWISE on screen, (b) the `postScale` ->
+ * `postRotate(-rotateDegrees)` -> `postTranslate` order produces preview-
+ * equivalent composed transforms (rotate+H/V flips included), and (c) the
+ * NDC/Y-flip mapping below lands the picture where the editor preview shows
+ * it for identity, ±90°, 180°, H and V. Both instrumentation variants (normal
+ * and R8) pass on that evidence.
  *
- * UNVERIFIED CONVENTION (pre-existing, unchanged) — flagged explicitly per
- * task instructions ("be explicit about what needs hardware"):
- * `positionX`/`positionY` are canvas PIXEL offsets from center, Y-down
- * (confirmed from the producer: `services/renderer/compositor/frame-
- * descriptor.ts`: `centerY = height/2 + position.y`). Media3's
- * `MatrixTransformation.getMatrix` matrix is applied in GL normalized
- * device coordinates (`[-1, 1]`), Y-up. The pixel->NDC scale (`2 * offset /
- * canvasDimension`) and the Y-flip (`-transform.positionY`) below are the
- * mathematically obvious mapping between those two conventions, but
- * neither Media3's exact NDC convention for a `MatrixTransformation` nor the
- * resulting on-screen position has been confirmed by rendering an actual
- * frame. Per plan §2.3 rule 3, this effect must pass (or be cut by) the
- * golden-frame parity gate once a device is available; until then it is
- * applied only to clips whose transform is non-identity or keyframed
- * (`EdlToComposition.buildEditedMediaItem`), so the common case never
- * depends on this class at all.
+ * STILL UNVERIFIED — do not infer otherwise:
+ *  - `positionX`/`positionY` pixel offsets. They are canvas-pixel offsets from
+ *    center, Y-down (from the producer: `services/renderer/compositor/frame-
+ *    descriptor.ts`: `centerY = height/2 + position.y`); the pixel->NDC scale
+ *    (`2 * offset / canvasDimension`) and the Y-flip (`-transform.positionY`)
+ *    are the mathematically obvious mapping, but NO test exports a non-zero
+ *    offset, so on-screen placement is unproven.
+ *  - Keyframed transforms: the composition-time base of `presentationTimeUs`
+ *    is argued from media3 behaviour, not measured. The first frame's numbers
+ *    are logged under `cutlyra-export` so a device run can settle it.
+ *  - Physical-device parity (the emulator is not a POCO M4 Pro 5G, and its
+ *    software H.264 encoder takes media3's landscape-encode path, so coded
+ *    portrait geometry arrives as 1920x1080 + a 90° display rotation).
+ *
+ * The effect is still applied only to clips whose transform is non-identity or
+ * keyframed (`EdlToComposition.buildEditedMediaItem`), so the common case never
+ * depends on this class at all.
  */
 class EdlTransformEffect(
     private val clip: EdlClip,

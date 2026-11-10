@@ -1,4 +1,4 @@
-import { Copy, Frame, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
+import { Copy, FlipHorizontal2, FlipVertical2, RotateCcw, RotateCw, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
 import { CC_ICON_STROKE } from "../../tokens";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
@@ -29,6 +29,11 @@ interface EditPanelProps {
 	onSetSpeed: (args: { rate: number; maintainPitch: boolean }) => void;
 	onSetVolume: (db: number) => void;
 	onSetFraming?: (mode: "fit" | "fill") => void;
+	/** Video/image transform edits. Preview and native export must honor these
+	 *  operations before exposing them in release UI. */
+	onRotate?: (deltaDegrees: number) => void;
+	onFlipHorizontal?: () => void;
+	onFlipVertical?: () => void;
 }
 
 /**
@@ -51,14 +56,19 @@ export function EditPanel({
 	onSetSpeed,
 	onSetVolume,
 	onSetFraming,
+	onRotate,
+	onFlipHorizontal,
+	onFlipVertical,
 }: EditPanelProps) {
 	const isRetimable = RETIMABLE_TYPES.has(element.type);
 	const isFramable = FRAMING_TYPES.has(element.type);
+	const canTransform = isFramable && !!(onRotate && onFlipHorizontal && onFlipVertical);
 	const retime = "retime" in element ? element.retime : undefined;
 	const rate = retime?.rate ?? DEFAULT_RETIME_RATE;
 	const maintainPitch = retime?.maintainPitch ?? false;
 	const volumeDb = typeof element.params.volume === "number" ? element.params.volume : 0;
 	const framing = element.params.framing === "fill" ? "fill" : "fit";
+	const rotateDeg = typeof element.params["transform.rotate"] === "number" ? element.params["transform.rotate"] : 0;
 
 	return (
 		<PanelSheet onScrimClick={onClose} header={<SheetHeader onClose={onClose} />}>
@@ -145,6 +155,36 @@ export function EditPanel({
 						{framing === "fill"
 							? "Fill crops the media to cover the canvas. Use Transform to reposition."
 							: "Fit keeps the whole frame visible; the canvas background shows around it."}
+					</p>
+				</div>
+			)}
+
+			{canTransform && onRotate && onFlipHorizontal && onFlipVertical && (
+				<div className="cc-param-row">
+					<div className="cc-param-row__head">
+						<span className="cc-param-row__label">Transform</span>
+						<span className="cc-param-row__value">{Math.round(rotateDeg)}°</span>
+					</div>
+					<div className="cc-panel-actions" style={{ marginTop: 8 }}>
+						<button type="button" className="cc-panel-actions__btn" onClick={() => onRotate(-90)} aria-label="Rotate left 90 degrees">
+							<RotateCcw size={20} strokeWidth={CC_ICON_STROKE} />
+							<span>Rotate L</span>
+						</button>
+						<button type="button" className="cc-panel-actions__btn" onClick={() => onRotate(90)} aria-label="Rotate right 90 degrees">
+							<RotateCw size={20} strokeWidth={CC_ICON_STROKE} />
+							<span>Rotate R</span>
+						</button>
+						<button type="button" className="cc-panel-actions__btn" onClick={onFlipHorizontal} aria-label="Flip horizontal">
+							<FlipHorizontal2 size={20} strokeWidth={CC_ICON_STROKE} />
+							<span>Flip H</span>
+						</button>
+						<button type="button" className="cc-panel-actions__btn" onClick={onFlipVertical} aria-label="Flip vertical">
+							<FlipVertical2 size={20} strokeWidth={CC_ICON_STROKE} />
+							<span>Flip V</span>
+						</button>
+					</div>
+					<p className="cc-hint" style={{ marginTop: 6, fontSize: 12, opacity: 0.72 }}>
+						Rotates and mirrors the selected media. Existing position, scale, and keyframes are preserved.
 					</p>
 				</div>
 			)}

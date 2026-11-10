@@ -545,3 +545,71 @@ describe("framing (#22)", () => {
 		expect(clipB?.framing).toBe("fit");
 	});
 });
+
+describe("rotate/mirror propagation (#50)", () => {
+	function edlWithMainClipParams(
+		params: Record<string, number | string | boolean>,
+	): Edl {
+		const scene = buildFixtureScene();
+		const clip = scene.tracks.main.elements.find((e) => e.id === "clip-a");
+		if (!clip) throw new Error("clip-a missing");
+		Object.assign(clip.params, params);
+		return buildEdl({
+			project: buildFixtureProject(),
+			scene,
+			mediaAssets: buildFixtureMediaAssets(),
+			output: FIXTURE_OUTPUT,
+			resolveAsset: fixtureAssetResolver,
+		});
+	}
+
+	function mainClip(edl: Edl) {
+		const clip = edl.tracks[0].clips.find((c) => c.clipId === "clip-a");
+		if (!clip) throw new Error("clip-a missing from EDL");
+		return clip;
+	}
+
+	test("carries clip rotation into the clip transform", () => {
+		expect(mainClip(edlWithMainClipParams({ "transform.rotate": -90 })).transform).toEqual({
+			positionX: 0,
+			positionY: 0,
+			scaleX: 1,
+			scaleY: 1,
+			rotateDegrees: -90,
+		});
+		expect(mainClip(edlWithMainClipParams({ "transform.rotate": 270 })).transform.rotateDegrees).toBe(270);
+	});
+
+	test("carries a mirror as a signed scale on one axis only", () => {
+		const transform = mainClip(
+			edlWithMainClipParams({ "transform.scaleX": -1.25, "transform.scaleY": 0.5 }),
+		).transform;
+		expect(transform.scaleX).toBe(-1.25);
+		expect(transform.scaleY).toBe(0.5);
+		expect(transform.rotateDegrees).toBe(0);
+	});
+
+	test("carries combined rotation and mirror together", () => {
+		const transform = mainClip(
+			edlWithMainClipParams({ "transform.rotate": 90, "transform.scaleY": -1 }),
+		).transform;
+		expect(transform.rotateDegrees).toBe(90);
+		expect(transform.scaleY).toBe(-1);
+		expect(transform.scaleX).toBe(1);
+	});
+
+	test("mirroring the main clip leaves the text overlay transform untouched", () => {
+		const edl = edlWithMainClipParams({ "transform.scaleX": -1, "transform.rotate": 90 });
+		const overlay = edl.tracks.find((t) => t.kind === "overlay");
+		if (!overlay) throw new Error("overlay track missing");
+		const title = overlay.clips.find((c) => c.clipId === "clip-title");
+		if (!title) throw new Error("clip-title missing");
+		expect(title.transform).toEqual({
+			positionX: 0,
+			positionY: -200,
+			scaleX: 1,
+			scaleY: 1,
+			rotateDegrees: 0,
+		});
+	});
+});
