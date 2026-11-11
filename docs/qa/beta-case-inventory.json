@@ -768,5 +768,43 @@
     "pr71_sha": "6296959bc995687b090821510909fdb6256d1eb8",
     "reliability_pr": "feat/replace-clip-reliability",
     "note": "Replace Clip functional/export evidence (PR #71) and durability/failure-injection evidence (ReplaceClipMediaCommand persistence races: 7 tests) are separate from the 60-row beta inventory, which remains assessed against 8b3b878. Replace Clip is implemented for video/image clips only; cross-type and audio-clip replacement are not supported. Device-specific cases remain VERIFY/BLOCKED pending POCO M4 Pro acceptance."
+  },
+  "qa_isolated_build_assessment": {
+    "date": "2026-11-11",
+    "assessed_source_commit": "ef9640a17957c56e9c355a3c93ada5c4dfb7ed33",
+    "branch": "feat/qa-isolated-build",
+    "variant": {
+      "application_id": "app.cutlyra.editor.qa",
+      "app_label": "Cutlyra QA",
+      "signing": "debug",
+      "build_type": "qa",
+      "fileprovider_authority": "app.cutlyra.editor.qa.fileprovider"
+    },
+    "qualification": {
+      "unit_integration": "Preserved: 783 Bun tests expected green; no production source changes for QA isolation.",
+      "ci_emulator": "Pending full seven-job CI on final PR SHA; existing 61 Android instrumentation tests must remain green in debug and R8 variants. The API-35 instrumentation job also installs the QA APK alongside the debug build and launches it.",
+      "isolated_qa_apk": "Local assembleQa output verified: app/build/outputs/apk/qa/app-qa.apk, package app.cutlyra.editor.qa, label Cutlyra QA, provider app.cutlyra.editor.qa.fileprovider, Android Debug signing. CI artifact upload pending.",
+      "local_apk_verification": {
+        "file": "app/build/outputs/apk/qa/app-qa.apk",
+        "sha256": "0fd5740e7d99e937c73a31339d6289ce249644ed61b9f8485a9269018f9e935f",
+        "version_code": 1,
+        "version_name": "0.1.0",
+        "min_sdk": 29,
+        "target_sdk": 36,
+        "launcher_activity": "app.cutlyra.editor.FirstRunActivity",
+        "launcher_label": "Cutlyra QA"
+      },
+      "physical_poco": "BLOCKED: no authorized installation or device modification; existing Cutlyra v0.1.0 must remain unchanged.",
+      "signed_release": "BLOCKED: no versionCode bump, release signing, AAB upload, or Play rollout.",
+      "google_play": "BLOCKED: no Play Console changes."
+    },
+    "inventory_counts_unchanged": {
+      "total": 65,
+      "pass": 32,
+      "fail": 0,
+      "verify": 17,
+      "blocked": 16
+    },
+    "note": "Historical snapshots preserved. Physical-device and process-crash cases are not marked PASS without execution."
   }
 }

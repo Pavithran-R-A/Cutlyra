@@ -128,6 +128,18 @@ android {
                     'proguard-rules.pro',
                     'proguard-instrumentation-rules.pro'
         }
+        // Isolated physical-device QA variant (GitHub #75). It installs as a
+        // separate package (app.cutlyra.editor.qa) with a distinct app label,
+        // debug signing, and no shared app-private storage, while inheriting
+        // the normal debug build's unminified, representative application
+        // logic. It is never used for distribution.
+        qa {
+            initWith buildTypes.debug
+            matchingFallbacks = ['debug']
+            applicationIdSuffix ".qa"
+            debuggable true
+            minifyEnabled false
+        }
     }
     // GitHub #57: AGP creates androidTest variants only for the single
     // `testBuildType` (default `debug`), so `connectedR8testAndroidTest` does

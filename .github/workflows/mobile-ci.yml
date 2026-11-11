@@ -145,6 +145,54 @@ jobs:
         run: ./gradlew assembleDebug --console=plain
         working-directory: apps/mobile/android
 
+      - name: gradlew assembleQa
+        # Isolated physical-device QA variant: separate application ID
+        # (app.cutlyra.editor.qa), distinct app label, debug signing, no
+        # shared app-private storage. Built from the same source SHA as the
+        # production debug build so QA exercises representative logic.
+        run: ./gradlew assembleQa --console=plain
+        working-directory: apps/mobile/android
+
+      - name: Verify isolated QA package and debug signing
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/qa/app-qa.apk"
+          test -s "$APK"
+
+          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+          AAPT="$BUILD_TOOLS/aapt2"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | grep -q "package: name='app.cutlyra.editor.qa'"
+          "$AAPT" dump badging "$APK" | grep -q "application-label:'Cutlyra QA'"
+          "$AAPT" dump badging "$APK" | grep -q "launchable-activity: name='app.cutlyra.editor.FirstRunActivity'  label='Cutlyra QA'"
+          "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" | grep -q 'app.cutlyra.editor.qa.fileprovider'
+
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK" | grep -q "CN=Android Debug"
+
+          sha256sum "$APK" | tee app/build/outputs/apk/qa/app-qa.apk.sha256
+          {
+            echo "### Isolated QA APK"
+            echo ""
+            echo "- source commit: \`${GITHUB_SHA}\`"
+            echo "- package: \`app.cutlyra.editor.qa\`"
+            echo "- label: \`Cutlyra QA\`"
+            echo "- provider: \`app.cutlyra.editor.qa.fileprovider\`"
+            echo "- signing: Android Debug"
+            echo "- sha256: \`$(sha256sum "$APK" | cut -d' ' -f1)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+        working-directory: apps/mobile/android
+
+      - name: Upload isolated QA APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cutlyra-qa-debug-apk
+          path: |
+            apps/mobile/android/app/build/outputs/apk/qa/app-qa.apk
+            apps/mobile/android/app/build/outputs/apk/qa/app-qa.apk.sha256
+          if-no-files-found: error
+
       - name: Verify bundled offline-caption payload
         run: |
           set -euo pipefail
@@ -388,6 +436,7 @@ jobs:
             mkdir -p app/build/outputs/androidTest-evidence
             adb exec-out run-as app.cutlyra.editor cat files/filmstrip-evidence/thumbnail-strip-contact-sheet.png > app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png
             [ "$(wc -c < app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png)" -ge 1024 ] || { rm -f app/build/outputs/androidTest-evidence/thumbnail-strip-contact-sheet.png; echo "::error::the filmstrip contact sheet was not pulled off the device"; exit 1; }
+            if [ "$test_status" -eq 0 ]; then ./gradlew :app:assembleQa --console=plain && adb install -r app/build/outputs/apk/qa/app-qa.apk && adb shell pm list packages | grep -q 'app.cutlyra.editor.qa' && adb shell pm list packages | grep -q 'app.cutlyra.editor$' && adb shell am start -W -n app.cutlyra.editor.qa/app.cutlyra.editor.FirstRunActivity && sleep 8 && adb shell pidof app.cutlyra.editor.qa >/dev/null && ! adb logcat -d -s AndroidRuntime:E | grep -q 'FATAL EXCEPTION.*app.cutlyra.editor.qa' && echo 'QA variant coexistence smoke passed' || { echo '::error::QA variant coexistence smoke failed'; test_status=1; }; fi
             exit $test_status
 
       - name: Upload instrumentation reports
