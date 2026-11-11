@@ -89,11 +89,15 @@ describe("ProjectManager saveCurrentProject durability", () => {
 	let mainTrackId: string;
 	let saveMediaSpy: ReturnType<typeof spyOn<typeof storageService, "saveMediaAsset">>;
 	let saveProjectSpy: ReturnType<typeof spyOn<typeof storageService, "saveProject">>;
+	let deleteMediaSpy: ReturnType<typeof spyOn<typeof storageService, "deleteMediaAsset">>;
 	let waitSpy: ReturnType<typeof spyOn<typeof ReplaceClipMediaCommand, "waitForPendingMediaTransactions">> | null = null;
 
 	beforeEach(() => {
 		({ editor, projectId, mainTrackId } = bootstrap());
 		saveMediaSpy = spyOn(storageService, "saveMediaAsset").mockImplementation(
+			async () => undefined,
+		);
+		deleteMediaSpy = spyOn(storageService, "deleteMediaAsset").mockImplementation(
 			async () => undefined,
 		);
 		ReplaceClipMediaCommand.resetPendingOperations();
@@ -106,6 +110,7 @@ describe("ProjectManager saveCurrentProject durability", () => {
 		waitSpy = null;
 		saveMediaSpy.mockRestore();
 		saveProjectSpy?.mockRestore();
+		deleteMediaSpy?.mockRestore();
 		EditorCore.reset();
 	});
 
@@ -149,8 +154,12 @@ describe("ProjectManager saveCurrentProject durability", () => {
 			}),
 		});
 
+		const savedProjects: unknown[] = [];
 		saveProjectSpy = spyOn(storageService, "saveProject").mockImplementation(
-			async () => undefined,
+			async ({ project }: { project: unknown }) => {
+				savedProjects.push(project);
+				return undefined;
+			},
 		);
 
 		const savePromise = editor.project.saveCurrentProject();
@@ -161,7 +170,24 @@ describe("ProjectManager saveCurrentProject durability", () => {
 		await d.promise.catch(() => undefined);
 		await ReplaceClipMediaCommand.flushPendingOperations();
 		await savePromise;
-		expect(saveProjectSpy).not.toHaveBeenCalled();
+
+		// The failed replacement is compensated and the clip is restored to the
+		// original media, so the consistent restored project may be persisted.
+		// It must never retain a reference to the failed replacement media.
+		expect(saveProjectSpy).toHaveBeenCalled();
+		const serialized = JSON.stringify(savedProjects[0] ?? {});
+		expect(serialized).toContain('"mediaId":"asset-original"');
+		expect(serialized).not.toContain('"mediaId":"asset-fresh"');
+
+		const scene = editor.scenes.getActiveScene();
+		const track = scene.tracks.main;
+		const element = track.elements.find(
+			(candidate: { id?: string }) => candidate.id === ref.elementId,
+		);
+		expect(element?.mediaId).toBe("asset-original");
+		expect(
+			editor.media.getAssets().some((asset) => asset.id === "asset-fresh"),
+		).toBe(false);
 	});
 
 	it("fails closed when the durability coordinator throws", async () => {
