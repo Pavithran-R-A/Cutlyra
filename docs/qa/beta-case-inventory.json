@@ -771,7 +771,7 @@
   },
   "qa_isolated_build_assessment": {
     "date": "2026-11-11",
-    "assessed_source_commit": "ef9640a17957c56e9c355a3c93ada5c4dfb7ed33",
+    "assessed_source_commit": "86b1cfb7264255df26be1bb7b05804d9c4f94198",
     "branch": "feat/qa-isolated-build",
     "variant": {
       "application_id": "app.cutlyra.editor.qa",
@@ -782,8 +782,8 @@
     },
     "qualification": {
       "unit_integration": "Preserved: 783 Bun tests expected green; no production source changes for QA isolation.",
-      "ci_emulator": "Pending full seven-job CI on final PR SHA; existing 61 Android instrumentation tests must remain green in debug and R8 variants. The API-35 instrumentation job also installs the QA APK alongside the debug build and launches it.",
-      "isolated_qa_apk": "Local assembleQa output verified: app/build/outputs/apk/qa/app-qa.apk, package app.cutlyra.editor.qa, label Cutlyra QA, provider app.cutlyra.editor.qa.fileprovider, Android Debug signing. CI artifact upload pending.",
+      "ci_emulator": "PASS on PR #75 head 86b1cfb: Android instrumentation (API 35 emulator) ran 61 tests with 0 skipped and 0 failed, then installed app.cutlyra.editor.qa beside app.cutlyra.editor and launched FirstRunActivity; the QA coexistence smoke passed. R8 instrumentation ran 61 tests and BUILD SUCCESSFUL.",
+      "isolated_qa_apk": "PASS on PR #75 head 86b1cfb: CI built app/build/outputs/apk/qa/app-qa.apk, verified package app.cutlyra.editor.qa, label Cutlyra QA, provider app.cutlyra.editor.qa.fileprovider, Android Debug signing, and uploaded the cutlyra-qa-debug-apk artifact.",
       "local_apk_verification": {
         "file": "app/build/outputs/apk/qa/app-qa.apk",
         "sha256": "0fd5740e7d99e937c73a31339d6289ce249644ed61b9f8485a9269018f9e935f",
@@ -793,6 +793,16 @@
         "target_sdk": 36,
         "launcher_activity": "app.cutlyra.editor.FirstRunActivity",
         "launcher_label": "Cutlyra QA"
+      },
+      "ci_artifact_verification": {
+        "workflow": "Mobile CI run 43034392583",
+        "artifact": "cutlyra-qa-debug-apk",
+        "file": "app-qa.apk",
+        "sha256": "2127f78a1cd760758d09ea8d4bd24a5fdee87ad558f63e3cae856f574df2dd86",
+        "package": "app.cutlyra.editor.qa",
+        "launcher_label": "Cutlyra QA",
+        "provider": "app.cutlyra.editor.qa.fileprovider",
+        "signing": "Android Debug"
       },
       "physical_poco": "BLOCKED: no authorized installation or device modification; existing Cutlyra v0.1.0 must remain unchanged.",
       "signed_release": "BLOCKED: no versionCode bump, release signing, AAB upload, or Play rollout.",

@@ -64,7 +64,7 @@
 
 ## Isolated QA variant (app.cutlyra.editor.qa)
 
-**Status:** PREPARED ONLY. The QA APK installs alongside the production app. No installation, uninstall, data clear, force-stop, settings change, media deletion, Play update, or Play closed-test change is authorized until the owner explicitly approves.
+**Status:** PREPARED ONLY for physical POCO acceptance. The CI-managed API-35 emulator installed the QA APK beside the debug build and launched it successfully; the owner's POCO was not touched. No installation, uninstall, data clear, force-stop, settings change, media deletion, Play update, or Play closed-test change is authorized until the owner explicitly approves.
 
 ### Isolation proof (build-level)
 - [ ] Application ID is `app.cutlyra.editor.qa`, distinct from production `app.cutlyra.editor`.
