@@ -61,3 +61,50 @@
 ### Evidence to capture
 - [ ] Screenshots before/after, relevant logcat, before/after media IDs, exported MP4s, backup archive, free-space measurements, and pass/fail notes per item.
 - [ ] Do not uninstall the owner's app, clear app data, alter Play closed test, change versionCode, or upload AAB during this acceptance.
+
+## Isolated QA variant (app.cutlyra.editor.qa)
+
+**Status:** PREPARED ONLY for physical POCO acceptance. The CI-managed API-35 emulator installed the QA APK beside the debug build and launched it successfully; the owner's POCO was not touched. No installation, uninstall, data clear, force-stop, settings change, media deletion, Play update, or Play closed-test change is authorized until the owner explicitly approves.
+
+### Isolation proof (build-level)
+- [ ] Application ID is `app.cutlyra.editor.qa`, distinct from production `app.cutlyra.editor`.
+- [ ] App label is `Cutlyra QA`.
+- [ ] FileProvider authority is `app.cutlyra.editor.qa.fileprovider`, distinct from production.
+- [ ] APK is debug-signed with the standard Android debug keystore.
+- [ ] Private app storage, database, media, cache, and FileProvider paths are package-scoped and are not shared with production.
+- [ ] Production signing secrets, versionCode, AAB, and Play closed-test state are unchanged.
+
+### Owner-authorized installation steps (after explicit approval only)
+1. Confirm the production Cutlyra v0.1.0 installation and its data are backed up/recorded as needed.
+2. Download the `cutlyra-qa-debug-apk` artifact from the qualified GitHub Actions run. The APK inside is `app-qa.apk`; the adjacent `.sha256` file records its checksum.
+3. Verify the APK package ID (`app.cutlyra.editor.qa`), label (`Cutlyra QA`), provider authority (`app.cutlyra.editor.qa.fileprovider`), and Android Debug signature before installation.
+4. With the device connected, install only with `adb -s <serial> install` for the QA APK; never use Gradle connected tasks on the physical device.
+5. Launch `Cutlyra QA` and confirm it starts independently from production Cutlyra.
+6. Do not uninstall, clear data, force-stop, or update the production app.
+
+### Acceptance checklist for the isolated QA installation
+- [ ] Fresh project creation.
+- [ ] Import video and image.
+- [ ] Multiple timeline clips.
+- [ ] Filmstrip thumbnails.
+- [ ] Portrait Fit/Fill.
+- [ ] Rotate and Flip.
+- [ ] Trim, Split and Speed.
+- [ ] Replace Clip.
+- [ ] Relink missing media.
+- [ ] Replace with shorter source.
+- [ ] Undo and Redo.
+- [ ] Save and reopen.
+- [ ] Backup and restore.
+- [ ] Actual MP4 export.
+- [ ] Audio/video synchronization.
+- [ ] Background and foreground.
+- [ ] Offline mode.
+- [ ] Low-storage failures.
+- [ ] Process-crash recovery.
+- [ ] Proxy cache retention.
+- [ ] Permission and picker behavior.
+- [ ] UI clipping and navigation bars.
+- [ ] Original source preservation.
+
+For each case record setup, action, expected result, evidence, pass/fail criteria, and safe cleanup restricted to the QA installation. Destructive scenarios require explicit owner approval and must never touch production app data.
