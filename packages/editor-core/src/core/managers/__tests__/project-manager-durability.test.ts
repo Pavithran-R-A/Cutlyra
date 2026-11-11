@@ -89,6 +89,7 @@ describe("ProjectManager saveCurrentProject durability", () => {
 	let mainTrackId: string;
 	let saveMediaSpy: ReturnType<typeof spyOn<typeof storageService, "saveMediaAsset">>;
 	let saveProjectSpy: ReturnType<typeof spyOn<typeof storageService, "saveProject">>;
+	let waitSpy: ReturnType<typeof spyOn<typeof ReplaceClipMediaCommand, "waitForPendingMediaTransactions">> | null = null;
 
 	beforeEach(() => {
 		({ editor, projectId, mainTrackId } = bootstrap());
@@ -100,6 +101,9 @@ describe("ProjectManager saveCurrentProject durability", () => {
 
 	afterEach(async () => {
 		await ReplaceClipMediaCommand.flushPendingOperations();
+		ReplaceClipMediaCommand.resetPendingOperations();
+		waitSpy?.mockRestore();
+		waitSpy = null;
 		saveMediaSpy.mockRestore();
 		saveProjectSpy?.mockRestore();
 		EditorCore.reset();
@@ -155,6 +159,7 @@ describe("ProjectManager saveCurrentProject durability", () => {
 
 		d.reject(new Error("media write failed"));
 		await d.promise.catch(() => undefined);
+		await ReplaceClipMediaCommand.flushPendingOperations();
 		await savePromise;
 		expect(saveProjectSpy).not.toHaveBeenCalled();
 	});
@@ -163,7 +168,7 @@ describe("ProjectManager saveCurrentProject durability", () => {
 		saveProjectSpy = spyOn(storageService, "saveProject").mockImplementation(
 			async () => undefined,
 		);
-		const waitSpy = spyOn(
+		waitSpy = spyOn(
 			ReplaceClipMediaCommand,
 			"waitForPendingMediaTransactions",
 		).mockImplementation(async () => {
@@ -172,7 +177,6 @@ describe("ProjectManager saveCurrentProject durability", () => {
 
 		await editor.project.saveCurrentProject();
 		expect(saveProjectSpy).not.toHaveBeenCalled();
-		waitSpy.mockRestore();
 	});
 
 	it("retries the save when a replacement mutates during storage write", async () => {
