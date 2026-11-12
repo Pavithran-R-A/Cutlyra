@@ -128,15 +128,19 @@ android {
                     'proguard-rules.pro',
                     'proguard-instrumentation-rules.pro'
         }
-        // Isolated physical-device QA variant (GitHub #75). It installs as a
-        // separate package (app.cutlyra.editor.qa) with a distinct app label,
-        // debug signing, and no shared app-private storage, while inheriting
-        // the normal debug build's unminified, representative application
-        // logic. It is never used for distribution.
+        // Isolated physical-device QA variant (GitHub #75; QA2 identity). It
+        // installs as a separate package (app.cutlyra.editor.qa2) with a
+        // distinct app label, debug signing, and no shared app-private
+        // storage, while inheriting the normal debug build's unminified,
+        // representative application logic. The `.qa2` suffix deliberately
+        // differs from the older, differently-signed `app.cutlyra.editor.qa`
+        // install so this variant coexists with it instead of attempting an
+        // impossible signature-mismatched update. It is never used for
+        // distribution.
         qa {
             initWith buildTypes.debug
             matchingFallbacks = ['debug']
-            applicationIdSuffix ".qa"
+            applicationIdSuffix ".qa2"
             debuggable true
             minifyEnabled false
         }
