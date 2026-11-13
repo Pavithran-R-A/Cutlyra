@@ -1,6 +1,26 @@
 import type { StorageAdapter } from "./types";
 
-export class IndexedDBAdapter<T> implements StorageAdapter<T> {
+/**
+ * Builds the record handed to `store.put` for a store keyed by keyPath `id`.
+ *
+ * The key MUST win over any `id` the caller's value already carries. A
+ * `SerializedProject` keeps a top-level `id`, and an archived project brings
+ * the id it was stored under; spreading the value last let that stale id
+ * override the requested key, so a remapped restore wrote itself back over the
+ * ORIGINAL project's record and left it unopenable (QA2 physical device,
+ * 2026-11-13). Key last, always.
+ */
+export function withStoreKey<T extends object>({
+	key,
+	value,
+}: {
+	key: string;
+	value: T;
+}): T & { id: string } {
+	return { ...value, id: key };
+}
+
+export class IndexedDBAdapter<T extends object> implements StorageAdapter<T> {
 	private dbName: string;
 	private storeName: string;
 	private version: number;
@@ -59,7 +79,7 @@ export class IndexedDBAdapter<T> implements StorageAdapter<T> {
 		const store = transaction.objectStore(this.storeName);
 
 		return new Promise((resolve, reject) => {
-			const request = store.put({ id: key, ...value });
+			const request = store.put(withStoreKey({ key, value }));
 			request.onerror = () => reject(request.error);
 			request.onsuccess = () => resolve();
 		});
