@@ -1,113 +1,176 @@
 import { describe, expect, test } from "bun:test";
 import type {
+	AudioElement,
 	AudioTrack,
+	GraphicElement,
+	GraphicTrack,
 	SceneTracks,
+	TextElement,
+	TextTrack,
+	VideoElement,
 	VideoTrack,
 } from "@cutlyra/editor-core/timeline";
-import { trackDisplayOrder } from "./track-order";
+import { trackDisplayOrder, trackLaneKind } from "./track-order";
 
-function videoTrack(id: string): VideoTrack {
+/**
+ * Fixtures carry only what this module reads (element `type`/`name` and track
+ * `type`); everything else belongs to the engine's own element tests. The cast
+ * keeps the fixture honest about WHICH element type a lane holds without
+ * fabricating trim/param fields that no assertion here looks at.
+ */
+function element<T>(type: string, name: string): T {
+	return { type, name } as unknown as T;
+}
+
+function videoTrack(id: string, elementName: string, elements?: string[]): VideoTrack {
 	return {
 		id,
 		name: id,
 		type: "video",
-		elements: [],
+		elements: (elements ?? [elementName]).map((name) =>
+			element<VideoElement>("video", name),
+		),
 		hidden: false,
 		muted: false,
 	};
 }
 
-function audioTrack(id: string): AudioTrack {
-	return { id, name: id, type: "audio", elements: [], muted: false };
+function textTrack(id: string, elementName: string): TextTrack {
+	return {
+		id,
+		name: id,
+		type: "text",
+		elements: [element<TextElement>("text", elementName)],
+		hidden: false,
+	};
 }
 
-function scene({
-	overlay = [],
-	audio = [],
-}: {
-	overlay?: VideoTrack[];
-	audio?: AudioTrack[];
-} = {}): SceneTracks {
-	return { main: videoTrack("main"), overlay, audio };
+function graphicTrack(id: string, elementName: string): GraphicTrack {
+	return {
+		id,
+		name: id,
+		type: "graphic",
+		elements: [element<GraphicElement>("graphic", elementName)],
+		hidden: false,
+	};
 }
 
-/**
- * The order `resolveTrackPlacement`/`applyPlacement` index against
- * (`packages/editor-core/src/timeline/placement/resolve.ts`: `[...overlay,
- * main, ...audio]`). `getHighestInsertIndexForTrack` returns 0 for a new
- * overlay track — the TOP of this list — and `getDefaultInsertIndexForTrack`
- * returns `overlay.length + 1 + audio.length` for audio, i.e. append at the
- * bottom. Written out from the scene rather than imported because this
- * package's `tsc` cannot resolve editor-core deep subpaths (see
- * `use-timeline-project-vm.ts`'s note on that same limitation).
- */
-function engineTrackOrder(tracks: SceneTracks): string[] {
-	return [
-		...tracks.overlay.map((track) => track.id),
-		tracks.main.id,
-		...tracks.audio.map((track) => track.id),
-	];
+function audioTrack(id: string, elementName: string): AudioTrack {
+	return {
+		id,
+		name: id,
+		type: "audio",
+		elements: [element<AudioElement>("audio", elementName)],
+		muted: false,
+	};
 }
 
-function mainLane(tracks: SceneTracks): number {
-	return trackDisplayOrder(tracks).findIndex((entry) => entry.isMain);
+/** The scene the report describes: a main clip, its duplicate, a text layer,
+ *  a shape, and one music clip. */
+function reportedScene(): SceneTracks {
+	return {
+		main: videoTrack("main", "main-clip"),
+		overlay: [
+			// DuplicateElementsCommand: alwaysNew + highest -> overlay[0].
+			videoTrack("layer-copy", "main-clip (copy)"),
+			textTrack("layer-text", "title"),
+			graphicTrack("layer-shape", "arrow"),
+		],
+		audio: [audioTrack("layer-music", "song")],
+	};
+}
+
+function lanes(tracks: SceneTracks) {
+	return trackDisplayOrder(tracks).map((entry) => ({
+		id: entry.track.id,
+		kind: trackLaneKind(entry),
+		isMain: entry.isMain,
+		types: entry.track.elements.map((item) => item.type),
+		names: entry.track.elements.map((item) => item.name),
+	}));
 }
 
 describe("timeline lane order", () => {
-	test("renders overlays above the main row and audio below it", () => {
-		const order = trackDisplayOrder(
-			scene({ overlay: [videoTrack("o1")], audio: [audioTrack("a1")] }),
-		);
-		expect(order.map((entry) => entry.track.id)).toEqual(["o1", "main", "a1"]);
-		expect(order.map((entry) => entry.isMain)).toEqual([false, true, false]);
+	test("duplicate, text and shape render above the main clip; music below", () => {
+		expect(lanes(reportedScene()).map((lane) => lane.id)).toEqual([
+			"layer-copy",
+			"layer-text",
+			"layer-shape",
+			"main",
+			"layer-music",
+		]);
 	});
 
-	test("matches the placement engine's own track indexing", () => {
-		const base = scene({
-			overlay: [videoTrack("o1"), videoTrack("o2")],
-			audio: [audioTrack("a1"), audioTrack("a2")],
-		});
-		expect(trackDisplayOrder(base).map((entry) => entry.track.id)).toEqual(
-			engineTrackOrder(base),
-		);
+	test("every lane reports the kind its content needs", () => {
+		expect(lanes(reportedScene()).map((lane) => lane.kind)).toEqual([
+			"overlay",
+			"text",
+			"sticker",
+			"main",
+			"audio",
+		]);
 	});
 
-	// DuplicateElementsCommand and a fresh text/graphic insert both land at
-	// `alwaysNew` + `highest`, i.e. engine index 0 = the top overlay slot. The
-	// view model used to emit `[main, ...overlay, ...audio]`, so that new lane
-	// rendered directly UNDER the main clip — the band users read as the music
-	// lane ("if u duplicate, it ends up in the music slot … if u add a text, it
-	// ends up in the music slot too").
-	test("engine index 0 is the topmost lane, above the main row", () => {
-		const base = scene({ overlay: [videoTrack("o1")], audio: [audioTrack("a1")] });
-		expect(trackDisplayOrder(base)[0]?.track.id).toBe(engineTrackOrder(base)[0]);
-		expect(engineTrackOrder(base)[0]).toBe("o1");
-		expect(0).toBeLessThan(mainLane(base));
+	test("lane contents keep their identity after ordering", () => {
+		const byId = new Map(lanes(reportedScene()).map((lane) => [lane.id, lane]));
+		expect(byId.get("main")?.types).toEqual(["video"]);
+		expect(byId.get("main")?.names).toEqual(["main-clip"]);
+		expect(byId.get("main")?.isMain).toBe(true);
+		expect(byId.get("layer-copy")?.names).toEqual(["main-clip (copy)"]);
+		expect(byId.get("layer-copy")?.isMain).toBe(false);
+		expect(byId.get("layer-text")?.types).toEqual(["text"]);
+		expect(byId.get("layer-shape")?.types).toEqual(["graphic"]);
+		expect(byId.get("layer-music")?.types).toEqual(["audio"]);
 	});
 
-	test("a new audio track appends past the last lane, below the main row", () => {
-		const base = scene({ overlay: [videoTrack("o1")], audio: [audioTrack("a1")] });
-		// `overlay.length + 1 + audio.length` == one past the last engine slot.
-		const audioInsertIndex = base.overlay.length + 1 + base.audio.length;
-		expect(audioInsertIndex).toBe(engineTrackOrder(base).length);
-		expect(audioInsertIndex).toBeGreaterThan(mainLane(base));
+	test("the duplicate is above main and the music is below it", () => {
+		const order = lanes(reportedScene());
+		const laneOf = (id: string) => order.findIndex((lane) => lane.id === id);
+		expect(laneOf("layer-copy")).toBeLessThan(laneOf("main"));
+		expect(laneOf("layer-text")).toBeLessThan(laneOf("main"));
+		expect(laneOf("main")).toBeLessThan(laneOf("layer-music"));
 	});
 
-	test("main is flagged for exactly one row", () => {
-		const order = trackDisplayOrder(scene());
-		expect(order).toHaveLength(1);
-		expect(order[0]?.isMain).toBe(true);
+	test("display order matches the placement engine's own indexing", () => {
+		const tracks = reportedScene();
+		// `resolveTrackPlacement`/`applyPlacement` index this exact list, and
+		// `getHighestInsertIndexForTrack` returns 0 for the top overlay slot.
+		expect(trackDisplayOrder(tracks).map((entry) => entry.track.id)).toEqual([
+			...tracks.overlay.map((track) => track.id),
+			tracks.main.id,
+			...tracks.audio.map((track) => track.id),
+		]);
 	});
 
-	test("a text lane added at the top never renders below the music lanes", () => {
-		const base = scene({ audio: [audioTrack("music-1")] });
-		const display = trackDisplayOrder(base);
-		const audioLane = display.findIndex(
-			(entry) => entry.track.type === "audio",
-		);
-		// The new text track takes slot 0 and pushes main and the music row down,
-		// so it stays above both.
-		expect(0).toBeLessThan(mainLane(base) + 1);
-		expect(0).toBeLessThan(audioLane + 1);
+	test("an empty overlay list leaves main alone and music last", () => {
+		const tracks: SceneTracks = {
+			main: videoTrack("main", "clip"),
+			overlay: [],
+			audio: [audioTrack("music", "song")],
+		};
+		expect(lanes(tracks).map((lane) => [lane.id, lane.kind])).toEqual([
+			["main", "main"],
+			["music", "audio"],
+		]);
+	});
+
+	test("a caption track keeps its own lane kind above main", () => {
+		const tracks: SceneTracks = {
+			main: videoTrack("main", "clip"),
+			overlay: [
+				{
+					id: "layer-caption",
+					name: "captions",
+					type: "caption",
+					elements: [],
+					hidden: false,
+				},
+			],
+			audio: [],
+		};
+		expect(lanes(tracks).map((lane) => lane.kind)).toEqual([
+			"caption",
+			"main",
+		]);
 	});
 });

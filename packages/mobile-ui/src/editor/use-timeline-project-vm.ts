@@ -68,7 +68,7 @@ import {
 	resolveNativeMediaRawPath,
 } from "@cutlyra/editor-core/media/native-paths";
 import { getClipKeyframeTimes } from "./keyframes";
-import { trackDisplayOrder } from "./track-order";
+import { trackDisplayOrder, trackLaneKind } from "./track-order";
 import type {
 	TimelineClipKind,
 	TimelineClipVM,
@@ -125,26 +125,6 @@ function clipKindForElement(element: TimelineElement): TimelineClipKind {
 			return "caption";
 		default:
 			return "text";
-	}
-}
-
-function trackKindFor({ track, isMain }: { track: TimelineTrack; isMain: boolean }): TimelineTrackKind {
-	if (isMain) return "main";
-	switch (track.type) {
-		case "video":
-			return "overlay";
-		case "text":
-			return "text";
-		case "audio":
-			return "audio";
-		case "graphic":
-			return "sticker";
-		case "effect":
-			return "overlay";
-		case "caption":
-			return "caption";
-		default:
-			return "overlay";
 	}
 }
 
@@ -360,7 +340,7 @@ function mapTrack({
 	}));
 	return {
 		id: track.id,
-		kind: trackKindFor({ track, isMain }),
+		kind: trackLaneKind({ track, isMain }),
 		name: track.name,
 		clips,
 		muted: "muted" in track ? track.muted : undefined,
