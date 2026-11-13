@@ -3,6 +3,7 @@ package app.cutlyra.editor.export
 import app.cutlyra.editor.edl.EdlTransform
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -57,6 +58,27 @@ class EdlTransformEffectMatrixTest {
         val (u, v) = pixelToNdc(x, y, w, h)
         val (mu, mv) = applyNdc(values, u, v)
         return ndcToPixel(mu, mv, w, h)
+    }
+
+    /** Which source- (canvas-space) pixel a canvas point samples, by inverting `values`. */
+    private fun sourcePixelFor(
+        values: FloatArray,
+        x: Double,
+        y: Double,
+        w: Int,
+        h: Int,
+    ): Pair<Double, Double> {
+        val (u, v) = pixelToNdc(x, y, w, h)
+        val a = values[0].toDouble()
+        val b = values[1].toDouble()
+        val tx = values[2].toDouble()
+        val c = values[3].toDouble()
+        val d = values[4].toDouble()
+        val ty = values[5].toDouble()
+        val det = a * d - b * c
+        val su = (d * (u - tx) - b * (v - ty)) / det
+        val sv = (-c * (u - tx) + a * (v - ty)) / det
+        return ndcToPixel(su, sv, w, h)
     }
 
     private fun assertPixel(expected: Pair<Double, Double>, actual: Pair<Double, Double>, label: String) {
@@ -118,6 +140,50 @@ class EdlTransformEffectMatrixTest {
     fun `identity keeps every pixel in place`() {
         val identity = EdlTransform(0.0, 0.0, 1.0, 1.0, 0.0)
         assertPixel(400.0 to 260.0, mapPixel(identity, 400.0, 260.0), "identity")
+    }
+
+    @Test
+    fun `fill framing keeps a quarter turn covering a portrait canvas`() {
+        // `ExportTransformParityInstrumentedTest.fillMismatchedCanvas_coversCanvas`
+        // asserts a fill + 90 clip still covers a 1080x1920 canvas.
+        val w = 1080
+        val h = 1920
+        val transform = EdlTransform(0.0, 0.0, 1.0, 1.0, 90.0)
+        val fit = EdlTransformEffect.matrixValues(transform, w, h, fillFraming = false)
+        val fill = EdlTransformEffect.matrixValues(transform, w, h, fillFraming = true)
+
+        fun insideCanvas(p: Pair<Double, Double>) =
+            p.first >= -1.0 && p.first <= w + 1.0 && p.second >= -1.0 && p.second <= h + 1.0
+
+        val canvasCorners = listOf(
+            0.0 to 0.0,
+            (w - 1).toDouble() to 0.0,
+            0.0 to (h - 1).toDouble(),
+            (w - 1).toDouble() to (h - 1).toDouble(),
+        )
+        val filledMisses = canvasCorners.count { !insideCanvas(sourcePixelFor(fill, it.first, it.second, w, h)) }
+        val fittedMisses = canvasCorners.count { !insideCanvas(sourcePixelFor(fit, it.first, it.second, w, h)) }
+
+        assertEquals("fill must sample picture at every canvas corner", 0, filledMisses)
+        assertTrue("fit must still show bars at some corner, got $fittedMisses misses", fittedMisses > 0)
+        // The cover growth is a uniform scale: both off-diagonals grow by h/w.
+        val cover = h.toFloat() / w.toFloat()
+        assertEquals("cover scales the rotated x term", fill[1], fit[1] * cover, 1e-4f)
+        assertEquals("cover scales the rotated y term", fill[3], fit[3] * cover, 1e-4f)
+    }
+
+    @Test
+    fun `fill cover does not apply without a quarter turn`() {
+        val w = 1080
+        val h = 1920
+        for (rotation in listOf(0.0, 180.0, -180.0, 45.0)) {
+            val transform = EdlTransform(0.0, 0.0, 1.0, 1.0, rotation)
+            val fit = EdlTransformEffect.matrixValues(transform, w, h, fillFraming = false)
+            val fill = EdlTransformEffect.matrixValues(transform, w, h, fillFraming = true)
+            for (i in fit.indices) {
+                assertEquals("rotation $rotation value $i", fit[i], fill[i], 1e-6f)
+            }
+        }
     }
 
     @Test

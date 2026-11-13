@@ -6,6 +6,8 @@ import androidx.media3.effect.MatrixTransformation
 import app.cutlyra.editor.edl.EdlClip
 import app.cutlyra.editor.edl.EdlTransform
 import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 
 /**
@@ -64,7 +66,7 @@ import kotlin.math.sin
  *
  * The effect is still applied only to clips whose transform is non-identity or
  * keyframed (`EdlToComposition.buildEditedMediaItem`), so the common case never
- * depends on this class at all.
+ * depends on this class at all.
  */
 class EdlTransformEffect(
     private val clip: EdlClip,
@@ -73,6 +75,8 @@ class EdlTransformEffect(
     /** Composition-time start of this item, microseconds — local tick 0. */
     private val itemStartUs: Long,
     private val ticksPerSecond: Long,
+    /** `clip.framing == "fill"`: the clip covers the canvas instead of fitting it. */
+    private val fillFraming: Boolean = false,
 ) : MatrixTransformation {
     private val channels = KeyframeEvaluator.visualChannels(clip)
 
@@ -98,7 +102,7 @@ class EdlTransformEffect(
             }
             KeyframeEvaluator.resolveTransform(clip.transform, channels, localTicks)
         }
-        return matrixFor(transform, canvasWidth, canvasHeight)
+        return matrixFor(transform, canvasWidth, canvasHeight, fillFraming)
     }
 
     companion object {
@@ -111,8 +115,15 @@ class EdlTransformEffect(
                 transform.scaleY == 1.0 &&
                 transform.rotateDegrees == 0.0
 
-        fun matrixFor(transform: EdlTransform, canvasWidth: Int, canvasHeight: Int): Matrix {
-            return Matrix().apply { setValues(matrixValues(transform, canvasWidth, canvasHeight)) }
+        fun matrixFor(
+            transform: EdlTransform,
+            canvasWidth: Int,
+            canvasHeight: Int,
+            fillFraming: Boolean = false,
+        ): Matrix {
+            return Matrix().apply {
+                setValues(matrixValues(transform, canvasWidth, canvasHeight, fillFraming))
+            }
         }
 
         /**
@@ -123,7 +134,12 @@ class EdlTransformEffect(
          * rotation survives the trip through NDC. Pure Kotlin so the geometry
          * is unit-tested off-device.
          */
-        fun matrixValues(transform: EdlTransform, canvasWidth: Int, canvasHeight: Int): FloatArray {
+        fun matrixValues(
+            transform: EdlTransform,
+            canvasWidth: Int,
+            canvasHeight: Int,
+            fillFraming: Boolean = false,
+        ): FloatArray {
             val ndcX = if (canvasWidth > 0) (2.0 * transform.positionX / canvasWidth).toFloat() else 0f
             val ndcY = if (canvasHeight > 0) (-2.0 * transform.positionY / canvasHeight).toFloat() else 0f
             val radians = Math.toRadians(-transform.rotateDegrees)
@@ -132,8 +148,21 @@ class EdlTransformEffect(
             // h/w: 1.0 for a square canvas, where this is a plain rotation.
             val aspect =
                 if (canvasWidth > 0 && canvasHeight > 0) canvasHeight.toFloat() / canvasWidth.toFloat() else 1f
-            val scaleX = transform.scaleX.toFloat()
-            val scaleY = transform.scaleY.toFloat()
+            // A quarter turn swaps the frame's width and height, so a `fill`
+            // clip that fitted the canvas before the rotation no longer covers
+            // it afterwards (the per-item LAYOUT_SCALE_TO_FIT_WITH_CROP is a
+            // no-op on an already canvas-sized frame). Grow by the long/short
+            // side ratio so `fill` keeps covering, exactly as it did when the
+            // NDC rotation acted as an implicit stretch.
+            val quarterTurn = Math.floorMod(Math.round(transform.rotateDegrees), 180L) == 90L
+            val cover =
+                if (fillFraming && quarterTurn && canvasWidth > 0 && canvasHeight > 0) {
+                    max(canvasWidth, canvasHeight).toFloat() / min(canvasWidth, canvasHeight).toFloat()
+                } else {
+                    1f
+                }
+            val scaleX = transform.scaleX.toFloat() * cover
+            val scaleY = transform.scaleY.toFloat() * cover
             // `sin` carries the sign of `Matrix.postRotate(-rotateDegrees)`
             // exactly; `aspect` only rescales the two off-diagonal terms.
             return floatArrayOf(
