@@ -134,9 +134,11 @@ class EdlTransformEffect(
                 if (canvasWidth > 0 && canvasHeight > 0) canvasHeight.toFloat() / canvasWidth.toFloat() else 1f
             val scaleX = transform.scaleX.toFloat()
             val scaleY = transform.scaleY.toFloat()
+            // `sin` carries the sign of `Matrix.postRotate(-rotateDegrees)`
+            // exactly; `aspect` only rescales the two off-diagonal terms.
             return floatArrayOf(
-                cos * scaleX, aspect * sin * scaleY, ndcX,
-                -sin / aspect * scaleX, cos * scaleY, ndcY,
+                cos * scaleX, -aspect * sin * scaleY, ndcX,
+                sin / aspect * scaleX, cos * scaleY, ndcY,
                 0f, 0f, 1f,
             )
         }

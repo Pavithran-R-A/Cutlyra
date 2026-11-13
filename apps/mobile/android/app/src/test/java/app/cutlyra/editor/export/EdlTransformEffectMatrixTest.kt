@@ -41,8 +41,8 @@ class EdlTransformEffectMatrixTest {
         val radians = Math.toRadians(degrees)
         val dx = x - w / 2.0
         val dy = y - h / 2.0
-        val rx = dx * Math.cos(radians) + dy * Math.sin(radians)
-        val ry = -dx * Math.sin(radians) + dy * Math.cos(radians)
+        val rx = dx * Math.cos(radians) - dy * Math.sin(radians)
+        val ry = dx * Math.sin(radians) + dy * Math.cos(radians)
         return (rx + w / 2.0) to (ry + h / 2.0)
     }
 
@@ -99,6 +99,10 @@ class EdlTransformEffectMatrixTest {
         val transform = EdlTransform(0.0, 0.0, 1.0, 1.0, 90.0)
         val actual = mapPixel(transform, 64.0, 200.0, 256, 256)
         assertPixel(rotatePixel(64.0, 200.0, 90.0, 256, 256), actual, "square +90")
+        // The exact numbers the pre-fix `Matrix.postRotate(-90f)` produced on a
+        // square canvas: the aspect conjugation must not perturb them, and the
+        // rotation must stay CLOCKWISE for a positive `rotateDegrees`.
+        assertPixel(56.0 to 64.0, actual, "square +90 pre-fix parity")
     }
 
     @Test
