@@ -421,8 +421,8 @@ Direction proof is coordinate-based, not eyeballed: the orange source marker at 
 
 | Severity | Defect | Reproduction | Code path | Fix |
 | --- | --- | --- | --- | --- |
-| P1 | Restore overwrites an existing project record, losing its clips | Back up a project, restore the archive while the source project still exists, reopen → the restored record replaces the existing one | `packages/editor-core/src/services/storage/indexeddb-adapter.ts` | PR #77 (`1709f3a`) — 7/7 CI jobs pass |
-| P1 | Rotate ±90° stretches a non-square canvas instead of rotating it | 1280x720 clip → Transform → Rotate R → Export → decode any frame: bars fill the full 1280x720 width with no portrait footprint | `apps/mobile/android/app/src/main/java/app/cutlyra/editor/export/EdlTransformEffect.kt` `matrixFor` (NDC rotation without canvas-aspect conjugation) | PR #78 (`fix/export-rotation-aspect`, `09875a8`) — `matrixValues()` conjugates by `h/w`; 98 JVM unit tests pass, 8 new |
+| P1 | Restore overwrites an existing project record, losing its clips | Back up a project, restore the archive while the source project still exists, reopen → the restored record replaces the existing one | `packages/editor-core/src/services/storage/indexeddb-adapter.ts` | PR #77 (`1709f3a`) — merged into main, 7/7 CI jobs pass |
+| P1 | Rotate ±90° stretches a non-square canvas instead of rotating it | 1280x720 clip → Transform → Rotate R → Export → decode any frame: bars fill the full 1280x720 width with no portrait footprint | `apps/mobile/android/app/src/main/java/app/cutlyra/editor/export/EdlTransformEffect.kt` `matrixFor` (NDC rotation without canvas-aspect conjugation) | PR #78 (`fix/export-rotation-aspect`, `09875a8` + `656f472` + `bc1710a`) — merged into main, 7/7 CI jobs pass; `matrixValues()` conjugates by `h/w` and keeps `fill` framing covering after a quarter turn |
 
 Why CI missed the rotation defect: `ExportTransformParityInstrumentedTest` uses square sources **and** square canvases, where a bare NDC rotation and a pixel-space rotation are identical.
 
@@ -448,7 +448,7 @@ Why CI missed the rotation defect: `ExportTransformParityInstrumentedTest` uses 
 
 ### Next engineering priority
 
-1. Merge PR #77 (restore) and PR #78 (rotation) after their CI is green, then cut a QA2 APK from merged main and get owner approval to install it — that single reinstall unblocks both FAIL items and their re-verification.
+1. Cut a QA2 APK from merged main (`04326fa`, containing PR #77, PR #78 and this report) and get owner approval to install it — that single reinstall unblocks both FAIL items and their re-verification. Both fixes are merged and green on all seven CI jobs.
 2. After reinstall: re-run restore-into-separate-project and ±90° export parity on the POCO, comparing the exported marker position against (460,55) for +90°.
 3. Then close the coverage gap the square-canvas parity suite leaves: add a non-square canvas case to `ExportTransformParityInstrumentedTest` (16:9 source, 90°, assert the portrait footprint and the marker's expected pixel).
 4. Add a UI-level preview/export parity assertion for rotations, so the preview's correct footprint becomes the reference the export is checked against.
