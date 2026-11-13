@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.media3.effect.MatrixTransformation
 import app.cutlyra.editor.edl.EdlClip
 import app.cutlyra.editor.edl.EdlTransform
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * `EdlClip.transform` -> a per-frame GL matrix, via Media3's documented
@@ -49,6 +51,16 @@ import app.cutlyra.editor.edl.EdlTransform
  *  - Physical-device parity (the emulator is not a POCO M4 Pro 5G, and its
  *    software H.264 encoder takes media3's landscape-encode path, so coded
  *    portrait geometry arrives as 1920x1080 + a 90° display rotation).
+ *
+ * NON-SQUARE CANVASES: the matrix below lives in NDC (`[-1,1]`), which is
+ * anisotropic whenever the canvas is not square; a bare rotation there shears
+ * non-square output. `matrixValues` therefore conjugates the rotation by the
+ * canvas aspect (`diag(h/w, 1) * R * diag(w/h, 1)`), which is the NDC image of
+ * a true pixel-space rotation. Square canvases (h/w = 1) reduce to the plain
+ * rotation the parity suite already proves. Before this, a single 12 s 16:9
+ * clip rotated +90° on `app.cutlyra.editor.qa2`/POCO M4 Pro 5G exported
+ * with every colour bar stretched across the full 1280x720 width instead of the
+ * 720x1280 portrait footprint the preview shows.
  *
  * The effect is still applied only to clips whose transform is non-identity or
  * keyframed (`EdlToComposition.buildEditedMediaItem`), so the common case never
@@ -100,13 +112,33 @@ class EdlTransformEffect(
                 transform.rotateDegrees == 0.0
 
         fun matrixFor(transform: EdlTransform, canvasWidth: Int, canvasHeight: Int): Matrix {
-            val matrix = Matrix()
+            return Matrix().apply { setValues(matrixValues(transform, canvasWidth, canvasHeight)) }
+        }
+
+        /**
+         * Row-major 3x3 values of `postScale` -> aspect-corrected
+         * `postRotate(-rotateDegrees)` -> `postTranslate`, i.e. exactly the
+         * matrix `matrixFor` used to build through `Matrix.post*` calls, with
+         * the rotation conjugated by the canvas aspect so a pixel-space
+         * rotation survives the trip through NDC. Pure Kotlin so the geometry
+         * is unit-tested off-device.
+         */
+        fun matrixValues(transform: EdlTransform, canvasWidth: Int, canvasHeight: Int): FloatArray {
             val ndcX = if (canvasWidth > 0) (2.0 * transform.positionX / canvasWidth).toFloat() else 0f
             val ndcY = if (canvasHeight > 0) (-2.0 * transform.positionY / canvasHeight).toFloat() else 0f
-            matrix.postScale(transform.scaleX.toFloat(), transform.scaleY.toFloat())
-            matrix.postRotate(-transform.rotateDegrees.toFloat())
-            matrix.postTranslate(ndcX, ndcY)
-            return matrix
+            val radians = Math.toRadians(-transform.rotateDegrees)
+            val cos = cos(radians).toFloat()
+            val sin = sin(radians).toFloat()
+            // h/w: 1.0 for a square canvas, where this is a plain rotation.
+            val aspect =
+                if (canvasWidth > 0 && canvasHeight > 0) canvasHeight.toFloat() / canvasWidth.toFloat() else 1f
+            val scaleX = transform.scaleX.toFloat()
+            val scaleY = transform.scaleY.toFloat()
+            return floatArrayOf(
+                cos * scaleX, aspect * sin * scaleY, ndcX,
+                -sin / aspect * scaleX, cos * scaleY, ndcY,
+                0f, 0f, 1f,
+            )
         }
     }
 }
