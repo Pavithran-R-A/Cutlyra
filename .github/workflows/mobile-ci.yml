@@ -210,7 +210,7 @@ jobs:
             apps/mobile/android/app/build/outputs/apk/qa/app-qa.apk.sha256
           if-no-files-found: error
 
-      - name: gradlew assembleQa3 (unsigned: no QA3 keystore in PR CI)
+      - name: gradlew assembleQa3 (unsigned, no QA3 keystore in PR CI)
         # QA3 is the owner-installable regression build. Its identity
         # (app.cutlyra.editor.qa3) and its own app-private storage are what
         # make it coexist with editor/qa/qa2 and stay updatable. It is signed
