@@ -1,0 +1,228 @@
+name: QA3 signed APK
+
+# The owner-installable regression build, produced ONLY here.
+#
+# Why a separate workflow: QA3 must keep one signing identity forever, or the
+# next build cannot install over the last (the exact failure that made QA2
+# un-updatable). That identity comes from a keystore that exists only in
+# repository/environment secrets, so the job is restricted to trusted runs
+# (`workflow_dispatch` on a qualified commit) and never runs on pull_request
+# code, where a modified Gradle script could read the secrets.
+#
+# Required configuration (owner does this once, outside any agent session —
+# see docs/qa/qa3-distribution.md):
+#   secrets.CUTLYRA_QA3_KEYSTORE_BASE64      base64 of the QA3 .jks
+#   secrets.CUTLYRA_QA3_KEYSTORE_PASSWORD
+#   secrets.CUTLYRA_QA3_KEY_ALIAS
+#   secrets.CUTLYRA_QA3_KEY_PASSWORD
+#   vars.CUTLYRA_QA3_CERT_SHA256             pinned signer certificate digest
+#
+# The job FAILS (it does not skip) when those are absent or when the built
+# APK's signer does not match the pinned digest: a missing secret must never
+# turn into "some other signature, shipped quietly".
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit/branch/tag to build (must already be qualified by Mobile CI)
+        required: true
+        default: main
+
+concurrency:
+  group: qa3-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  qa3-signed-apk:
+    name: QA3 (signed, verified, installable)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: QA3 signing gate
+        env:
+          QA3_KEYSTORE_BASE64: ${{ secrets.CUTLYRA_QA3_KEYSTORE_BASE64 }}
+          QA3_KEYSTORE_PASSWORD: ${{ secrets.CUTLYRA_QA3_KEYSTORE_PASSWORD }}
+          QA3_KEY_ALIAS: ${{ secrets.CUTLYRA_QA3_KEY_ALIAS }}
+          QA3_KEY_PASSWORD: ${{ secrets.CUTLYRA_QA3_KEY_PASSWORD }}
+          QA3_CERT_SHA256: ${{ vars.CUTLYRA_QA3_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -n "${QA3_KEYSTORE_BASE64:-}" ] || missing="$missing CUTLYRA_QA3_KEYSTORE_BASE64"
+          [ -n "${QA3_KEYSTORE_PASSWORD:-}" ] || missing="$missing CUTLYRA_QA3_KEYSTORE_PASSWORD"
+          [ -n "${QA3_KEY_ALIAS:-}" ] || missing="$missing CUTLYRA_QA3_KEY_ALIAS"
+          [ -n "${QA3_KEY_PASSWORD:-}" ] || missing="$missing CUTLYRA_QA3_KEY_PASSWORD"
+          [ -n "${QA3_CERT_SHA256:-}" ] || missing="$missing vars.CUTLYRA_QA3_CERT_SHA256"
+          if [ -n "$missing" ]; then
+            echo "::error::QA3 signing is not configured (missing:$missing). No installable QA3 artifact can be produced." >&2
+            exit 1
+          fi
+          echo "$QA3_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/qa3.jks"
+          test -s "$RUNNER_TEMP/qa3.jks"
+          echo "QA3 keystore staged in the runner temp dir (contents never printed)."
+          echo "INTERNAL_QA3_CERT_SHA256=$QA3_CERT_SHA256" >> "$GITHUB_ENV"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-1.3.14-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK (platform 36, build-tools 36.0.0)
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: "platforms;android-36 build-tools;36.0.0 platform-tools ndk;27.2.12479018 cmake;3.22.1"
+
+      - name: Fetch and verify Android caption build inputs
+        run: |
+          bash scripts/fetch-whisper-cpp.sh
+          bash scripts/download-whisper-model.sh tiny.en --platform android
+        working-directory: apps/mobile
+
+      - name: Build mobile payload + sync Android
+        run: |
+          bun run build
+          bunx cap sync android
+        working-directory: apps/mobile
+
+      - name: Cache Gradle
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-qa3-${{ hashFiles('apps/mobile/android/**/*.gradle*') }}
+
+      - name: gradlew assembleQa3 (QA3 key)
+        env:
+          CUTLYRA_QA3_KEYSTORE: ${{ runner.temp }}/qa3.jks
+          CUTLYRA_QA3_KEYSTORE_PASSWORD: ${{ secrets.CUTLYRA_QA3_KEYSTORE_PASSWORD }}
+          CUTLYRA_QA3_KEY_ALIAS: ${{ secrets.CUTLYRA_QA3_KEY_ALIAS }}
+          CUTLYRA_QA3_KEY_PASSWORD: ${{ secrets.CUTLYRA_QA3_KEY_PASSWORD }}
+        run: ./gradlew assembleQa3 --console=plain
+        working-directory: apps/mobile/android
+
+      - name: Verify QA3 identity, signature and payload
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+          AAPT="$BUILD_TOOLS/aapt2"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          test -x "$AAPT"; test -x "$APKSIGNER"
+
+          APK=$(ls app/build/outputs/apk/qa3/*.apk | head -1)
+          test -s "$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+          BADGING=$("$AAPT" dump badging "$APK")
+          echo "$BADGING" | grep -q "package: name='app.cutlyra.editor.qa3'"
+          echo "$BADGING" | grep -q "application-label:'Cutlyra QA3'"
+          echo "$BADGING" | grep -q "launchable-activity: name='app.cutlyra.editor.FirstRunActivity'  label='Cutlyra QA3'"
+          "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" | grep -q 'app.cutlyra.editor.qa3.fileprovider'
+
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q "assets/public/index.html"
+          unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
+          unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
+
+          # Signed by the QA3 key, and NOT by an ephemeral debug key.
+          "$APKSIGNER" verify "$APK" >/dev/null
+          CERTS=$("$APKSIGNER" verify --print-certs "$APK")
+          echo "$CERTS" > app/build/outputs/apk/qa3/qa3-signer.txt
+          if echo "$CERTS" | grep -q "CN=Android Debug"; then
+            echo "::error::QA3 APK is debug-signed; it must use the dedicated QA3 key" >&2
+            exit 1
+          fi
+          SIGNER_SHA256=$(echo "$CERTS" | grep -o 'certificate SHA-256 digest: [0-9a-f]*' | head -1 | sed 's/.*: //')
+          test -n "$SIGNER_SHA256"
+          pinned=$(echo "$INTERNAL_QA3_CERT_SHA256" | tr -d '[:space:]:' | tr 'A-F' 'a-f')
+          if [ "$SIGNER_SHA256" != "$pinned" ]; then
+            echo "::error::QA3 signer certificate mismatch: built=$SIGNER_SHA256 pinned=$pinned" >&2
+            exit 1
+          fi
+
+          sha256sum "$APK" | tee app/build/outputs/apk/qa3/qa3-apk.sha256
+          APK_SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
+          {
+            echo "### QA3 signed APK"
+            echo ""
+            echo "- source commit: \`${GITHUB_SHA}\` (requested ref: \`${{ inputs.ref }}\`)"
+            echo "- package: \`app.cutlyra.editor.qa3\`"
+            echo "- label: \`Cutlyra QA3\`"
+            echo "- provider: \`app.cutlyra.editor.qa3.fileprovider\`"
+            echo "- apk sha256: \`$APK_SHA256\`"
+            echo "- signer cert sha256: \`$SIGNER_SHA256\`"
+            echo ""
+            echo "Install only after confirming both digests:"
+            echo ""
+            echo '```'
+            echo "adb install -r $APK"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        working-directory: apps/mobile/android
+
+      - name: Upload QA3 APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cutlyra-qa3-apk
+          path: |
+            apps/mobile/android/app/build/outputs/apk/qa3/*.apk
+            apps/mobile/android/app/build/outputs/apk/qa3/qa3-apk.sha256
+            apps/mobile/android/app/build/outputs/apk/qa3/qa3-signer.txt
+          if-no-files-found: error
+
+      - name: Emulator smoke (API 35) — install, launch, coexist
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          working-directory: apps/mobile/android
+          script: |
+            set -e
+            APK=$(ls app/build/outputs/apk/qa3/*.apk | head -1)
+            adb install -r "$APK"
+            adb shell pm list packages | grep -qx 'package:app.cutlyra.editor.qa3'
+            echo 'SMOKE: qa3 installed'
+            adb shell run-as app.cutlyra.editor.qa3 ls >/dev/null
+            echo 'SMOKE: qa3 app-private data dir'
+            adb logcat -c
+            adb shell am start -W -n app.cutlyra.editor.qa3/app.cutlyra.editor.FirstRunActivity
+            sleep 20
+            adb shell pidof app.cutlyra.editor.qa3 >/dev/null
+            echo 'SMOKE: process alive'
+            ! adb logcat -d -s AndroidRuntime:E | grep -q 'FATAL EXCEPTION.*app.cutlyra.editor.qa3'
+            echo 'SMOKE: no fatal crash'
+            adb shell dumpsys activity activities | grep -q 'ResumedActivity.*app.cutlyra.editor.qa3'
+            echo 'SMOKE: qa3 resumed'
+            qa3_uid=$(adb shell cmd package list packages -U | grep '^package:app.cutlyra.editor.qa3 ' | sed 's/.*uid://' | tr -d '\r')
+            echo "SMOKE: qa3 uid=[$qa3_uid]"
+            [ -n "$qa3_uid" ]
+            echo 'QA3 emulator smoke passed'
