@@ -22,6 +22,17 @@ def releaseKeystorePath = System.getenv("CUTLYRA_RELEASE_KEYSTORE")
 def releaseKeystoreFile = releaseKeystorePath ? file(releaseKeystorePath) : null
 def hasReleaseSigning = releaseKeystoreFile != null && releaseKeystoreFile.exists()
 
+// QA3 (owner-installable test build) has its OWN long-lived signing identity,
+// stored the same way the release key is: never in this repo, never on a CI
+// runner except as a decrypted copy for the duration of one trusted job
+// (docs/qa/qa3-distribution.md). The debug key is deliberately NOT a
+// fallback: an ephemeral debug certificate is exactly why QA2 could never be
+// updated in place, so an unsigned QA3 is better than a QA3 that changes
+// signer on every build.
+def qa3KeystorePath = System.getenv("CUTLYRA_QA3_KEYSTORE")
+def qa3KeystoreFile = qa3KeystorePath ? file(qa3KeystorePath) : null
+def hasQa3Signing = qa3KeystoreFile != null && qa3KeystoreFile.exists()
+
 android {
     namespace = "app.cutlyra.editor"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -80,6 +91,14 @@ android {
                 storePassword System.getenv("CUTLYRA_RELEASE_KEYSTORE_PASSWORD")
                 keyAlias System.getenv("CUTLYRA_RELEASE_KEY_ALIAS")
                 keyPassword System.getenv("CUTLYRA_RELEASE_KEY_PASSWORD")
+            }
+        }
+        if (hasQa3Signing) {
+            qa3 {
+                storeFile qa3KeystoreFile
+                storePassword System.getenv("CUTLYRA_QA3_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("CUTLYRA_QA3_KEY_ALIAS")
+                keyPassword System.getenv("CUTLYRA_QA3_KEY_PASSWORD")
             }
         }
     }
@@ -143,6 +162,25 @@ android {
             applicationIdSuffix ".qa2"
             debuggable true
             minifyEnabled false
+        }
+        // Owner-installable regression build (QA3). QA2 above is left exactly
+        // as it is: it is the installed acceptance build on the owner's phone
+        // and its identity/certificate pair must not move. QA3 is a NEW
+        // package (app.cutlyra.editor.qa3) with its own label and its own
+        // app-private storage, so it coexists with editor/qa/qa2 and can be
+        // updated in place indefinitely as long as the qa3 key stays the same.
+        //
+        // Signing is inherited-signed ONLY by the qa3 config; `signingConfig
+        // null` when the keystore is absent means the output is UNSIGNED —
+        // deliberately not installable, so a missing secret can never produce
+        // an APK that installs over a previous QA3 with a different signer.
+        qa3 {
+            initWith buildTypes.debug
+            matchingFallbacks = ['debug']
+            applicationIdSuffix ".qa3"
+            debuggable true
+            minifyEnabled false
+            signingConfig hasQa3Signing ? signingConfigs.qa3 : null
         }
     }
     // GitHub #57: AGP creates androidTest variants only for the single
