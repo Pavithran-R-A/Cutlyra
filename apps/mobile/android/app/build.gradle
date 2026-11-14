@@ -44,8 +44,8 @@ android {
         applicationId "app.cutlyra.editor"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode 2
+        versionName "0.1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // On-device captions: libcutlyra_whisper.so (whisper.cpp + the JNI
         // glue in src/main/cpp). arm64-v8a is the production-phone ABI for
