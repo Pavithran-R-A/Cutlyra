@@ -65,16 +65,25 @@ QA3 signer certificate SHA-256: (fill in after generating the keystore)
 ## Producing an APK
 
 1. Mobile CI must be green on the commit you intend to test.
-2. Actions → **QA3 signed APK** → *Run workflow* with `ref` set to that commit.
-3. The job **fails** if any secret is missing or the signer digest does not
+2. Actions → **QA3 signed APK** → *Run workflow* **on `main`**. There is no
+   ref input: the workflow signs the commit it was dispatched on and refuses
+   anything that is not `refs/heads/main`.
+3. Before the keystore is decoded, the job re-checks provenance: the SHA that
+   `git rev-parse HEAD` actually produced (not a value passed in) must be an
+   ancestor of `origin/main`, and **both** Bun CI and Mobile CI must be
+   `completed/success` on that exact SHA. Anything else stops the run.
+4. The job **fails** if any secret is missing or the signer digest does not
    match — it never falls back to a debug signature.
-4. Download the `cutlyra-qa3-apk` artifact. It contains the APK, its SHA-256
+5. Download the `cutlyra-qa3-apk` artifact. It contains the APK, its SHA-256
    (`qa3-apk.sha256`) and the signer certificate (`qa3-signer.txt`).
 
-The workflow also boots an API-35 emulator, installs the exact artifact,
-confirms the process starts and survives 20 seconds, that the activity is
-resumed, that no `FATAL EXCEPTION` mentions the QA3 package, and that its
-app-private data directory exists.
+The workflow also boots an API-35 emulator and runs
+`scripts/ci/qa3-emulator-smoke.sh` as a single command (the emulator action
+pipes each line through its own shell, so state and `set -e` cannot be carried
+inline). That script installs the exact artifact and fails non-zero unless it
+can prove: the package id, its own app-private data directory, its own
+FileProvider authority, a launch of `FirstRunActivity`, a live process 20 s
+later, no `FATAL EXCEPTION` for the package, and the expected resumed activity.
 
 ## Installing on the phone
 
@@ -92,10 +101,19 @@ adb shell pm list packages | grep cutlyra       # four packages, all present
 
 ## Trusted-workflow rule
 
-`qa3-apk.yml` runs only on `workflow_dispatch`. It must never gain a
-`pull_request` trigger and its secrets must never be exposed to PR code: a
-modified Gradle script in a pull request could otherwise read the signing key.
-PR CI builds QA3 **unsigned** and asserts that it has no signature at all.
+`qa3-apk.yml` runs only on `workflow_dispatch`, only on `main`, and only for a
+commit whose Bun CI and Mobile CI runs already succeeded. It must never gain a
+`pull_request` trigger or an arbitrary ref input: a modified Gradle script in a
+pull request could otherwise read the signing key. PR CI builds QA3
+**unsigned** and asserts, with the same verification script in its `unsigned`
+mode, that it has no signature at all.
+
+Recommended, once the secrets exist: put them in a **GitHub Actions
+environment** (for example `qa3-signing`) with required reviewers, and add
+`environment: qa3-signing` to the job. Dispatch then needs a human approval
+before the key is ever decoded, which is a second lock independent of this
+file. Repository secret names stay the same; only their scope changes to the
+environment.
 
 ## Signing stability check
 
