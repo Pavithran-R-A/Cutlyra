@@ -224,7 +224,7 @@ jobs:
       - name: Verify QA3 identity, payload and that it is not debug-signed
         # Same implementation the trusted workflow uses, in "unsigned" mode:
         # PR CI has no QA3 keystore, so the build must carry NO signature.
-        run: bash scripts/ci/qa3-verify-apk.sh --expect unsigned
+        run: bash ../../../scripts/ci/qa3-verify-apk.sh --expect unsigned
         working-directory: apps/mobile/android
 
       - name: Verify bundled offline-caption payload
