@@ -1,13 +1,14 @@
 name: QA3 signed APK
 
-# The owner-installable regression build, produced ONLY here.
+# The one workflow allowed to hold the QA3 signing key.
 #
-# Why a separate workflow: QA3 must keep one signing identity forever, or the
-# next build cannot install over the last (the exact failure that made QA2
-# un-updatable). That identity comes from a keystore that exists only in
-# repository/environment secrets, so the job is restricted to trusted runs
-# (`workflow_dispatch` on a qualified commit) and never runs on pull_request
-# code, where a modified Gradle script could read the secrets.
+# Threat model this file is written against: anything that can choose the
+# source tree while the key is in the environment can steal the key. So there
+# is no `ref` input — the workflow builds the commit it was dispatched on,
+# refuses anything that is not `refs/heads/main`, re-checks that exact SHA
+# against the completed Bun CI and Mobile CI runs, and records the SHA that
+# `git rev-parse HEAD` actually produced (never a separate, possibly unrelated
+# workflow SHA).
 #
 # Required configuration (owner does this once, outside any agent session —
 # see docs/qa/qa3-distribution.md):
@@ -17,24 +18,19 @@ name: QA3 signed APK
 #   secrets.CUTLYRA_QA3_KEY_PASSWORD
 #   vars.CUTLYRA_QA3_CERT_SHA256             pinned signer certificate digest
 #
-# The job FAILS (it does not skip) when those are absent or when the built
-# APK's signer does not match the pinned digest: a missing secret must never
-# turn into "some other signature, shipped quietly".
+# Missing credentials FAIL this job; they never silently fall back to a debug
+# signature, and no artifact is uploaded from a failed run.
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: Commit/branch/tag to build (must already be qualified by Mobile CI)
-        required: true
-        default: main
 
 concurrency:
-  group: qa3-apk-${{ github.ref }}
+  group: qa3-apk
   cancel-in-progress: false
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   qa3-signed-apk:
@@ -42,10 +38,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Refuse anything but a main dispatch
+        run: |
+          set -euo pipefail
+          echo "ref=$GITHUB_REF"
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::This workflow only signs main. Dispatched ref: $GITHUB_REF" >&2
+            exit 1
+          fi
+
+      - name: Checkout the dispatched commit (not a branch name)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove the source commit is qualified main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Provenance is the commit actually on disk, never a separate value
+          # supplied by the dispatch.
+          SHA=$(git rev-parse HEAD)
+          echo "checked out $SHA (dispatch sha $GITHUB_SHA)"
+          test "$SHA" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$SHA" origin/main
+          echo "QA3_SOURCE_SHA=$SHA" >> "$GITHUB_ENV"
+
+          for wf in "Bun CI" "Mobile CI"; do
+            state=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&per_page=100" \
+              --jq "[.workflow_runs[] | select(.name == \"$wf\")] | sort_by(.created_at) | last | (if . == null then \"absent\" else .status + \"/\" + (.conclusion // \"pending\") end)")
+            echo "$wf on $SHA: $state"
+            if [ "$state" != "completed/success" ]; then
+              echo "::error::$wf has not completed successfully on $SHA ($state); refusing to sign unqualified source." >&2
+              exit 1
+            fi
+          done
 
       - name: QA3 signing gate
         env:
@@ -126,63 +155,7 @@ jobs:
         working-directory: apps/mobile/android
 
       - name: Verify QA3 identity, signature and payload
-        run: |
-          set -euo pipefail
-          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/36.0.0"
-          AAPT="$BUILD_TOOLS/aapt2"
-          APKSIGNER="$BUILD_TOOLS/apksigner"
-          test -x "$AAPT"; test -x "$APKSIGNER"
-
-          APK=$(ls app/build/outputs/apk/qa3/*.apk | head -1)
-          test -s "$APK"
-          echo "APK=$APK" >> "$GITHUB_ENV"
-
-          BADGING=$("$AAPT" dump badging "$APK")
-          echo "$BADGING" | grep -q "package: name='app.cutlyra.editor.qa3'"
-          echo "$BADGING" | grep -q "application-label:'Cutlyra QA3'"
-          echo "$BADGING" | grep -q "launchable-activity: name='app.cutlyra.editor.FirstRunActivity'  label='Cutlyra QA3'"
-          "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" | grep -q 'app.cutlyra.editor.qa3.fileprovider'
-
-          unzip -t "$APK" >/dev/null
-          unzip -l "$APK" | grep -q "assets/public/index.html"
-          unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
-          unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
-          unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
-
-          # Signed by the QA3 key, and NOT by an ephemeral debug key.
-          "$APKSIGNER" verify "$APK" >/dev/null
-          CERTS=$("$APKSIGNER" verify --print-certs "$APK")
-          echo "$CERTS" > app/build/outputs/apk/qa3/qa3-signer.txt
-          if echo "$CERTS" | grep -q "CN=Android Debug"; then
-            echo "::error::QA3 APK is debug-signed; it must use the dedicated QA3 key" >&2
-            exit 1
-          fi
-          SIGNER_SHA256=$(echo "$CERTS" | grep -o 'certificate SHA-256 digest: [0-9a-f]*' | head -1 | sed 's/.*: //')
-          test -n "$SIGNER_SHA256"
-          pinned=$(echo "$INTERNAL_QA3_CERT_SHA256" | tr -d '[:space:]:' | tr 'A-F' 'a-f')
-          if [ "$SIGNER_SHA256" != "$pinned" ]; then
-            echo "::error::QA3 signer certificate mismatch: built=$SIGNER_SHA256 pinned=$pinned" >&2
-            exit 1
-          fi
-
-          sha256sum "$APK" | tee app/build/outputs/apk/qa3/qa3-apk.sha256
-          APK_SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
-          {
-            echo "### QA3 signed APK"
-            echo ""
-            echo "- source commit: \`${GITHUB_SHA}\` (requested ref: \`${{ inputs.ref }}\`)"
-            echo "- package: \`app.cutlyra.editor.qa3\`"
-            echo "- label: \`Cutlyra QA3\`"
-            echo "- provider: \`app.cutlyra.editor.qa3.fileprovider\`"
-            echo "- apk sha256: \`$APK_SHA256\`"
-            echo "- signer cert sha256: \`$SIGNER_SHA256\`"
-            echo ""
-            echo "Install only after confirming both digests:"
-            echo ""
-            echo '```'
-            echo "adb install -r $APK"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: bash ../../../scripts/ci/qa3-verify-apk.sh
         working-directory: apps/mobile/android
 
       - name: Upload QA3 APK artifact
@@ -205,24 +178,4 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           working-directory: apps/mobile/android
-          script: |
-            set -e
-            APK=$(ls app/build/outputs/apk/qa3/*.apk | head -1)
-            adb install -r "$APK"
-            adb shell pm list packages | grep -qx 'package:app.cutlyra.editor.qa3'
-            echo 'SMOKE: qa3 installed'
-            adb shell run-as app.cutlyra.editor.qa3 ls >/dev/null
-            echo 'SMOKE: qa3 app-private data dir'
-            adb logcat -c
-            adb shell am start -W -n app.cutlyra.editor.qa3/app.cutlyra.editor.FirstRunActivity
-            sleep 20
-            adb shell pidof app.cutlyra.editor.qa3 >/dev/null
-            echo 'SMOKE: process alive'
-            ! adb logcat -d -s AndroidRuntime:E | grep -q 'FATAL EXCEPTION.*app.cutlyra.editor.qa3'
-            echo 'SMOKE: no fatal crash'
-            adb shell dumpsys activity activities | grep -q 'ResumedActivity.*app.cutlyra.editor.qa3'
-            echo 'SMOKE: qa3 resumed'
-            qa3_uid=$(adb shell cmd package list packages -U | grep '^package:app.cutlyra.editor.qa3 ' | sed 's/.*uid://' | tr -d '\r')
-            echo "SMOKE: qa3 uid=[$qa3_uid]"
-            [ -n "$qa3_uid" ]
-            echo 'QA3 emulator smoke passed'
+          script: bash "$GITHUB_WORKSPACE/scripts/ci/qa3-emulator-smoke.sh"

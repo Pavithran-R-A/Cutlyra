@@ -222,60 +222,9 @@ jobs:
         working-directory: apps/mobile/android
 
       - name: Verify QA3 identity, payload and that it is not debug-signed
-        run: |
-          set -euo pipefail
-          APK="app/build/outputs/apk/qa3/app-qa3-unsigned.apk"
-          if [ ! -s "$APK" ]; then
-            APK=$(ls app/build/outputs/apk/qa3/*.apk | head -1)
-          fi
-          test -s "$APK"
-
-          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/36.0.0"
-          AAPT="$BUILD_TOOLS/aapt2"
-          APKSIGNER="$BUILD_TOOLS/apksigner"
-          test -x "$AAPT"
-          test -x "$APKSIGNER"
-
-          BADGING=$("$AAPT" dump badging "$APK")
-          echo "$BADGING" | grep -q "package: name='app.cutlyra.editor.qa3'"
-          echo "$BADGING" | grep -q "application-label:'Cutlyra QA3'"
-          echo "$BADGING" | grep -q "launchable-activity: name='app.cutlyra.editor.FirstRunActivity'  label='Cutlyra QA3'"
-          "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" | grep -q 'app.cutlyra.editor.qa3.fileprovider'
-
-          # Never the production, historical or QA2 identity: matching one of
-          # those would mean QA3 could not coexist (or would hijack an install).
-          for wrong in app.cutlyra.editor app.cutlyra.editor.qa app.cutlyra.editor.qa2; do
-            if echo "$BADGING" | grep -q "package: name='$wrong'"; then
-              echo "::error::QA3 APK must be app.cutlyra.editor.qa3, not $wrong" >&2
-              exit 1
-            fi
-          done
-
-          # Same editor/native payload as the debug build (representative QA).
-          unzip -t "$APK" >/dev/null
-          unzip -l "$APK" | grep -q "assets/public/index.html"
-          unzip -l "$APK" | grep -q "assets/models/ggml-tiny.en.bin"
-          unzip -l "$APK" | grep -q "lib/arm64-v8a/libcutlyra_whisper.so"
-          unzip -l "$APK" | grep -q "lib/x86_64/libcutlyra_whisper.so"
-
-          # No keystore in PR CI => no signature at all. A debug signature here
-          # would silently reintroduce the un-updatable-install problem.
-          if "$APKSIGNER" verify "$APK" >/dev/null 2>&1; then
-            echo "::error::PR-CI QA3 APK is signed; it must be unsigned without the QA3 keystore" >&2
-            "$APKSIGNER" verify --print-certs "$APK" >&2 || true
-            exit 1
-          fi
-
-          {
-            echo "### QA3 identity (unsigned PR build)"
-            echo ""
-            echo "- source commit: \`${GITHUB_SHA}\`"
-            echo "- package: \`app.cutlyra.editor.qa3\`"
-            echo "- label: \`Cutlyra QA3\`"
-            echo "- provider: \`app.cutlyra.editor.qa3.fileprovider\`"
-            echo "- signing: none (no QA3 keystore in PR CI, by design)"
-            echo "- sha256: \`$(sha256sum "$APK" | cut -d' ' -f1)\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+        # Same implementation the trusted workflow uses, in "unsigned" mode:
+        # PR CI has no QA3 keystore, so the build must carry NO signature.
+        run: bash ../../../scripts/ci/qa3-verify-apk.sh --expect unsigned
         working-directory: apps/mobile/android
 
       - name: Verify bundled offline-caption payload
