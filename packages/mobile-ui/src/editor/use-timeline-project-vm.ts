@@ -74,7 +74,6 @@ import type {
 	TimelineClipVM,
 	TimelineProjectVM,
 	TimelineThumbnailFrame,
-	TimelineTrackKind,
 	TimelineTrackVM,
 } from "../timeline/types";
 

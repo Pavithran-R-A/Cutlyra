@@ -18,49 +18,72 @@ import { trackDisplayOrder, trackLaneKind } from "./track-order";
  * keeps the fixture honest about WHICH element type a lane holds without
  * fabricating trim/param fields that no assertion here looks at.
  */
-function element<T>(type: string, name: string): T {
+function element<T>({ type, name }: { type: string; name: string }): T {
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- minimal element fixture: only `type`/`name` are read by the lane mapping under test.
 	return { type, name } as unknown as T;
 }
 
-function videoTrack(id: string, elementName: string, elements?: string[]): VideoTrack {
+function videoTrack({
+	id,
+	elementName,
+}: {
+	id: string;
+	elementName: string;
+}): VideoTrack {
 	return {
 		id,
 		name: id,
 		type: "video",
-		elements: (elements ?? [elementName]).map((name) =>
-			element<VideoElement>("video", name),
-		),
+		elements: [element<VideoElement>({ type: "video", name: elementName })],
 		hidden: false,
 		muted: false,
 	};
 }
 
-function textTrack(id: string, elementName: string): TextTrack {
+function textTrack({
+	id,
+	elementName,
+}: {
+	id: string;
+	elementName: string;
+}): TextTrack {
 	return {
 		id,
 		name: id,
 		type: "text",
-		elements: [element<TextElement>("text", elementName)],
+		elements: [element<TextElement>({ type: "text", name: elementName })],
 		hidden: false,
 	};
 }
 
-function graphicTrack(id: string, elementName: string): GraphicTrack {
+function graphicTrack({
+	id,
+	elementName,
+}: {
+	id: string;
+	elementName: string;
+}): GraphicTrack {
 	return {
 		id,
 		name: id,
 		type: "graphic",
-		elements: [element<GraphicElement>("graphic", elementName)],
+		elements: [element<GraphicElement>({ type: "graphic", name: elementName })],
 		hidden: false,
 	};
 }
 
-function audioTrack(id: string, elementName: string): AudioTrack {
+function audioTrack({
+	id,
+	elementName,
+}: {
+	id: string;
+	elementName: string;
+}): AudioTrack {
 	return {
 		id,
 		name: id,
 		type: "audio",
-		elements: [element<AudioElement>("audio", elementName)],
+		elements: [element<AudioElement>({ type: "audio", name: elementName })],
 		muted: false,
 	};
 }
@@ -69,14 +92,14 @@ function audioTrack(id: string, elementName: string): AudioTrack {
  *  a shape, and one music clip. */
 function reportedScene(): SceneTracks {
 	return {
-		main: videoTrack("main", "main-clip"),
+		main: videoTrack({ id: "main", elementName: "main-clip" }),
 		overlay: [
 			// DuplicateElementsCommand: alwaysNew + highest -> overlay[0].
-			videoTrack("layer-copy", "main-clip (copy)"),
-			textTrack("layer-text", "title"),
-			graphicTrack("layer-shape", "arrow"),
+			videoTrack({ id: "layer-copy", elementName: "main-clip (copy)" }),
+			textTrack({ id: "layer-text", elementName: "title" }),
+			graphicTrack({ id: "layer-shape", elementName: "arrow" }),
 		],
-		audio: [audioTrack("layer-music", "song")],
+		audio: [audioTrack({ id: "layer-music", elementName: "song" })],
 	};
 }
 
@@ -144,9 +167,9 @@ describe("timeline lane order", () => {
 
 	test("an empty overlay list leaves main alone and music last", () => {
 		const tracks: SceneTracks = {
-			main: videoTrack("main", "clip"),
+			main: videoTrack({ id: "main", elementName: "clip" }),
 			overlay: [],
-			audio: [audioTrack("music", "song")],
+			audio: [audioTrack({ id: "music", elementName: "song" })],
 		};
 		expect(lanes(tracks).map((lane) => [lane.id, lane.kind])).toEqual([
 			["main", "main"],
@@ -156,7 +179,7 @@ describe("timeline lane order", () => {
 
 	test("a caption track keeps its own lane kind above main", () => {
 		const tracks: SceneTracks = {
-			main: videoTrack("main", "clip"),
+			main: videoTrack({ id: "main", elementName: "clip" }),
 			overlay: [
 				{
 					id: "layer-caption",
