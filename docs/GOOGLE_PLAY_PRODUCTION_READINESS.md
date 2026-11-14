@@ -159,7 +159,7 @@ Production and historical QA applications must be preserved (six Cutlyra-related
 
 ### Production AAB validation results
 - Previous validated AAB SHA-256: `6659567e478da6ddbe4986ffaf364c368dfbf0dde07bdbe52514ba4fd07f2bcd` (run `41037884283`).
-- Fresh build to be produced by `play-bundle.yml` on the RC (build only, no upload).
+- Fresh build produced by `play-bundle.yml` run `43597025250` on `main` @ `85ef015` (build only, no upload): invariants gate (ubuntu/windows/macos) + Android Play bundle — **all green**, 4/4 jobs. AAB built, container/signature/model/native-lib/16 KB alignment/spike-asset checks passed.
 
 ### Signing compatibility assessment
 - Play App Signing with separate upload key (decided). Cross-channel (GitHub direct APK ↔ Play) compatibility **undecided** — owner must choose before first rollout (see §1.2).
