@@ -68,12 +68,12 @@ import {
 	resolveNativeMediaRawPath,
 } from "@cutlyra/editor-core/media/native-paths";
 import { getClipKeyframeTimes } from "./keyframes";
+import { trackDisplayOrder, trackLaneKind } from "./track-order";
 import type {
 	TimelineClipKind,
 	TimelineClipVM,
 	TimelineProjectVM,
 	TimelineThumbnailFrame,
-	TimelineTrackKind,
 	TimelineTrackVM,
 } from "../timeline/types";
 
@@ -124,26 +124,6 @@ function clipKindForElement(element: TimelineElement): TimelineClipKind {
 			return "caption";
 		default:
 			return "text";
-	}
-}
-
-function trackKindFor({ track, isMain }: { track: TimelineTrack; isMain: boolean }): TimelineTrackKind {
-	if (isMain) return "main";
-	switch (track.type) {
-		case "video":
-			return "overlay";
-		case "text":
-			return "text";
-		case "audio":
-			return "audio";
-		case "graphic":
-			return "sticker";
-		case "effect":
-			return "overlay";
-		case "caption":
-			return "caption";
-		default:
-			return "overlay";
 	}
 }
 
@@ -359,7 +339,7 @@ function mapTrack({
 	}));
 	return {
 		id: track.id,
-		kind: trackKindFor({ track, isMain }),
+		kind: trackLaneKind({ track, isMain }),
 		name: track.name,
 		clips,
 		muted: "muted" in track ? track.muted : undefined,
@@ -411,15 +391,14 @@ export function useTimelineProjectVM(): TimelineProjectVM | null {
 			projectId,
 			liveAssets: () => editor.media.getAssets(),
 		};
-		const trackVMs: TimelineTrackVM[] = [
-			mapTrack({ track: tracks.main, isMain: true, assetById, stripContext }),
-			...tracks.overlay.map((track) =>
-				mapTrack({ track, isMain: false, assetById, stripContext }),
-			),
-			...tracks.audio.map((track) =>
-				mapTrack({ track, isMain: false, assetById, stripContext }),
-			),
-		];
+		// Lane order comes from `track-order.ts`: overlays above the main row,
+		// audio below it — matching the placement engine's own track indexing
+		// and the web editor (see that file's doc comment for the report this
+		// fixes).
+		const trackVMs: TimelineTrackVM[] = trackDisplayOrder(tracks).map(
+			({ track, isMain }) =>
+				mapTrack({ track, isMain, assetById, stripContext }),
+		);
 
 		return {
 			tracks: trackVMs,
