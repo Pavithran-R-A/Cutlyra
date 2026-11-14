@@ -2,7 +2,8 @@
 
 **Prepared:** 2026-11-14
 **Base:** `main` @ `85ef015b8e079e517a104894e4856c0f55c0d106`
-**App identity:** `app.cutlyra.editor` · versionName `0.1.0` · versionCode `1` · minSdk 29 · targetSdk/compileSdk 36
+**App identity:** `app.cutlyra.editor` · versionName `0.1.1` · versionCode `2` (candidate) · minSdk 29 · targetSdk/compileSdk 36
+- Previously uploaded highest versionCode (owner-confirmed): `1` (installed on POCO closed-test Cutlyra).
 **Release candidate branch:** `release/play-production-candidate`
 
 This document is the source-side audit and final-gates record for Cutlyra's
@@ -16,7 +17,8 @@ signing credentials.
 
 ### 1.1 Production build configuration
 - `applicationId` = `app.cutlyra.editor` (unchanged).
-- `versionCode 1`, `versionName "0.1.0"` (`apps/mobile/android/app/build.gradle`).
+- `versionCode 2`, `versionName "0.1.1"` (`apps/mobile/android/app/build.gradle`).
+- Highest uploaded Play versionCode (owner-confirmed): `1` (POCO Play-installed closed-test Cutlyra).
 - `minSdkVersion 29` (Android 10), `targetSdkVersion`/`compileSdkVersion 36` (Android 16).
 - `allowBackup=false`; no broad media/storage permissions; `CAMERA` declared but never requested at runtime (documented in `CUTLYRA-PLAY-SUBMISSION-READINESS.md` §2).
 - Release build type: `minifyEnabled false`, `debugSymbolLevel FULL` (native symbols shipped), signing only when `CUTLYRA_RELEASE_KEYSTORE*` env vars present (unsigned otherwise — never silently debug-signed).
@@ -32,7 +34,8 @@ signing credentials.
 
 ### 1.3 Highest versionCode already uploaded to Play
 - **Unavailable in-repo.** Play Console is the authoritative source. `CUTLYRA-PLAY-SUBMISSION-READINESS.md` records that the Console upload was **not** performed as of the last documented run; the only built AAB (`cutlyra-play-1d7b533…aab`, SHA `6659567e…07f2bcd`) was produced by `play-bundle.yml` run `41037884283` but not uploaded.
-- Therefore the highest uploaded versionCode is assumed to be **0 / none**, and `versionCode 1` is the candidate for the first upload. **Owner must confirm in Play Console before upload.** If any upload (internal/closed/production) already occurred, bump `versionCode` to `highest + 1` and rebuild.
+- Highest uploaded Play versionCode confirmed by owner: **1** (POCO has Play-installed closed-test Cutlyra with versionCode 1). Therefore the next upload must use **versionCode 2**, which is now set in `apps/mobile/android/app/build.gradle` and enforced by the `play-bundle.yml` identity gate.
+- Do not reuse versionCode 1 for any new upload (Play rejects equal/lower versionCodes).
 
 ### 1.4 Production permissions and privacy declarations
 - Permissions: `INTERNET`, `CAMERA` (declared, never requested at runtime), `android.hardware.camera required="false"`.
@@ -82,7 +85,7 @@ signing credentials.
 ### 2.1 Branch
 - `release/play-production-candidate` created from `main` @ `85ef015`.
 - `applicationId` remains `app.cutlyra.editor`.
-- `versionCode` remains `1` (no Play upload confirmed; see §1.3). **Owner must confirm highest uploaded versionCode before upload; if > 0, bump and rebuild.**
+- `versionCode` is now `2` / `versionName` `0.1.1` (owner confirmed highest uploaded = 1; §1.3). No Play upload confirmed for versionCode 2 (candidate not yet built).
 
 ### 2.2 R8 decision
 - Keep `minifyEnabled false` for v0.1.0 (see §1.5). R8 qualified but not enabled.
@@ -121,27 +124,84 @@ Production and historical QA applications must be preserved (six Cutlyra-related
 
 ---
 
-## Phase 4 — Play Console production-access answers (drafts)
+## Phase 4 — Play Console production-access answers (copy-ready)
+
+> Copy-paste these into the Google Play Console production-access application.
+> Do not submit automatically; owner must review and submit.
 
 ### 4.1 About your closed test
-- Tester count invited: ≥15 (margin above 12 floor); record actual opted-in count and dates from Play Console.
-- Testers exercised: first launch; project create/open/delete; photo/video/audio import; optional camera capture; timeline playback/scrub; trim/split/delete/undo/redo; text/captions; keyframes/cross-fade; export; play/share; force-stop/reopen persistence.
-- Recorded per tester: device, Android version, features exercised, failures, feedback, fixes applied.
-- **Do not invent usage statistics or claim unexecuted physical tests passed.** The existing test is nearing its 14-day requirement; do not create a new test or remove existing testers.
+
+**Testers:** At least 12 testers opted into the closed test on the existing
+Play listing (`app.cutlyra.editor`). (Play Console is authoritative for the
+exact opted-in count and dates; record the real number before submitting.)
+
+**What testers exercised (feedback received):**
+- Timeline ordering / lane placement (reported by multiple testers).
+- Touch drag and resize gestures jumping or feeling unstable on the timeline.
+- Video filmstrip thumbnails usability (readability, density, scrubbing).
+- Editing latency / responsiveness during multi-clip edits.
+- Requests for audio/music browsing and selection UX.
+- Accidental duplication reports (duplicate clips appearing unexpectedly).
+- One unexplained "black dot" report (no reproducible steps; not yet reproduced).
+
+**Bugs reproduced and fixed in code (merged):**
+- Timeline lane ordering corrected — PR #81 (merged).
+- Touch drag/resize gesture stability improved — PR #82 (merged).
+- Project-restore collision fixed: restore no longer overwrites an existing
+  project (merged).
+- Rotation / Fit / Fill export parity improvements (merged).
+
+**Successfully tested:** photo and video exports that include audio, on-device,
+with no watermark (CI + physical QA matrix).
+
+**Tests passed in CI:** full seven-job matrix on merged `main` (Bun CI 3 jobs
++ Mobile CI 4 jobs), including API-35 instrumentation and R8 build type,
+plus the Play AAB pipeline (container, signature, 16 KB alignment, model SHA,
+no spike assets) — all green.
+
+**Fixes still awaiting real-device confirmation (not yet claimed as passed):**
+- Timeline lane ordering on a physical device.
+- Touch drag/resize stability on a physical device.
+- Restore to a separate project (no overwrite) on a physical device.
+- Rotation / Fit / Fill export parity on a physical device.
+- Video and audio export on a physical device.
+- Replace Clip durability on a physical device.
+- Filmstrip thumbnail usability on a physical device.
+
+**Features still requested but not implemented:**
+- Audio/music browsing UX improvements (requested; not yet shipped).
+- Further filmstrip thumbnail density/readability polish.
+- Explanation/resolution of the unexplained black-dot report (no repro yet).
+
+**Test continuity:** The existing 14-day closed test and its tester opt-ins
+are preserved. No new Play app was created and no test was restarted.
 
 ### 4.2 About your app/game
+
 - App name: Cutlyra. Package: `app.cutlyra.editor`.
 - Category: Video Players & Editors (creative tool).
-- Target audience: general-purpose, not designed specifically for children.
+- Target audience: general-purpose; not designed specifically for children.
 - Ads: none. In-app purchases: none.
-- Permissions: camera only (optional capture); no broad media/storage, microphone, location, contacts, SMS, call log, phone.
-- Data Safety: no off-device collection, no sharing, no sale, no accounts; local-only media processing.
+- Permissions: `CAMERA` only (optional, user-initiated capture); no broad
+  media/storage, microphone, location, contacts, SMS, call log, or phone
+  permissions.
+- Data Safety: no off-device collection, no sharing, no sale, no accounts;
+  all media processing is local to the device.
 - Privacy policy URL: `https://site-dcfc842ddace4944a7faea3dcc59ff84.freebuff.page/privacy-policy`.
-- Support email: **HUMAN INPUT required.**
+- Support email: **HUMAN INPUT required** (real verified contact).
 
 ### 4.3 About your production readiness
-- Evidence: source-side CI green (7/7 on merged main), R8 keep rules qualified, 16 KB alignment verified, targetSdk 36, native debug symbols, privacy policy hosted and drift-guarded.
-- Outstanding: support email, physical acceptance (Phase 3), final Play-delivered smoke test, closed-test 14-day completion (if applicable to this account).
+
+- Evidence: source-side CI green (7/7 on merged main), R8 keep rules
+  qualified (CI-only `r8test` build type, green), 16 KB ELF alignment
+  verified for all native libraries on both ABIs, targetSdk 36, native debug
+  symbols shipped at FULL level, privacy policy hosted and drift-guarded,
+  Camera permission declared-but-unused and documented.
+- Candidate version: versionName `0.1.1`, versionCode `2` (owner-confirmed
+  highest uploaded = 1; next upload uses 2).
+- Outstanding before submission: support email; physical acceptance (Phase 3);
+  final Play-delivered smoke test; closed-test 14-day completion (if
+  applicable to this account); cross-channel signing decision.
 
 ---
 
@@ -151,11 +211,11 @@ Production and historical QA applications must be preserved (six Cutlyra-related
 **CONDITIONAL GO for source-side preparation. NO-GO for production upload/rollout today.**
 
 ### Existing Play package and version details
-- Package: `app.cutlyra.editor` · versionName `0.1.0` · versionCode `1` · minSdk 29 · targetSdk 36.
+- Package: `app.cutlyra.editor` · versionName `0.1.1` · versionCode `2` · minSdk 29 · targetSdk 36.
 - No Play upload confirmed in-repo (Console authoritative).
 
 ### Next eligible versionCode
-- If no upload occurred: `1` (candidate). If uploads exist: `highest_uploaded + 1`. **Owner must confirm in Play Console; not guessed.**
+- Owner-confirmed highest uploaded: `1`. Next upload: `2` (now set in build.gradle and enforced by play-bundle.yml gate).
 
 ### Production AAB validation results
 - Previous validated AAB SHA-256: `6659567e478da6ddbe4986ffaf364c368dfbf0dde07bdbe52514ba4fd07f2bcd` (run `41037884283`).
@@ -197,7 +257,7 @@ Production and historical QA applications must be preserved (six Cutlyra-related
 4. Play-delivered build not yet smoke-tested on a real phone.
 5. Cross-channel signing compatibility undecided.
 6. No explicit owner approval for production upload/rollout.
-7. Highest uploaded versionCode unconfirmed in Play Console.
+7. Highest uploaded versionCode confirmed by owner as `1` (POCO Play-installed closed-test Cutlyra); next upload uses `2`.
 
 ---
 

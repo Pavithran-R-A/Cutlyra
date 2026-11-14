@@ -168,7 +168,7 @@ access. Nothing in this category can be completed from the repository.**
 | Phone screenshots 1080×1920 ×4 | ready | `docs/store-screenshots/` |
 | Standalone privacy-policy page | ready, not yet hosted | `apps/web/public/privacy-policy.html` |
 | Data Safety / listing drafts | ready | this file + `docs/PLAY_STORE_LISTING.md` |
-| Release identity | `app.cutlyra.editor`, versionCode 1, versionName 0.1.0 | `apps/mobile/android/app/build.gradle` |
+| Release identity | `app.cutlyra.editor`, versionCode 2, versionName 0.1.1 | `apps/mobile/android/app/build.gradle` |
 | CI green on exact main head | 6/6 checks success on `aee28b7` | GitHub Actions |
 
 ### What requires owner access (not available from here)
