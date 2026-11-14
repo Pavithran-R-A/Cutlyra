@@ -17,24 +17,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	NO_SNAP,
-	SNAP_CAPTURE_PX,
-	SNAP_RELEASE_PX,
 	pulseSnapHaptic,
-	snapToCenterAxes,
 	type AxisSnapFlags,
 } from "../../editor/axis-snap";
+import {
+	applyPointerTopologyChange,
+	gestureTransform,
+	initialAnchors,
+	pointerCentroidAndDistance,
+	type GestureAnchors,
+} from "./preview-gesture";
+import {
+	buildSessionPatches,
+	type GestureTarget,
+} from "./preview-gesture-payload";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
-import { TICKS_PER_SECOND, type MediaTime } from "@cutlyra/editor-core";
+import { TICKS_PER_SECOND } from "@cutlyra/editor-core";
 import { useEditor } from "@cutlyra/editor-core/react";
 import { isVisualElement, type TimelineElement } from "@cutlyra/editor-core/timeline";
-import type { ParamValues } from "@cutlyra/editor-core/params";
 import {
 	clipLocalTime,
 	hasClipKeyframes,
 	resolveClipValuesAtTime,
 	snapLocalTimeToFrame,
-	upsertClipAnimationValues,
-	type ClipKeyframeValues,
 } from "../../editor/keyframes";
 import { useSelectedElement } from "../../editor/use-live-editor";
 import { CanvasRenderer } from "@cutlyra/editor-core/services/renderer/canvas-renderer";
@@ -373,25 +378,8 @@ function PreviewRendererInner() {
  */
 const DRAG_SLOP_PX = 6;
 
-/** One element a preview gesture writes to: the selection, or every caption
- *  when a caption is selected (they move as one). Round 47: a target that
- *  already has clip keyframes is `keyed` — the gesture then writes a
- *  keyframe at the playhead (CapCut's auto-add once a clip is keyed) instead
- *  of the base params, which the animation would override anyway. */
-interface GestureTarget {
-	trackId: string;
-	elementId: string;
-	/** PRE-gesture element: every frame's params/animations build from it. */
-	element: TimelineElement;
-	keyed: boolean;
-	/** Frame-snapped clip-local playhead at gesture start. */
-	localTime: MediaTime;
-	/** The keyframe group's values at `localTime` — the drag anchors here
-	 *  (so a keyed clip is grabbed where it IS at this time, not at its base
-	 *  params) and rotate/opacity ride along unchanged so the keyframe the
-	 *  drag writes is complete. */
-	baseValues: ClipKeyframeValues;
-}
+/* GestureTarget (one element a preview gesture writes to) lives in
+ * `preview-gesture-payload.ts` beside the mapping that consumes it. */
 
 function usePreviewTransformGesture({
 	mountRef,
@@ -409,38 +397,19 @@ function usePreviewTransformGesture({
 	// Anchor values are the element's transform at the LAST pointer-topology
 	// change (gesture start, finger added, finger lifted); deltas are always
 	// measured from the geometry captured at that same moment, so adding or
-	// removing a finger never makes the element jump.
-	const sessionRef = useRef<{
-		pointers: Map<number, { x: number; y: number }>;
-		startCentroid: { x: number; y: number };
-		startDistance: number | null;
-		anchorPositionX: number;
-		anchorPositionY: number;
-		anchorScaleX: number;
-		anchorScaleY: number;
-		dragging: boolean;
-		/** Which axes are currently held by the centre-line detent. Lives on
-		 *  the session because the snap decision is hysteretic: it depends on
-		 *  whether the axis was ALREADY snapped a frame ago. */
-		snapped: AxisSnapFlags;
-		/** The selection alone, or every caption in the scene when a caption
-		 *  is selected — the shared transform fans out to all of them per
-		 *  frame, each written its own way (params vs keyframe). */
-		targets: GestureTarget[];
-	} | null>(null);
-
-	const centroidAndDistance = (pointers: Map<number, { x: number; y: number }>) => {
-		const points = [...pointers.values()];
-		const centroid = {
-			x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
-			y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
-		};
-		const distance =
-			points.length >= 2
-				? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)
-				: null;
-		return { centroid, distance };
-	};
+	// removing a finger never makes the element jump. `applyPointerTopologyChange`
+	// enforces the ordering that makes that true: it reads the on-screen
+	// transform BEFORE the pointer set changes.
+	const sessionRef = useRef<
+		| (GestureAnchors & {
+				dragging: boolean;
+				/** The selection alone, or every caption in the scene when a caption
+				 *  is selected — the shared transform fans out to all of them per
+				 *  frame, each written its own way (params vs keyframe). */
+				targets: GestureTarget[];
+		  })
+		| null
+	>(null);
 
 	const pxToCanvas = () => {
 		const rect = mountRef.current?.getBoundingClientRect();
@@ -451,55 +420,10 @@ function usePreviewTransformGesture({
 
 	type Session = NonNullable<typeof sessionRef.current>;
 
-	/**
-	 * The element's effective transform under the current pointer deltas,
-	 * with the centre-axis detent applied.
-	 *
-	 * The snap is applied HERE rather than at commit time on purpose: the
-	 * whole point is that the element visibly leaves the finger and sits on
-	 * the axis during the drag. Snapping only on release would land in the
-	 * same place while showing the user nothing.
-	 */
-	const currentTransform = (session: Session) => {
-		const scale = pxToCanvas();
-		const { centroid, distance } = centroidAndDistance(session.pointers);
-		const factor =
-			distance !== null && session.startDistance && session.startDistance > 0
-				? distance / session.startDistance
-				: 1;
-		const rawX = session.anchorPositionX + (centroid.x - session.startCentroid.x) * scale;
-		const rawY = session.anchorPositionY + (centroid.y - session.startCentroid.y) * scale;
-		// Thresholds are authored in CSS px and converted with the same
-		// px -> canvas factor the drag itself uses, so the detent is the same
-		// physical size on any preview size or project resolution.
-		const snap = snapToCenterAxes({
-			x: rawX,
-			y: rawY,
-			wasSnapped: session.snapped,
-			capture: SNAP_CAPTURE_PX * scale,
-			release: SNAP_RELEASE_PX * scale,
-		});
-		return {
-			positionX: snap.x,
-			positionY: snap.y,
-			scaleX: session.anchorScaleX * factor,
-			scaleY: session.anchorScaleY * factor,
-			snapped: snap.snapped,
-		};
-	};
-
-	/** Re-anchor after a finger joins/leaves: bank the current transform and
-	 *  restart deltas from the new pointer geometry. */
-	const reanchor = (session: Session) => {
-		const current = currentTransform(session);
-		session.anchorPositionX = current.positionX;
-		session.anchorPositionY = current.positionY;
-		session.anchorScaleX = current.scaleX;
-		session.anchorScaleY = current.scaleY;
-		const { centroid, distance } = centroidAndDistance(session.pointers);
-		session.startCentroid = centroid;
-		session.startDistance = distance;
-	};
+	/** The element's effective transform under the current deltas, with the
+	 *  centre-axis detent applied (see `gestureTransform`). */
+	const currentTransform = (session: Session) =>
+		gestureTransform({ anchors: session, scale: pxToCanvas() });
 
 	const applySessionUpdate = () => {
 		const session = sessionRef.current;
@@ -515,35 +439,8 @@ function usePreviewTransformGesture({
 		}
 		session.snapped = current.snapped;
 		setSnapGuides(current.snapped);
-		const transformPatch: ParamValues = {
-			"transform.positionX": current.positionX,
-			"transform.positionY": current.positionY,
-			"transform.scaleX": current.scaleX,
-			"transform.scaleY": current.scaleY,
-		};
 		editor.timeline.previewElements({
-			updates: session.targets.map((t) => ({
-				trackId: t.trackId,
-				elementId: t.elementId,
-				updates: t.keyed
-					? {
-							// Auto-keyframe: the whole group at the playhead, built
-							// from the PRE-gesture animations so re-writing the same
-							// time every frame replaces one key instead of stacking.
-							animations: upsertClipAnimationValues({
-								element: t.element,
-								localTime: t.localTime,
-								values: {
-									...t.baseValues,
-									"transform.positionX": current.positionX,
-									"transform.positionY": current.positionY,
-									"transform.scaleX": current.scaleX,
-									"transform.scaleY": current.scaleY,
-								},
-							}),
-						}
-					: { params: { ...t.element.params, ...transformPatch } },
-			})),
+			updates: buildSessionPatches({ targets: session.targets, transform: current }),
 		});
 	};
 
@@ -604,7 +501,6 @@ function usePreviewTransformGesture({
 		target: { trackId: string; elementId: string };
 		isCaption: boolean;
 	}) => {
-		const { centroid, distance } = centroidAndDistance(pointers);
 		const targets = isCaption ? collectCaptionFanout() : [];
 		if (!targets.some((t) => t.elementId === target.elementId)) {
 			targets.unshift(makeTarget({ trackId: target.trackId, element }));
@@ -614,15 +510,14 @@ function usePreviewTransformGesture({
 		// element is at the playhead (grabbing it must not snap it back to its
 		// base params); for an un-keyed clip it equals the params/defaults.
 		sessionRef.current = {
-			pointers,
-			startCentroid: centroid,
-			startDistance: distance,
-			anchorPositionX: primary.baseValues["transform.positionX"],
-			anchorPositionY: primary.baseValues["transform.positionY"],
-			anchorScaleX: primary.baseValues["transform.scaleX"],
-			anchorScaleY: primary.baseValues["transform.scaleY"],
+			...initialAnchors({
+				pointers,
+				positionX: primary.baseValues["transform.positionX"],
+				positionY: primary.baseValues["transform.positionY"],
+				scaleX: primary.baseValues["transform.scaleX"],
+				scaleY: primary.baseValues["transform.scaleY"],
+			}),
 			dragging: false,
-			snapped: NO_SNAP,
 			targets,
 		};
 	};
@@ -638,8 +533,14 @@ function usePreviewTransformGesture({
 			const point = { x: event.clientX, y: event.clientY };
 			const existing = sessionRef.current;
 			if (existing) {
-				existing.pointers.set(event.pointerId, point);
-				reanchor(existing);
+				// Read the on-screen transform FIRST, then register the finger.
+				// Re-anchoring from the post-join centroid (the old order) jumped
+				// the element by half the inter-finger distance.
+				applyPointerTopologyChange({
+					state: existing,
+					mutate: (pointers) => pointers.set(event.pointerId, point),
+					scale: pxToCanvas(),
+				});
 				return;
 			}
 
@@ -660,7 +561,7 @@ function usePreviewTransformGesture({
 			if (!session || !session.pointers.has(event.pointerId)) return;
 			session.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 			if (!session.dragging) {
-				const { centroid } = centroidAndDistance(session.pointers);
+				const { centroid } = pointerCentroidAndDistance(session.pointers);
 				const moved = Math.hypot(
 					centroid.x - session.startCentroid.x,
 					centroid.y - session.startCentroid.y,
@@ -679,12 +580,21 @@ function usePreviewTransformGesture({
 		},
 		onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => {
 			const session = sessionRef.current;
-			if (!session || !session.pointers.has(event.pointerId)) return;
-			session.pointers.delete(event.pointerId);
-			if (session.pointers.size > 0) {
-				reanchor(session);
-				return;
+			const last = session?.pointers.get(event.pointerId);
+			if (!session || !last) return;
+			// Fold the release coordinates into the preview before committing:
+			// the last pointermove can lag the up event by a few px, and the
+			// committed transform must be exactly what the user last saw.
+			if (session.dragging && (last.x !== event.clientX || last.y !== event.clientY)) {
+				session.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+				applySessionUpdate();
 			}
+			applyPointerTopologyChange({
+				state: session,
+				mutate: (pointers) => pointers.delete(event.pointerId),
+				scale: pxToCanvas(),
+			});
+			if (session.pointers.size > 0) return;
 			const ended = endSession(true);
 			// Only a real drag swallows the up-event; a plain tap (session
 			// opened but never moved) bubbles — harmlessly, now that the
