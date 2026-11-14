@@ -68,6 +68,10 @@ QA3 signer certificate SHA-256: (fill in after generating the keystore)
 2. Actions → **QA3 signed APK** → *Run workflow* **on `main`**. There is no
    ref input: the workflow signs the commit it was dispatched on and refuses
    anything that is not `refs/heads/main`.
+   Because the job uses the `qa3-signing` environment, dispatch may pause
+   for a required reviewer's approval before the keystore is decoded; an
+   account that dispatched the run cannot approve it when self-review is
+   prevented.
 3. Before the keystore is decoded, the job re-checks provenance: the SHA that
    `git rev-parse HEAD` actually produced (not a value passed in) must be an
    ancestor of `origin/main`, and **both** Bun CI and Mobile CI must be
@@ -108,12 +112,65 @@ pull request could otherwise read the signing key. PR CI builds QA3
 **unsigned** and asserts, with the same verification script in its `unsigned`
 mode, that it has no signature at all.
 
-Recommended, once the secrets exist: put them in a **GitHub Actions
-environment** (for example `qa3-signing`) with required reviewers, and add
-`environment: qa3-signing` to the job. Dispatch then needs a human approval
-before the key is ever decoded, which is a second lock independent of this
-file. Repository secret names stay the same; only their scope changes to the
-environment.
+## GitHub Actions environment setup (`qa3-signing`)
+
+The four QA3 secrets and the public certificate digest are scoped to a
+protected GitHub Actions environment named `qa3-signing`. The workflow job
+`qa3-signed-apk` declares `environment: qa3-signing`, so dispatching it
+requires satisfying every protection rule on that environment before the
+keystore is ever decoded.
+
+Configure the environment once, as the repository owner, in
+**Settings → Environments → qa3-signing**:
+
+1. **Deployment branches** — restrict to `main` only. No other branch,
+   tag or arbitrary ref may deploy. This mirrors the workflow's own
+   `refs/heads/main` refusal and is the environment-level lock.
+2. **Required reviewers** — add at least one reviewer. Enable the toggle
+   only if a second account (or a separate approver) is actually
+   available: when **"Prevent self-review"** is on, the account that
+   dispatched the run **cannot** approve its own deployment. If only the
+   owner account exists, either leave self-review disabled or arrange a
+   second reviewer account before relying on approval. Never assume
+   self-approval works.
+3. **Wait timer** — optional; if set, it adds a mandatory delay before
+   the secrets are exposed.
+4. **Secrets** (four, environment-scoped, never repository-scoped once
+   this is configured):
+   - `CUTLYRA_QA3_KEYSTORE_BASE64`
+   - `CUTLYRA_QA3_KEYSTORE_PASSWORD`
+   - `CUTLYRA_QA3_KEY_ALIAS`
+   - `CUTLYRA_QA3_KEY_PASSWORD`
+5. **Variables** (one, public verification metadata, NOT a secret):
+   - `CUTLYRA_QA3_CERT_SHA256` — the pinned signer certificate SHA-256.
+
+Repository secret names stay the same; only their scope changes from the
+repository to the environment. The workflow reads them through the same
+`secrets.*` / `vars.*` names, so no code change is needed beyond
+`environment: qa3-signing`.
+
+## Protect `main` with repository rules
+
+Apply these repository rules so the source the environment signs cannot be
+mutated without review, even by an account that holds the signing secrets:
+
+- Require pull requests before merging to `main` (no direct pushes).
+- Require the full seven-job CI matrix to pass: Bun CI's three
+  `invariants` jobs plus Mobile CI's `iOS (simulator, unsigned)`,
+  `Android (debug APK)`, `Android instrumentation (API 35 emulator)` and
+  `Android instrumentation (R8 test variant)`.
+- Require the `qa3-apk.yml` workflow's provenance checks (qualified SHA,
+  Bun CI + Mobile CI `completed/success`) to pass before any signed
+  artifact is produced — these run inside the job, not as branch
+  protection, but the branch rules guarantee the inputs they inspect are
+  the reviewed commit.
+- Restrict who can push to / approve changes touching
+  `.github/workflows/qa3-apk.yml`, `apps/mobile/android/app/build.gradle`
+  and the signing-related Gradle configuration.
+- Do not allow force-push or branch deletion on `main`.
+
+Dispatch then needs a human approval before the key is ever decoded, which
+is a second lock independent of this file.
 
 ## Signing stability check
 

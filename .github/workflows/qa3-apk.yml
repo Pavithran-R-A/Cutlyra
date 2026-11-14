@@ -36,6 +36,19 @@ jobs:
   qa3-signed-apk:
     name: QA3 (signed, verified, installable)
     runs-on: ubuntu-latest
+    # Environment protection: the QA3 signing secrets live in the
+    # `qa3-signing` GitHub Actions environment, not as repository
+    # secrets. Dispatching therefore needs a human approval (required
+    # reviewers configured on that environment) before the keystore is
+    # ever decoded. Repository secret names are unchanged; only their
+    # scope moved to the environment. See docs/qa/qa3-distribution.md.
+    #
+    # Note: if "Prevent self-review" is enabled on the environment, the
+    # account that dispatched the run cannot approve its own deployment —
+    # a second reviewer (or a separate approver account) is required, or
+    # that toggle must be left off. Document the available reviewer
+    # configuration; never assume self-approval works.
+    environment: qa3-signing
 
     steps:
       - name: Refuse anything but a main dispatch
