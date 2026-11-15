@@ -220,11 +220,17 @@ are preserved. No new Play app was created and no test was restarted.
 ### Production AAB validation results
 - Previous validated AAB SHA-256: `6659567e478da6ddbe4986ffaf364c368dfbf0dde07bdbe52514ba4fd07f2bcd` (run `41037884283`).
 - Fresh build produced by `play-bundle.yml` run `43597025250` on `main` @ `85ef015` (build only, no upload): invariants gate (ubuntu/windows/macos) + Android Play bundle — **all green**, 4/4 jobs. AAB built, container/signature/model/native-lib/16 KB alignment/spike-asset checks passed.
-- A versionCode-2 AAB has **not** been built yet; dispatching `play-bundle.yml` on the RC head requires the owner-controlled upload-keystore secrets and owner authorization. The versionCode-2 candidate is gated by the identity check (verified locally: `versionCode 2 / versionName 0.1.1`).
+- **VersionCode-2 AAB built and verified (build only, no upload).**
+  - Run: `play-bundle.yml` **43696665795** on `main` @ `8ca9683648e5b80cd985afc9bfaa86ba89d90fe9` — 4/4 jobs green.
+  - Artifact: `cutlyra-play-8ca9683648e5b80cd985afc9bfaa86ba89d90fe9.aab`, 91,331,262 bytes.
+  - **SHA-256: `2a368798d54ab55235ece04fa8c5916209be2d0498b6a009d253c7c47fac5c72`** (`SHA256SUMS.txt` matches on recompute).
+  - `bundletool dump manifest`: `package="app.cutlyra.editor"`, `android:versionCode="2"`, `android:versionName="0.1.1"`.
+  - Signer: `CN=Cutlyra Play Upload, O=Cutlyra`, SHA-256 `90:01:71:...:BC:DA` — matches the Play Console registered upload certificate; not debug-signed.
+  - Native libs (arm64-v8a, x86_64), Whisper model, and no test-only assets confirmed; 16 KB alignment and signature gates passed in the run.
 
 ### Signing compatibility assessment
 - The existing Play listing already has a closed-testing release; Play App Signing is already in effect and must **not** be re-enrolled or replaced. Preserve the registered upload-key identity.
-- Owner must supply the registered upload-key SHA-256 fingerprint from Play Console to confirm the `play-bundle.yml` keystore matches. If unavailable/incompatible, use the official Play upload-key reset/recovery path — do not generate an unrelated production key.
+- **Upload-key compatibility: CONFIRMED.** Play Console registered upload certificate SHA-256 is `90:01:71:5E:20:CF:33:03:F1:4A:4A:50:F2:B3:AB:11:55:0B:65:43:F2:BE:E3:15:87:13:B8:8B:F5:E6:BC:DA`, and the signed AAB's signer matches it exactly. No key was rotated or replaced.
 - Cross-channel (GitHub direct APK ↔ Play) compatibility is **optional** and must not delay a Play-only release.
 
 ### Required owner actions

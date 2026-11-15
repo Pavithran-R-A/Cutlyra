@@ -346,13 +346,13 @@ remain separate from engineering readiness.
 - [ ] fixed connected instrumentation suite executes 0 failures on real device
 - [ ] final physical import/edit/caption/export/offline/release-mode matrix passes
 - [ ] final GitHub CI gates execute green on merged hardening source
-- [ ] real Play upload key configured
-- [ ] final AAB rebuilt/checksummed
+- [x] real Play upload key configured (Play Console registered SHA-256 confirmed)
+- [x] final AAB rebuilt/checksummed (run 43696665795, SHA-256 `2a368798d54ab55235ece04fa8c5916209be2d0498b6a009d253c7c47fac5c72`)
 - [ ] public privacy URL + real contact live
 - [ ] required Play icon + feature graphic + final-candidate screenshots prepared
 - [ ] Play account/identity/device verification complete
 - [ ] Internal test Play build smoke-tested
-- [ ] versionCode-2 AAB built and validated (build-only, owner-authorized)
+- [x] versionCode-2 AAB built and validated (build-only, run 43696665795, upload-key signer verified)
 - [x] closed-test requirement complete (12 testers / 14 days)
 - [x] production-access application submitted 2026-11-15 11:09 IST — UNDER REVIEW
 - [ ] production access approved (await Google)
