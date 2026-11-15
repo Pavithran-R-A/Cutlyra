@@ -79,17 +79,17 @@ jobs:
         run: |
           set -euo pipefail
           F=apps/mobile/android/app/build.gradle
-          grep -qE '^\s*versionCode\s+1\s*$' "$F" || {
-            echo "::error::versionCode in build.gradle is no longer 1; update this gate and docs/PLAY_STORE_LISTING.md together." >&2
+          grep -qE '^\s*versionCode\s+2\s*$' "$F" || {
+            echo "::error::versionCode in build.gradle is no longer 2; update this gate and docs/PLAY_STORE_LISTING.md together." >&2
             grep -nE 'versionCode|versionName' "$F" >&2
             exit 1
           }
-          grep -qE '^\s*versionName\s+"0\.1\.0"\s*$' "$F" || {
-            echo "::error::versionName in build.gradle is no longer \"0.1.0\"; update this gate and docs/PLAY_STORE_LISTING.md together." >&2
+          grep -qE '^\s*versionName\s+"0\.1\.1"\s*$' "$F" || {
+            echo "::error::versionName in build.gradle is no longer \"0.1.1\"; update this gate and docs/PLAY_STORE_LISTING.md together." >&2
             grep -nE 'versionCode|versionName' "$F" >&2
             exit 1
           }
-          echo "Release identity OK: versionCode 1 / versionName 0.1.0"
+          echo "Release identity OK: versionCode 2 / versionName 0.1.1"
       - name: Build signed AAB
         env:
           CUTLYRA_RELEASE_KEYSTORE: ${{ runner.temp }}/play-upload.keystore

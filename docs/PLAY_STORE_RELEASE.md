@@ -168,7 +168,7 @@ access. Nothing in this category can be completed from the repository.**
 | Phone screenshots 1080×1920 ×4 | ready | `docs/store-screenshots/` |
 | Standalone privacy-policy page | ready, not yet hosted | `apps/web/public/privacy-policy.html` |
 | Data Safety / listing drafts | ready | this file + `docs/PLAY_STORE_LISTING.md` |
-| Release identity | `app.cutlyra.editor`, versionCode 1, versionName 0.1.0 | `apps/mobile/android/app/build.gradle` |
+| Release identity | `app.cutlyra.editor`, versionCode 2, versionName 0.1.1 | `apps/mobile/android/app/build.gradle` |
 | CI green on exact main head | 6/6 checks success on `aee28b7` | GitHub Actions |
 
 ### What requires owner access (not available from here)
@@ -320,19 +320,18 @@ remain separate from engineering readiness.
 
 ## Human-only sequence
 
-1. Create/verify Play Console account and pay registration fee.
-2. Complete identity/contact/device verification.
-3. Create app `app.cutlyra.editor`.
-4. Supply the real developer/support/privacy contact email.
-5. Publish `apps/web/public/privacy-policy.html` (or equivalent) at an active public URL and verify it in a signed-out browser.
-6. Prepare the required Play icon, feature graphic, and final-candidate screenshots per `PLAY_STORE_LISTING.md`.
-7. Create/back up the upload key and configure GitHub secrets.
-8. Run the Play AAB workflow; retain AAB + checksum.
-9. Enroll in Play App Signing and upload to Internal testing.
-10. Smoke-test the Play-delivered build on a real phone.
-11. If the publisher account is subject to the new-personal-account rule, start Closed testing and keep >=12 testers continuously opted in >=14 days.
-12. Apply for production access with recorded test evidence when Play Console requires it.
-13. Submit production release and monitor Android Vitals/reviews.
+1. Play Console account, identity/contact/device verification: **already complete**.
+2. Existing app `app.cutlyra.editor` and its listing: **already exist — preserve, do not recreate**.
+3. Play App Signing: **already in effect — do not re-enroll or replace the registered upload key**; confirm the upload-key fingerprint matches the `play-bundle.yml` keystore.
+4. Confirm the real developer/support/privacy contact email in Play Console.
+5. Confirm `apps/web/public/privacy-policy.html` (or equivalent) is live at a public URL and verified in a signed-out browser.
+6. Confirm the required Play icon, feature graphic, and final-candidate screenshots per `PLAY_STORE_LISTING.md`.
+7. Ensure the upload keystore and GitHub secrets remain valid; do not rotate unless the registered key is genuinely unavailable.
+8. Authorized BUILD ONLY: run the Play AAB workflow for versionCode 2; retain AAB + checksum. Do not upload yet.
+9. Smoke-test the Play-delivered build on a real phone once approved.
+10. Closed testing / 12-tester / 14-day eligibility: **already completed — do not restart**.
+11. Production-access application: **already submitted 2026-11-15 11:09 IST — do not resubmit; await Google review**.
+12. After Google approval and explicit owner approval, submit the production release and monitor Android Vitals/reviews.
 
 ## Release gate
 
@@ -353,6 +352,8 @@ remain separate from engineering readiness.
 - [ ] required Play icon + feature graphic + final-candidate screenshots prepared
 - [ ] Play account/identity/device verification complete
 - [ ] Internal test Play build smoke-tested
-- [ ] closed-test requirement complete
-- [ ] production access approved
+- [ ] versionCode-2 AAB built and validated (build-only, owner-authorized)
+- [x] closed-test requirement complete (12 testers / 14 days)
+- [x] production-access application submitted 2026-11-15 11:09 IST — UNDER REVIEW
+- [ ] production access approved (await Google)
 - [ ] production release approved

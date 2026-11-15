@@ -95,7 +95,14 @@ testimonials, price claims, or download/install calls to action.
 
 ## Release notes
 
-Cutlyra 0.1.0 — first Android release
+Cutlyra 0.1.1 — update to the closed-test release
+
+- Version bump from 0.1.0 (versionCode 1) to 0.1.1 (versionCode 2)
+- Timeline lane ordering corrected (PR #81)
+- Touch drag/resize gesture stability improved (PR #82)
+- Restore no longer overwrites an existing project
+- Rotation/Fit/Fill export parity improvements
+- Additional QA3 signing-environment and production-readiness hardening
 
 - Offline-first mobile video editing
 - Local project storage and media import
