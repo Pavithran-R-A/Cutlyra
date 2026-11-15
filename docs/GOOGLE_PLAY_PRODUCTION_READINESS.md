@@ -5,6 +5,7 @@
 **App identity:** `app.cutlyra.editor` · versionName `0.1.1` · versionCode `2` (candidate) · minSdk 29 · targetSdk/compileSdk 36
 - Previously uploaded highest versionCode (owner-confirmed): `1` (installed on POCO closed-test Cutlyra).
 **Release candidate branch:** `release/play-production-candidate`
+**Production-access application:** submitted 2026-11-15 11:09 IST — Google confirmed receipt; status **UNDER REVIEW**. Existing 12-tester / 14-day eligibility **COMPLETED**.
 
 This document is the source-side audit and final-gates record for Cutlyra's
 first production release on the **existing** Google Play listing. It does not
@@ -75,7 +76,7 @@ signing credentials.
 ### 1.10 Remaining Play Console policy warnings
 - Support email still `HUMAN INPUT` (blocks submission).
 - Content rating (IARC), target audience, Data Safety questionnaire to be transcribed from drafts.
-- Closed-test 12-tester / 14-day requirement applicability is account-dependent (Play Console authoritative).
+- Closed-test 12-tester / 14-day requirement is **completed** for this account; the existing test track and its 12 tester opt-ins must be preserved and not restarted.
 - Camera permission declared-but-unused is documented and disclosed in privacy policy (not a removal; intentional).
 
 ---
@@ -136,7 +137,7 @@ Play listing (`app.cutlyra.editor`). (Play Console is authoritative for the
 exact opted-in count and dates; record the real number before submitting.)
 
 **What testers exercised (feedback received):**
-- Timeline ordering / lane placement (reported by multiple testers).
+- Timeline ordering / lane placement (reported during the closed test).
 - Touch drag and resize gestures jumping or feeling unstable on the timeline.
 - Video filmstrip thumbnails usability (readability, density, scrubbing).
 - Editing latency / responsiveness during multi-clip edits.
@@ -199,16 +200,15 @@ are preserved. No new Play app was created and no test was restarted.
   Camera permission declared-but-unused and documented.
 - Candidate version: versionName `0.1.1`, versionCode `2` (owner-confirmed
   highest uploaded = 1; next upload uses 2).
-- Outstanding before submission: support email; physical acceptance (Phase 3);
-  final Play-delivered smoke test; closed-test 14-day completion (if
-  applicable to this account); cross-channel signing decision.
+- Production-access application already submitted (2026-11-15 11:09 IST); Google review pending. Do not submit again or restart testing.
+- Outstanding before production rollout: support email confirmed in Play Console; physical acceptance of newly merged fixes (Phase 3); final Play-delivered smoke test; cross-channel signing decision (optional for Play-only).
 
 ---
 
 ## Phase 5 — Final gates
 
 ### Release readiness verdict
-**CONDITIONAL GO for source-side preparation. NO-GO for production upload/rollout today.**
+**CONDITIONAL GO for source-side preparation. Production-access application submitted and under Google review. NO-GO for production upload/rollout until Google review completes and the owner approves.**
 
 ### Existing Play package and version details
 - Package: `app.cutlyra.editor` · versionName `0.1.1` · versionCode `2` · minSdk 29 · targetSdk 36.
@@ -223,27 +223,28 @@ are preserved. No new Play app was created and no test was restarted.
 - A versionCode-2 AAB has **not** been built yet; dispatching `play-bundle.yml` on the RC head requires the owner-controlled upload-keystore secrets and owner authorization. The versionCode-2 candidate is gated by the identity check (verified locally: `versionCode 2 / versionName 0.1.1`).
 
 ### Signing compatibility assessment
-- Play App Signing with separate upload key (decided). Cross-channel (GitHub direct APK ↔ Play) compatibility **undecided** — owner must choose before first rollout (see §1.2).
+- The existing Play listing already has a closed-testing release; Play App Signing is already in effect and must **not** be re-enrolled or replaced. Preserve the registered upload-key identity.
+- Owner must supply the registered upload-key SHA-256 fingerprint from Play Console to confirm the `play-bundle.yml` keystore matches. If unavailable/incompatible, use the official Play upload-key reset/recovery path — do not generate an unrelated production key.
+- Cross-channel (GitHub direct APK ↔ Play) compatibility is **optional** and must not delay a Play-only release.
 
 ### Required owner actions
-1. Confirm highest uploaded versionCode in Play Console; set `versionCode` accordingly and rebuild if needed.
-2. Create/verify Play Console account, identity verification, create app `app.cutlyra.editor`.
-3. Supply real support email; replace `HUMAN INPUT` in `docs/PLAY_STORE_LISTING.md`.
-4. Decide cross-channel signing compatibility and enroll in Play App Signing accordingly.
-5. Run `play-bundle.yml`, download AAB + checksum, verify signer is upload key.
-6. Complete Data Safety, content rating (IARC), target audience, store listing from drafts.
-7. Upload icon, feature graphic, screenshots (prefer recapture from final candidate).
-8. Internal testing track smoke test on a real phone.
-9. Closed testing (if account requires): ≥12 testers continuously opted in ≥14 days.
-10. Apply for production access with recorded test evidence.
-11. Owner-approved QA3 physical acceptance (Phase 3) before submission.
-12. Explicit owner approval before any production upload or rollout.
+1. Confirm the existing registered Play upload-key SHA-256 fingerprint and that the `play-bundle.yml` keystore matches it; if not, follow the official Play upload-key reset/recovery path.
+2. Confirm highest uploaded versionCode in Play Console (currently owner-reported as `1`); set `versionCode` accordingly and rebuild if needed.
+3. Confirm the real support email in Play Console; replace `HUMAN INPUT` in `docs/PLAY_STORE_LISTING.md`.
+4. Authorize BUILD ONLY of the versionCode-2 AAB via `play-bundle.yml`, download AAB + checksum, verify signer is the registered upload key. Do not upload yet.
+5. Complete Data Safety, content rating (IARC), target audience, store listing from drafts (existing listing must be preserved).
+6. Upload icon, feature graphic, screenshots only if the listing needs them (prefer recapture from final candidate).
+7. Owner-approved QA3 physical acceptance of freshly merged fixes before rollout (Phase 3).
+8. Wait for Google production-access review to finish; do not submit again or restart testing.
+9. Explicit owner approval before any production upload or rollout.
 
 ### Unresolved P0/P1 bugs
 - None identified as P0/P1 in source audit. (Physical acceptance items in Phase 3 are unexecuted and must not be claimed as passed.)
 
 ### Production-access application readiness
-- Not ready until: support email supplied, physical acceptance executed, closed-test 14-day requirement satisfied (if applicable), Play-delivered smoke test passed.
+- **Submitted** 2026-11-15 11:09 IST; Google confirmed receipt (`"We have your application for production access."`). Status: **UNDER REVIEW**.
+- 12-tester / 14-day eligibility: **COMPLETED**. No new testing period unless Google explicitly requires it.
+- Remaining before rollout after approval: support email confirmed, physical acceptance of newly merged fixes, Play-delivered smoke test, owner rollout approval.
 
 ### Exact PR and CI evidence
 - QA3 signing environment PR: #85, merge `85ef015`, 7/7 CI green on merged main.
@@ -253,13 +254,29 @@ are preserved. No new Play app was created and no test was restarted.
 - Seven-job matrix on RC head `9db7e14` (PR #86): all green (Bun CI 3 invariants + Mobile CI 4 jobs).
 
 ### Remaining reasons not to publish
-1. Support email not supplied.
-2. Physical acceptance (Phase 3) unexecuted.
-3. Closed-test 14-day requirement status unconfirmed for this account.
+1. Production-access review still **UNDER REVIEW** (no Google approval yet).
+2. Support email not yet confirmed in Play Console.
+3. Physical acceptance of newly merged fixes (Phase 3) unexecuted.
 4. Play-delivered build not yet smoke-tested on a real phone.
-5. Cross-channel signing compatibility undecided.
+5. versionCode-2 AAB not yet built (needs owner authorization + keystore).
 6. No explicit owner approval for production upload/rollout.
-7. Highest uploaded versionCode confirmed by owner as `1` (POCO Play-installed closed-test Cutlyra); next upload uses `2`.
+
+### Resolved / no longer blocking
+- 12-tester / 14-day closed-test eligibility **COMPLETED** (no restart).
+- Existing Play app `app.cutlyra.editor`, listing, and Play App Signing **preserved** (no new app, no re-enrollment).
+- Highest uploaded versionCode owner-reported as `1`; next upload uses `2`.
+
+---
+
+## Google production-access review
+
+- Application submitted by the owner on 2026-11-15 at 11:09 IST; Play Console confirmed: "We have your application for production access."
+- Current status: **UNDER REVIEW**.
+- Do **not** submit the application again.
+- Do **not** restart the 14-day closed test or create a new testing period.
+- Keep the existing test track and its 12 tester opt-ins intact.
+- If Google requests additional testing, follow its actual requirements rather than assuming a new 14-day period.
+- If Google approves access, record the decision and prepare the final production-release approval gate; do not claim approval before it is received.
 
 ---
 
