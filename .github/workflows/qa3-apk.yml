@@ -168,7 +168,7 @@ jobs:
         working-directory: apps/mobile/android
 
       - name: Verify QA3 identity, signature and payload
-        run: bash ../../../scripts/ci/qa3-verify-apk.sh
+        run: bash ../../../scripts/ci/qa3-verify-apk.sh --expect signed
         working-directory: apps/mobile/android
 
       - name: Upload QA3 APK artifact
