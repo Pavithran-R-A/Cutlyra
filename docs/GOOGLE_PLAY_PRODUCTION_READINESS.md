@@ -220,6 +220,7 @@ are preserved. No new Play app was created and no test was restarted.
 ### Production AAB validation results
 - Previous validated AAB SHA-256: `6659567e478da6ddbe4986ffaf364c368dfbf0dde07bdbe52514ba4fd07f2bcd` (run `41037884283`).
 - Fresh build produced by `play-bundle.yml` run `43597025250` on `main` @ `85ef015` (build only, no upload): invariants gate (ubuntu/windows/macos) + Android Play bundle — **all green**, 4/4 jobs. AAB built, container/signature/model/native-lib/16 KB alignment/spike-asset checks passed.
+- A versionCode-2 AAB has **not** been built yet; dispatching `play-bundle.yml` on the RC head requires the owner-controlled upload-keystore secrets and owner authorization. The versionCode-2 candidate is gated by the identity check (verified locally: `versionCode 2 / versionName 0.1.1`).
 
 ### Signing compatibility assessment
 - Play App Signing with separate upload key (decided). Cross-channel (GitHub direct APK ↔ Play) compatibility **undecided** — owner must choose before first rollout (see §1.2).
@@ -249,6 +250,7 @@ are preserved. No new Play app was created and no test was restarted.
 - Play readiness PRs #43–#46 (see `CUTLYRA-PLAY-SUBMISSION-READINESS.md` §8).
 - Play bundle run: `41037884283` (AAB SHA `6659567e…07f2bcd`).
 - Seven-job matrix on `main` @ `85ef015`: all green (2026-11-14).
+- Seven-job matrix on RC head `9db7e14` (PR #86): all green (Bun CI 3 invariants + Mobile CI 4 jobs).
 
 ### Remaining reasons not to publish
 1. Support email not supplied.
