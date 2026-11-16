@@ -330,7 +330,7 @@ remain separate from engineering readiness.
 8. Authorized BUILD ONLY: run the Play AAB workflow for versionCode 2; retain AAB + checksum. Do not upload yet.
 9. Smoke-test the Play-delivered build on a real phone once approved.
 10. Closed testing / 12-tester / 14-day eligibility: **already completed — do not restart**.
-11. Production-access application: **already submitted 2026-11-15 11:09 IST — do not resubmit; await Google review**.
+11. Production access: application submitted 2026-11-15, **rejected 2026-11-16** — Google requires **14 more days of closed testing from the review date**; reapply around 2026-11-30. Do not create a new app or track.
 12. After Google approval and explicit owner approval, submit the production release and monitor Android Vitals/reviews.
 
 ## Release gate
@@ -354,6 +354,7 @@ remain separate from engineering readiness.
 - [ ] Internal test Play build smoke-tested
 - [x] versionCode-2 AAB built and validated (build-only, run 43696665795, upload-key signer verified)
 - [x] closed-test requirement complete (12 testers / 14 days)
-- [x] production-access application submitted 2026-11-15 11:09 IST — UNDER REVIEW
-- [ ] production access approved (await Google)
+- [x] production-access application submitted 2026-11-15 11:09 IST
+- [ ] additional 14-day closed testing complete (from 2026-11-16; earliest reapplication ~2026-11-30)
+- [ ] production access approved (reapply ~2026-11-30)
 - [ ] production release approved

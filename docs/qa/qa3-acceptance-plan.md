@@ -1,41 +1,33 @@
 # QA3 — owner setup gap, isolated build plan, and physical acceptance
 
-**Base:** `main` @ `8ca9683648e5b80cd985afc9bfaa86ba89d90fe9`
+**Base:** `main` @ `40ce2bfb7052aa00738a96c430d2bd611663fdd0`
 **Production candidate:** `app.cutlyra.editor` 0.1.1 / versionCode 2 (verified AAB, not uploaded)
 **QA3 package:** `app.cutlyra.editor.qa3` (independent signer, independent storage)
-**Status:** signing NOT configured; no QA3 build or install performed.
+**Status:** environment and credentials configured; signing stability not yet proven by two successful builds; no QA3 install performed.
 
 ---
 
-## 1. Verified owner-controlled settings gap
+## 1. QA3 signing configuration status
 
-Checked against the repository's GitHub configuration on 2026-11-15:
+Checked against the repository's GitHub configuration on 2026-11-16:
 
-- Environments: **none exist** (`total_count: 0`), so `qa3-signing` is missing.
-- Repository secrets: only `PLAY_UPLOAD_KEYSTORE_BASE64`,
-  `PLAY_UPLOAD_KEYSTORE_PASSWORD`, `PLAY_UPLOAD_KEY_ALIAS`,
-  `PLAY_UPLOAD_KEY_PASSWORD` exist.
-- Repository variables: **none**.
-- Therefore the QA3 job's signing gate would fail with missing
-  `CUTLYRA_QA3_*` values (it fails closed; no debug fallback).
+- Environment **`qa3-signing` exists**.
+- All four environment secrets exist: `CUTLYRA_QA3_KEYSTORE_BASE64`,
+  `CUTLYRA_QA3_KEYSTORE_PASSWORD`, `CUTLYRA_QA3_KEY_ALIAS`,
+  `CUTLYRA_QA3_KEY_PASSWORD`.
+- Environment variable exists: `CUTLYRA_QA3_CERT_SHA256`.
+- The `--expect signed` verification bug was fixed in merged PR #88
+  (`40ce2bf`).
+- **Outstanding:** signing stability has not yet been demonstrated by two
+  successful `QA3 signed APK` builds. Earlier runs on `8ca9683` failed on the
+  now-fixed verification argument.
 
-### Exactly what the owner must create (Settings → Environments → `qa3-signing`)
+### Remaining owner confirmations
 
-1. Create environment **`qa3-signing`**.
-2. **Deployment branches:** restrict to `main` only.
-3. **Required reviewers:** add a reviewer. If only one account exists, leave
-   "Prevent self-review" off or arrange a second approver — never assume
-   self-approval works.
-4. Environment **secrets** (4):
-   - `CUTLYRA_QA3_KEYSTORE_BASE64`
-   - `CUTLYRA_QA3_KEYSTORE_PASSWORD`
-   - `CUTLYRA_QA3_KEY_ALIAS`
-   - `CUTLYRA_QA3_KEY_PASSWORD`
-5. Environment **variable** (1, public metadata):
-   - `CUTLYRA_QA3_CERT_SHA256`
-6. Generate the QA3 keystore once, outside any agent session, per
-   `docs/qa/qa3-distribution.md`; back it up offline and record the signer
-   SHA-256 in that document.
+1. Confirm the `qa3-signing` environment still restricts deployment to
+   `main` and has the intended reviewer / self-review setting.
+2. Confirm the QA3 signer SHA-256 recorded in `docs/qa/qa3-distribution.md`
+   matches `CUTLYRA_QA3_CERT_SHA256` and the built APK.
 
 No credential value may be pasted into chat, committed, or written to a log.
 
