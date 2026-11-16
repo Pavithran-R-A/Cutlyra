@@ -5,7 +5,7 @@
 **App identity:** `app.cutlyra.editor` · versionName `0.1.1` · versionCode `2` (candidate) · minSdk 29 · targetSdk/compileSdk 36
 - Previously uploaded highest versionCode (owner-confirmed): `1` (installed on POCO closed-test Cutlyra).
 **Release candidate branch:** `release/play-production-candidate`
-**Production-access application:** submitted 2026-11-15 11:09 IST — Google confirmed receipt; status **UNDER REVIEW**. Existing 12-tester / 14-day eligibility **COMPLETED**.
+**Production-access application:** submitted 2026-11-15 11:09 IST; **rejected 2026-11-16** — Google requires **14 more days of closed testing from the review date**, with earliest reapplication around **2026-11-30**. The existing closed-testing track and application ID remain intact. Not under review.
 
 This document is the source-side audit and final-gates record for Cutlyra's
 first production release on the **existing** Google Play listing. It does not
@@ -76,7 +76,7 @@ signing credentials.
 ### 1.10 Remaining Play Console policy warnings
 - Support email still `HUMAN INPUT` (blocks submission).
 - Content rating (IARC), target audience, Data Safety questionnaire to be transcribed from drafts.
-- Closed-test 12-tester / 14-day requirement is **completed** for this account; the existing test track and its 12 tester opt-ins must be preserved and not restarted.
+- Google rejected the first production-access application on 2026-11-16 and requires **14 additional days of closed testing from the review date**. Keep the existing track and its 12 tester opt-ins running continuously; earliest reapplication ~2026-11-30. Do not create a new track or restart testing.
 - Camera permission declared-but-unused is documented and disclosed in privacy policy (not a removal; intentional).
 
 ---
@@ -200,7 +200,7 @@ are preserved. No new Play app was created and no test was restarted.
   Camera permission declared-but-unused and documented.
 - Candidate version: versionName `0.1.1`, versionCode `2` (owner-confirmed
   highest uploaded = 1; next upload uses 2).
-- Production-access application already submitted (2026-11-15 11:09 IST); Google review pending. Do not submit again or restart testing.
+- Production-access application submitted 2026-11-15 and **rejected 2026-11-16**; Google requires 14 more days of closed testing (earliest reapplication ~2026-11-30). Keep the existing track running; do not create a new one.
 - Outstanding before production rollout: support email confirmed in Play Console; physical acceptance of newly merged fixes (Phase 3); final Play-delivered smoke test; cross-channel signing decision (optional for Play-only).
 
 ---
@@ -208,7 +208,7 @@ are preserved. No new Play app was created and no test was restarted.
 ## Phase 5 — Final gates
 
 ### Release readiness verdict
-**CONDITIONAL GO for source-side preparation. Production-access application submitted and under Google review. NO-GO for production upload/rollout until Google review completes and the owner approves.**
+**CONDITIONAL GO for source-side preparation. Production access was rejected 2026-11-16 and requires 14 more days of closed testing (earliest reapplication ~2026-11-30). NO-GO for production upload/rollout until Google grants access and the owner approves.**
 
 ### Existing Play package and version details
 - Package: `app.cutlyra.editor` · versionName `0.1.1` · versionCode `2` · minSdk 29 · targetSdk 36.
@@ -220,11 +220,17 @@ are preserved. No new Play app was created and no test was restarted.
 ### Production AAB validation results
 - Previous validated AAB SHA-256: `6659567e478da6ddbe4986ffaf364c368dfbf0dde07bdbe52514ba4fd07f2bcd` (run `41037884283`).
 - Fresh build produced by `play-bundle.yml` run `43597025250` on `main` @ `85ef015` (build only, no upload): invariants gate (ubuntu/windows/macos) + Android Play bundle — **all green**, 4/4 jobs. AAB built, container/signature/model/native-lib/16 KB alignment/spike-asset checks passed.
-- A versionCode-2 AAB has **not** been built yet; dispatching `play-bundle.yml` on the RC head requires the owner-controlled upload-keystore secrets and owner authorization. The versionCode-2 candidate is gated by the identity check (verified locally: `versionCode 2 / versionName 0.1.1`).
+- **VersionCode-2 AAB built and verified (build only, no upload).**
+  - Run: `play-bundle.yml` **43696665795** on `main` @ `8ca9683648e5b80cd985afc9bfaa86ba89d90fe9` — 4/4 jobs green.
+  - Artifact: `cutlyra-play-8ca9683648e5b80cd985afc9bfaa86ba89d90fe9.aab`, 91,331,262 bytes.
+  - **SHA-256: `2a368798d54ab55235ece04fa8c5916209be2d0498b6a009d253c7c47fac5c72`** (`SHA256SUMS.txt` matches on recompute).
+  - `bundletool dump manifest`: `package="app.cutlyra.editor"`, `android:versionCode="2"`, `android:versionName="0.1.1"`.
+  - Signer: `CN=Cutlyra Play Upload, O=Cutlyra`, SHA-256 `90:01:71:...:BC:DA` — matches the Play Console registered upload certificate; not debug-signed.
+  - Native libs (arm64-v8a, x86_64), Whisper model, and no test-only assets confirmed; 16 KB alignment and signature gates passed in the run.
 
 ### Signing compatibility assessment
 - The existing Play listing already has a closed-testing release; Play App Signing is already in effect and must **not** be re-enrolled or replaced. Preserve the registered upload-key identity.
-- Owner must supply the registered upload-key SHA-256 fingerprint from Play Console to confirm the `play-bundle.yml` keystore matches. If unavailable/incompatible, use the official Play upload-key reset/recovery path — do not generate an unrelated production key.
+- **Upload-key compatibility: CONFIRMED.** Play Console registered upload certificate SHA-256 is `90:01:71:5E:20:CF:33:03:F1:4A:4A:50:F2:B3:AB:11:55:0B:65:43:F2:BE:E3:15:87:13:B8:8B:F5:E6:BC:DA`, and the signed AAB's signer matches it exactly. No key was rotated or replaced.
 - Cross-channel (GitHub direct APK ↔ Play) compatibility is **optional** and must not delay a Play-only release.
 
 ### Required owner actions
@@ -235,15 +241,15 @@ are preserved. No new Play app was created and no test was restarted.
 5. Complete Data Safety, content rating (IARC), target audience, store listing from drafts (existing listing must be preserved).
 6. Upload icon, feature graphic, screenshots only if the listing needs them (prefer recapture from final candidate).
 7. Owner-approved QA3 physical acceptance of freshly merged fixes before rollout (Phase 3).
-8. Wait for Google production-access review to finish; do not submit again or restart testing.
+8. Keep the existing closed test running for the additional 14 days Google requires (from 2026-11-16); reapply for production access around 2026-11-30 or later, once eligible.
 9. Explicit owner approval before any production upload or rollout.
 
 ### Unresolved P0/P1 bugs
 - None identified as P0/P1 in source audit. (Physical acceptance items in Phase 3 are unexecuted and must not be claimed as passed.)
 
 ### Production-access application readiness
-- **Submitted** 2026-11-15 11:09 IST; Google confirmed receipt (`"We have your application for production access."`). Status: **UNDER REVIEW**.
-- 12-tester / 14-day eligibility: **COMPLETED**. No new testing period unless Google explicitly requires it.
+- **Submitted** 2026-11-15 11:09 IST; **rejected 2026-11-16**. Google requires **14 additional days of closed testing from the review date**.
+- Earliest reapplication: around **2026-11-30**. The existing closed-testing track, testers and application ID stay intact.
 - Remaining before rollout after approval: support email confirmed, physical acceptance of newly merged fixes, Play-delivered smoke test, owner rollout approval.
 
 ### Exact PR and CI evidence
@@ -254,7 +260,7 @@ are preserved. No new Play app was created and no test was restarted.
 - Seven-job matrix on RC head `9db7e14` (PR #86): all green (Bun CI 3 invariants + Mobile CI 4 jobs).
 
 ### Remaining reasons not to publish
-1. Production-access review still **UNDER REVIEW** (no Google approval yet).
+1. Production access **rejected 2026-11-16**; Google requires 14 more days of closed testing (earliest reapplication ~2026-11-30).
 2. Support email not yet confirmed in Play Console.
 3. Physical acceptance of newly merged fixes (Phase 3) unexecuted.
 4. Play-delivered build not yet smoke-tested on a real phone.
@@ -262,7 +268,7 @@ are preserved. No new Play app was created and no test was restarted.
 6. No explicit owner approval for production upload/rollout.
 
 ### Resolved / no longer blocking
-- 12-tester / 14-day closed-test eligibility **COMPLETED** (no restart).
+- Existing 12-tester closed test remains active; the additional 14-day requirement runs from 2026-11-16.
 - Existing Play app `app.cutlyra.editor`, listing, and Play App Signing **preserved** (no new app, no re-enrollment).
 - Highest uploaded versionCode owner-reported as `1`; next upload uses `2`.
 
@@ -270,13 +276,12 @@ are preserved. No new Play app was created and no test was restarted.
 
 ## Google production-access review
 
-- Application submitted by the owner on 2026-11-15 at 11:09 IST; Play Console confirmed: "We have your application for production access."
-- Current status: **UNDER REVIEW**.
-- Do **not** submit the application again.
-- Do **not** restart the 14-day closed test or create a new testing period.
-- Keep the existing test track and its 12 tester opt-ins intact.
-- If Google requests additional testing, follow its actual requirements rather than assuming a new 14-day period.
-- If Google approves access, record the decision and prepare the final production-release approval gate; do not claim approval before it is received.
+- Application submitted by the owner on 2026-11-15 at 11:09 IST.
+- **Rejected on 2026-11-16.** Google requires **14 additional days of closed testing measured from the review date**, so the earliest reapplication is around **2026-11-30**.
+- Do **not** describe the application as under review — the outcome is known: additional testing required.
+- Do **not** create a new app or a new closed-testing track. Keep the existing track, its 12 testers and the application ID intact and continuously opted in.
+- Do **not** resubmit before the additional 14-day window has elapsed; reapply around 2026-11-30 or later.
+- Treat 2026-11-30 as the earliest expected date, not a guarantee; follow Play Console's actual eligibility prompt.
 
 ---
 
