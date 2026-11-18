@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+	DRAG_SLOP_PX,
 	applyPointerTopologyChange,
+	centroidMovedBeyondSlop,
 	gestureTransform,
 	initialAnchors,
 	pointerCentroidAndDistance,
@@ -51,6 +53,9 @@ class GestureHarness {
 				state: this.state,
 				mutate: (pointers) => pointers.set(id, { x, y }),
 				scale: SCALE,
+				// Mirrors the component: only a started drag has an on-screen
+				// transform worth banking.
+				bank: this.dragging,
 			});
 			this.record(`down:#${id}`);
 			return;
@@ -70,7 +75,19 @@ class GestureHarness {
 	move({ id, x, y }: { id: number; x: number; y: number }) {
 		if (!this.state?.pointers.has(id)) return;
 		this.state.pointers.set(id, { x, y });
-		this.dragging = true;
+		if (!this.dragging) {
+			// Same gate the component applies before it previews anything.
+			if (
+				!centroidMovedBeyondSlop({
+					pointers: this.state.pointers,
+					startCentroid: this.state.startCentroid,
+				}) &&
+				this.state.pointers.size < 2
+			) {
+				return;
+			}
+			this.dragging = true;
+		}
 		this.preview = gestureTransform({ anchors: this.state, scale: SCALE });
 		this.record(`move:#${id}`);
 	}
@@ -87,6 +104,7 @@ class GestureHarness {
 			state: this.state,
 			mutate: (pointers) => pointers.delete(id),
 			scale: SCALE,
+			bank: this.dragging,
 		});
 		this.record(`up:#${id}`);
 		if (this.state.pointers.size === 0) {
@@ -198,6 +216,92 @@ describe("pointer topology never moves the element", () => {
 	});
 });
 
+describe("drag slop is never banked as movement", () => {
+	test("movement below the slop threshold previews and commits nothing", () => {
+		const h = new GestureHarness();
+		h.down({ id: 1, x: 100, y: 100 });
+		h.move({ id: 1, x: 100 + DRAG_SLOP_PX - 1, y: 100 });
+		expect(h.preview).toBeNull();
+		expect(h.dragging).toBe(false);
+
+		h.up({ id: 1, x: 100 + DRAG_SLOP_PX - 1, y: 100 });
+		expect(h.committed).toBeNull(); // a wobbling tap stays a tap
+	});
+
+	test("a second finger landing after a sub-slop wobble does not shift the element", () => {
+		// Recorded defect: the wobble was banked on the topology change even
+		// though no frame had ever been presented, so the first real move
+		// jumped by the invisible delta (here: 4 CSS px of travel, but a
+		// 52 CSS px centroid shift because the joining finger moved the
+		// centroid).
+		// Started 300 units right of centre so the detent cannot mask the jump.
+		const h = new GestureHarness({ start: { x: 300, y: 0 } });
+		h.down({ id: 1, x: 100, y: 100 });
+		h.move({ id: 1, x: 104, y: 100 }); // 4px < slop
+		expect(h.preview).toBeNull();
+
+		h.down({ id: 2, x: 200, y: 100 }); // centroid is now 152
+		expect(h.peek().positionX).toBeCloseTo(300, 6); // nothing banked
+
+		// Finger 1 moves 10 CSS px, so the two-finger centroid moves 5.
+		h.move({ id: 1, x: 114, y: 100 });
+		expect(h.preview?.positionX).toBeCloseTo(310, 6);
+	});
+
+	test("the pre-fix banking of an unpresented wobble is a visible jump", () => {
+		// Numeric record of the defect the `bank` flag prevents: banking the
+		// pre-change transform while nothing was on screen banks the wobble
+		// *and* the centroid shift from the joining finger.
+		// Session opened at x=100, then wobbled to x=104 without previewing.
+		const opened = () => {
+			// Away from the centre axis so the snap detent cannot absorb the jump.
+			const anchors: GestureAnchors = initialAnchors({
+				pointers: new Map<number, GesturePointer>([[1, { x: 100, y: 100 }]]),
+				positionX: 300,
+				positionY: 0,
+				scaleX: 1,
+				scaleY: 1,
+			});
+			anchors.pointers.set(1, { x: 104, y: 100 });
+			return anchors;
+		};
+
+		const banked = applyPointerTopologyChange({
+			state: opened(),
+			mutate: (pointers) => pointers.set(2, { x: 200, y: 100 }),
+			scale: SCALE,
+			bank: true,
+		});
+		// 4 CSS px of travel * 2 = 8 canvas units banked although no frame was
+		// ever shown. The 52 px centroid shift from the joining finger is a
+		// separate defect the pre-mutation read already prevents.
+		expect(banked.positionX).toBeCloseTo(308, 6);
+
+		// With the shipped ordering the same sequence leaves the element put.
+		const correct = opened();
+		applyPointerTopologyChange({
+			state: correct,
+			mutate: (pointers) => pointers.set(2, { x: 200, y: 100 }),
+			scale: SCALE,
+			bank: false,
+		});
+		expect(gestureTransform({ anchors: correct, scale: SCALE }).positionX).toBeCloseTo(
+			300,
+			6,
+		);
+	});
+
+	test("a wobbling two-finger tap commits nothing and does not rescale", () => {
+		const h = new GestureHarness();
+		h.down({ id: 1, x: 100, y: 100 });
+		h.down({ id: 2, x: 300, y: 100 });
+		h.up({ id: 2, x: 300, y: 100 });
+		h.up({ id: 1, x: 100, y: 100 });
+		expect(h.dragging).toBe(false);
+		expect(h.committed).toBeNull();
+	});
+});
+
 describe("pinch scaling", () => {
 	test("spreading two fingers enlarges and closing them shrinks", () => {
 		const h = new GestureHarness();
@@ -268,6 +372,22 @@ describe("preview/commit continuity", () => {
 		h.up({ id: 1, x: 100, y: 100 });
 		expect(h.dragging).toBe(false);
 		expect(h.committed).toBeNull();
+	});
+
+	test("a repeated pointer-up cannot commit twice or move the element again", () => {
+		const h = new GestureHarness();
+		h.down({ id: 1, x: 100, y: 100 });
+		h.move({ id: 1, x: 200, y: 100 });
+		h.up({ id: 1, x: 200, y: 100 });
+		const first = h.committed;
+		expect(first?.positionX).toBeCloseTo(200, 6);
+
+		// Android can deliver a duplicate up (and the platform may also fire
+		// pointercancel after it); neither may produce a second command.
+		h.up({ id: 1, x: 200, y: 100 });
+		expect(h.committed).toBe(first);
+		h.cancel();
+		expect(h.committed).toBe(first);
 	});
 
 	test("cancellation keeps the pre-gesture transform", () => {
