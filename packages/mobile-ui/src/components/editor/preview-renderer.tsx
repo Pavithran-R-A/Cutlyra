@@ -22,9 +22,9 @@ import {
 } from "../../editor/axis-snap";
 import {
 	applyPointerTopologyChange,
+	centroidMovedBeyondSlop,
 	gestureTransform,
 	initialAnchors,
-	pointerCentroidAndDistance,
 	type GestureAnchors,
 } from "./preview-gesture";
 import {
@@ -376,7 +376,8 @@ function PreviewRendererInner() {
  * real drags swallow the up-event; plain taps bubble but nothing above
  * listens anymore (see the stage-tap removal note in the header).
  */
-const DRAG_SLOP_PX = 6;
+/* DRAG_SLOP_PX (the tap-vs-drag threshold) lives in `preview-gesture.ts` so
+ * the pointer handlers and the unit tests share one number. */
 
 /* GestureTarget (one element a preview gesture writes to) lives in
  * `preview-gesture-payload.ts` beside the mapping that consumes it. */
@@ -535,11 +536,14 @@ function usePreviewTransformGesture({
 			if (existing) {
 				// Read the on-screen transform FIRST, then register the finger.
 				// Re-anchoring from the post-join centroid (the old order) jumped
-				// the element by half the inter-finger distance.
+				// the element by half the inter-finger distance. Before the drag
+				// starts nothing has been presented yet, so there is nothing worth
+				// banking — only the delta origin moves.
 				applyPointerTopologyChange({
 					state: existing,
 					mutate: (pointers) => pointers.set(event.pointerId, point),
 					scale: pxToCanvas(),
+					bank: existing.dragging,
 				});
 				return;
 			}
@@ -561,12 +565,15 @@ function usePreviewTransformGesture({
 			if (!session || !session.pointers.has(event.pointerId)) return;
 			session.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 			if (!session.dragging) {
-				const { centroid } = pointerCentroidAndDistance(session.pointers);
-				const moved = Math.hypot(
-					centroid.x - session.startCentroid.x,
-					centroid.y - session.startCentroid.y,
-				);
-				if (moved < DRAG_SLOP_PX && session.pointers.size < 2) return;
+				if (
+					!centroidMovedBeyondSlop({
+						pointers: session.pointers,
+						startCentroid: session.startCentroid,
+					}) &&
+					session.pointers.size < 2
+				) {
+					return;
+				}
 				session.dragging = true;
 				try {
 					event.currentTarget.setPointerCapture(event.pointerId);
@@ -593,6 +600,7 @@ function usePreviewTransformGesture({
 				state: session,
 				mutate: (pointers) => pointers.delete(event.pointerId),
 				scale: pxToCanvas(),
+				bank: session.dragging,
 			});
 			if (session.pointers.size > 0) return;
 			const ended = endSession(true);

@@ -10,6 +10,12 @@
  * Product complaint this guards (2026-11 QA): dragging or resizing an element
  * makes it jump — most visibly the moment a second finger touches down or a
  * finger lifts.
+ *
+ * Second complaint (same report): an element that had only wobbled a few px
+ * before a second finger landed still jumped when the gesture finished. The
+ * drag-slop gate (`DRAG_SLOP_PX`) withholds the preview below that threshold,
+ * so a topology change must not bank a delta the user never saw; see
+ * `applyPointerTopologyChange`'s `bank` parameter.
  */
 import {
 	NO_SNAP,
@@ -46,6 +52,15 @@ export interface GestureTransform {
 	snapped: AxisSnapFlags;
 }
 
+/**
+ * Movement below this many CSS px is a tap, not a drag: the session exists but
+ * nothing is previewed and nothing will be committed.
+ *
+ * Lives here (not in the component) so the unit tests exercise the same
+ * threshold the pointer handlers use.
+ */
+export const DRAG_SLOP_PX = 6;
+
 export const pointerCentroidAndDistance = (
 	pointers: ReadonlyMap<number, GesturePointer>,
 ): { centroid: GesturePointer; distance: number | null } => {
@@ -65,6 +80,25 @@ export const pointerCentroidAndDistance = (
 			? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)
 			: null;
 	return { centroid, distance };
+};
+
+/**
+ * Has the pointer centroid travelled far enough to count as a real drag?
+ *
+ * A second finger always counts: a two-finger pinch is never a tap, even when
+ * the centroid has not moved yet.
+ */
+export const centroidMovedBeyondSlop = ({
+	pointers,
+	startCentroid,
+	slop = DRAG_SLOP_PX,
+}: {
+	pointers: ReadonlyMap<number, GesturePointer>;
+	startCentroid: GesturePointer;
+	slop?: number;
+}): boolean => {
+	const { centroid } = pointerCentroidAndDistance(pointers);
+	return Math.hypot(centroid.x - startCentroid.x, centroid.y - startCentroid.y) >= slop;
 };
 
 /**
@@ -123,26 +157,47 @@ export const gestureTransform = ({
  * old anchor against a centroid that already included the joining finger, so
  * the very next move snapped the element by however far the centroid had
  * shifted — half the inter-finger distance for a second finger.
+ *
+ * `bank` is the second half of that guarantee. Banking is only correct for a
+ * transform that WAS on screen. Below the drag-slop threshold nothing is
+ * previewed, so the gesture has an accumulated delta the user never saw;
+ * banking it would make the next frame jump by that invisible amount. Callers
+ * therefore pass `bank: false` until the session is actually dragging, which
+ * keeps the current anchors and only re-origins the delta measurement.
  */
 export const applyPointerTopologyChange = ({
 	state,
 	mutate,
 	scale,
+	bank = true,
 }: {
 	state: GestureAnchors;
 	mutate: (pointers: Map<number, GesturePointer>) => void;
 	scale: number;
+	bank?: boolean;
 }): GestureTransform => {
 	const before = gestureTransform({ anchors: state, scale });
 	mutate(state.pointers);
-	state.anchorPositionX = before.positionX;
-	state.anchorPositionY = before.positionY;
-	state.anchorScaleX = before.scaleX;
-	state.anchorScaleY = before.scaleY;
+	if (bank) {
+		state.anchorPositionX = before.positionX;
+		state.anchorPositionY = before.positionY;
+		state.anchorScaleX = before.scaleX;
+		state.anchorScaleY = before.scaleY;
+	}
 	const { centroid, distance } = pointerCentroidAndDistance(state.pointers);
 	state.startCentroid = centroid;
 	state.startDistance = distance;
-	return before;
+	// What the screen shows after this change: the banked transform when it was
+	// presented, otherwise the untouched anchors (nothing was ever previewed).
+	return bank
+		? before
+		: {
+				positionX: state.anchorPositionX,
+				positionY: state.anchorPositionY,
+				scaleX: state.anchorScaleX,
+				scaleY: state.anchorScaleY,
+				snapped: state.snapped,
+			};
 };
 
 /** Session state a fresh gesture starts from, given its first pointer. */
