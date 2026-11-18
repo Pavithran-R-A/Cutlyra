@@ -136,13 +136,13 @@ Seven jobs are applicable. All seven ran on every PR head, and Bun CI + Mobile C
 
 | Job | #89 head | #90 head | #91 head | merged main |
 |---|---|---|---|---|
-| invariants (ubuntu-latest) | pass 2m46s | pass 3m18s | pass 2m20s | pass (`6b88305`, `53ca33a`) |
-| invariants (windows-latest) | pass 7m27s | pass 6m15s | pass 7m57s | pass (`6b88305`, `53ca33a`) |
-| invariants (macos-latest) | pass 7m05s | pass 7m09s | pass 6m51s | pass (`6b88305`, `53ca33a`) |
-| iOS (simulator, unsigned) | pass 2m35s | pass 2m02s | pass 2m07s | pass (`6b88305`, `53ca33a`) |
-| Android (debug APK) | pass 5m07s | pass 3m35s | pass 5m16s | pass (`6b88305`, `53ca33a`) |
-| Android instrumentation (API 35) | pass 12m25s | pass 8m40s | pass 12m04s | pass (`6b88305`, `53ca33a`) |
-| Android instrumentation (R8 test variant) | pass 10m08s | pass 12m21s | pass 13m21s | pass (`6b88305`, `53ca33a`) |
+| invariants (ubuntu-latest) | pass 2m46s | pass 3m18s | pass 2m20s | pass (`6b88305`, `53ca33a`, `585569a`) |
+| invariants (windows-latest) | pass 7m27s | pass 6m15s | pass 7m57s | pass (`6b88305`, `53ca33a`, `585569a`) |
+| invariants (macos-latest) | pass 7m05s | pass 7m09s | pass 6m51s | pass (`6b88305`, `53ca33a`, `585569a`) |
+| iOS (simulator, unsigned) | pass 2m35s | pass 2m02s | pass 2m07s | pass (`6b88305`, `53ca33a`, `585569a`) |
+| Android (debug APK) | pass 5m07s | pass 3m35s | pass 5m16s | pass (`6b88305`, `53ca33a`, `585569a`) |
+| Android instrumentation (API 35) | pass 12m25s | pass 8m40s | pass 12m04s | pass (`6b88305`, `53ca33a`, `585569a`) |
+| Android instrumentation (R8 test variant) | pass 10m08s | pass 12m21s | pass 13m21s | pass (`6b88305`, `53ca33a`, `585569a`) |
 
 No job was skipped, no assertion weakened, no baseline raised, no `paths-ignore`
 expanded. The lint/typecheck/test baselines in `scripts/invariants.sh` are unchanged.
