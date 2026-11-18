@@ -37,7 +37,11 @@ Verified with `gh`, not from the historical narrative:
   #81, #82, #83–#85, #86, #87, #88 are all merged as described.
 - **Local tree**: branch `docs/play-aab-verified` at `8ca4492`, 29 untracked entries
   (QA evidence directories, previous reports, `play-artifacts-dl/`), 2 stashes.
-  All preserved. No `git reset --hard`, no force-push, no cleanup.
+  All preserved. No force-push, no branch deletion, no cleanup of evidence. One
+  `git reset --hard origin/main` was used once, on the local `main` branch while it held
+  no local commits, to move it onto verified remote; untracked evidence was untouched
+  (29 entries before and after) and every work branch was created from `origin/main`
+  rather than from that branch.
 - **Merged-main CI was not fully green.** `QA3 signed APK` is red on `c4d1a4f`
   (run 43846948287). Bun CI and Mobile CI are green on the same commit. That red job is
   the subject of §5.
@@ -128,10 +132,8 @@ fails in seconds naming the real cause. See §8 for how it was verified.
 
 ### Hosted CI
 
-Every job that runs on a pull request or on `push` to main, on the exact PR heads and on
-merged main:
-
-Seven jobs are applicable. All seven ran on every PR head, and Bun CI + Mobile CI
+Seven jobs are applicable. Every one ran on each exact PR head, and merged main was
+re-checked separately per merge commit. All seven ran on every PR head, and Bun CI + Mobile CI
 (which contains the other five) were re-checked on each merge commit on `main`:
 
 | Job | #89 head | #90 head | #91 head | merged main |
