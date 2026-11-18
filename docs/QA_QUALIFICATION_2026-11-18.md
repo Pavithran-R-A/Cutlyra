@@ -190,6 +190,13 @@ PARTIAL: drag/resize/pinch; rotation/Fit-Fill geometry (Fit and export geometry 
 device rotation not tested); Replace Clip + undo/redo (undo/redo PASS, Replace Clip
 blocked in the WebView by synthetic-tap selection).
 
+**Unplanned data-integrity result.** Mid-session, MIUI's memory cleaner hibernated QA3 and
+the platform removed the activity with `app died, no saved state`. The crash buffer has
+no Cutlyra entry, so this was the OS reclaiming a backgrounded app, not an app failure.
+Relaunching listed **both** projects, both at `0:11`. Work survived an OS-initiated
+process death on real hardware — which is still not a deliberate kill-during-write test
+(that needs the separate destructive-testing authorization).
+
 Full report: `qa3-evidence-poco-20261118/RESULTS.md`.
 Hashed file list: `qa3-evidence-poco-20261118/EVIDENCE_INDEX.md`.
 Machine-readable: `qa3-evidence-poco-20261118/QA_SUMMARY.json`.
