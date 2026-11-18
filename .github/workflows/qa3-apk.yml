@@ -181,6 +181,25 @@ jobs:
             apps/mobile/android/app/build/outputs/apk/qa3/qa3-signer.txt
           if-no-files-found: error
 
+      - name: Enable KVM
+        # Same requirement as mobile-ci.yml's emulator jobs. Without this the
+        # runner reports "hardware acceleration is not available" and the
+        # x86_64 API-35 image never finishes booting, which is exactly how the
+        # c4d1a4f run failed: 16 minutes of `getprop sys.boot_completed` polls
+        # and then "Timeout waiting for emulator to boot" — an infrastructure
+        # failure that looked like a QA3 artifact failure. Fail here, in
+        # seconds, with the real reason instead.
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::/dev/kvm is unavailable on this runner; the API-35 emulator cannot boot without it." >&2
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
       - name: Emulator smoke (API 35) — install, launch, coexist
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
