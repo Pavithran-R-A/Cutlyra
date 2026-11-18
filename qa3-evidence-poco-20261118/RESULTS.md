@@ -192,6 +192,31 @@ sustained-fps number.
 tap, and thumbnail-generation overhead were **not** measured, so "lag" reports on
 those paths are neither confirmed nor refuted here.
 
+### Process death by the OS, and what survived it
+
+While the measurement above was being set up, MIUI's memory cleaner hibernated the
+app and the platform later removed the activity outright:
+
+```
+20:31:03 D ProcessMemoryCleaner: ... app.cutlyra.editor.qa3 ... state=hibernation ... isKilled=false
+23:38:34 W ActivityTaskManager: Force removing ActivityRecord{... app.cutlyra.editor.qa3/...MainActivity}:
+           app died, no saved state
+```
+
+Checked rather than assumed:
+
+- `adb logcat -d -b crash | grep -i cutlyra` → **no entries**. This was the OS reclaiming
+  a backgrounded app, not a Cutlyra exception. (The crash buffer does contain an
+  unrelated `app.ninninest.journal` failure from another app on the device.)
+- Relaunching restored both projects: the Projects screen listed **two** cards, both
+  `0:11`, both `Project 1`, dated `18/11/2026` (`_ui-after-os-kill.xml`).
+
+So the work survived an OS-initiated process death with no app crash, which is the
+strongest data-integrity result this session produced on real hardware. It does **not**
+cover a deliberate kill-during-write (that needs the separate destructive-testing
+authorization), and it does not turn row 7 into anything more than the PASS it already
+was.
+
 ### Gesture banking defect found from this evidence (fixed in PR #89)
 
 Reviewing the pointer path against the PARTIAL row 2 result found a real defect that
