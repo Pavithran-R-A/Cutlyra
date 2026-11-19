@@ -100,6 +100,11 @@ Cutlyra 0.1.1 — update to the closed-test release
 - Version bump from 0.1.0 (versionCode 1) to 0.1.1 (versionCode 2)
 - Timeline lane ordering corrected (PR #81)
 - Touch drag/resize gesture stability improved (PR #82)
+- Preview drag no longer jumps when a second finger joins (PR #89)
+
+The paste-ready, length-checked Release notes field text lives in
+`docs/PLAY_ALPHA_0.1.1_RELEASE_PREP.md` §3; when the two differ, that one is what gets pasted
+into the Console.
 - Restore no longer overwrites an existing project
 - Rotation/Fit/Fill export parity improvements
 - Additional QA3 signing-environment and production-readiness hardening
