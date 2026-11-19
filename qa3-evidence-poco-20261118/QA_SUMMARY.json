@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-11-18T18:11:33Z",
+  "generatedBy": "scripts/qa/qa3-evidence-index.sh",
+  "device": {
+    "model": "POCO M4 Pro 5G (22031116AI, evergo_p_in)",
+    "serial": "CIUWEMJBPBDUWC7D",
+    "os": "Android 13 (API 33), MIUI V816"
+  },
+  "package": "app.cutlyra.editor.qa3",
+  "versionName": "0.1.1",
+  "versionCode": 2,
+  "matrix": {
+    "total": 8,
+    "pass": 5,
+    "partial": 3,
+    "fail": 0,
+    "blocked": 0,
+    "notFullyPassed": 3
+  },
+  "cases": [
+    {"id": 1, "result": "PASS", "name": "Timeline lane ordering + duplication", "evidence": "`09`, `12`, `16`, `42`"},
+    {"id": 2, "result": "PARTIAL", "name": "Touch drag / resize / pinch", "evidence": "`44`, `49` (drag works; trim + pinch not automatable)"},
+    {"id": 3, "result": "PARTIAL", "name": "Rotation / Fit-Fill / export geometry", "evidence": "`49`, `26`, export probe"},
+    {"id": 4, "result": "PARTIAL", "name": "Replace Clip + undo/redo", "evidence": "`13`, `14`, `15`"},
+    {"id": 5, "result": "PASS", "name": "Filmstrip thumbnails", "evidence": "`10`"},
+    {"id": 6, "result": "PASS", "name": "Video export with audio", "evidence": "`export-720p-2021.mp4`, `25`, `26`"},
+    {"id": 7, "result": "PASS", "name": "Project save / reopen", "evidence": "`28`, `41`, `42`"},
+    {"id": 8, "result": "PASS", "name": "Backup + restore (non-destructive)", "evidence": "`37`, `40`, `41`"}
+  ]
+}

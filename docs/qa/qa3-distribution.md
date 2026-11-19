@@ -56,11 +56,18 @@ keytool -list -v -keystore cutlyra-qa3.jks -alias cutlyra-qa3 \
 ```
 
 Record the same digest in this file once the keystore exists, so the expected
-identity is documented next to the process:
+identity is documented next to the process. The keystore now exists, and its
+digest was re-verified on 2026-11-18 from the installed QA3 build and from the
+workflow's `vars.CUTLYRA_QA3_CERT_SHA256` gate value:
 
 ```
-QA3 signer certificate SHA-256: (fill in after generating the keystore)
+QA3 signer certificate SHA-256: 13457361f9f405147c8ada63de9c4ee876816383f403ffab9afd29324ce2f7cf
+  (colons form used in CI: 13:45:73:61:F9:F4:05:14:7C:8A:DA:63:DE:9C:4E:E8:
+   76:81:63:83:F4:03:FF:AB:9A:FD:29:32:4C:E2:F7:CF)
 ```
+
+The signed-artifact workflow compares against the colon form; keep both spellings
+in sync if the key is ever rotated.
 
 ## Producing an APK
 
