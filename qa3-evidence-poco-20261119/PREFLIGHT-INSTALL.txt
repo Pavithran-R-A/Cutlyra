@@ -1,0 +1,82 @@
+QA3 in-place update preflight — POCO M4 Pro 5G, 2026-11-19
+=========================================================
+
+Device selected explicitly by serial (never by "the only device"):
+  adb -s CIUWEMJBPBDUWC7D ...
+  serial: CIUWEMJBPBDUWC7D
+  model:  22031116AI (POCO M4 Pro 5G, evergo_p_in)
+  OS:     Android 13 (API 33)
+
+Artifact under test
+-------------------
+path:     qa3-artifacts/run-44530886713/app-qa3.apk
+bytes:    127,971,968
+sha256:   be1622ceac078f4b6c4ee50d9f584a48ea758612c6b8793fa627b9512f31e52f
+built by: qa3-apk.yml run 44530886713 on aa11372b371d7df5346c78e119e68270f3a008ca
+
+APK identity and signature (apksigner + aapt2, build-tools 36.0.0)
+------------------------------------------------------------------
+package:    app.cutlyra.editor.qa3
+versionName 0.1.1
+versionCode 2
+minSdk 29 / targetSdk 36 / compileSdk 36
+scheme:     v2 true (v1 false, v3 false, v3.1 false, v4 false)
+signer DN:  CN=Cutlyra QA3, O=Cutlyra, C=IN
+signer SHA-256: 13457361f9f405147c8ada63de9c4ee876816383f403ffab9afd29324ce2f7cf
+signer SHA-1:   a76573045ebc8aca69263798a8fbc568ef9eb85f
+
+Installed package BEFORE the update
+-----------------------------------
+codePath:        /data/app/~~mFNHZX_YKFO0NR63MWmnFg==/app.cutlyra.editor.qa3-2zsClX04Ysh24mLH6__94Q==
+versionName:     0.1.1
+versionCode:     2
+firstInstallTime 2026-11-18 20:03:45
+lastUpdateTime:  2026-11-18 20:03:45
+primaryCpuAbi:   arm64-v8a
+flags:           DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA
+
+Installed APK pulled back and verified BEFORE the update
+-------------------------------------------------------
+installed-base.apk bytes:  127,971,836
+installed-base.apk sha256: c68af3bb4baabc4e115ec3d059751468d7e213ad08eddb88eee61cd6d0a3544f
+installed signer DN:       CN=Cutlyra QA3, O=Cutlyra, C=IN
+installed signer SHA-256:  13457361f9f405147c8ada63de9c4ee876816383f403ffab9afd29324ce2f7cf
+
+Conclusion drawn before installing: the installed build and the artifact are signed by the
+same certificate, so an in-place update is signature-compatible. No uninstall, no
+signature-check bypass, no device setting touched.
+
+Update command actually used
+----------------------------
+adb -s CIUWEMJBPBDUWC7D install -r qa3-artifacts/run-44530886713/app-qa3.apk
+  -> "Performing Streamed Install" / "Success" / exit 0
+
+Two earlier attempts of the identical command returned
+  Failure [INSTALL_FAILED_USER_RESTRICTED: Install canceled by user]
+which is MIUI's USB-install approval gate on this ROM, not a signature problem: the same
+APK installed unchanged once the approval landed. Nothing was changed on the device to get
+past the gate.
+
+Post-install verification
+-------------------------
+codePath:        /data/app/~~uxLSqHc8misA1vYpoDjrTA==/app.cutlyra.editor.qa3-zYPUKaOd522EekZUbMBiuA==
+versionName:     0.1.1
+versionCode:     2
+firstInstallTime 2026-11-18 20:03:45   (unchanged - this was an update, not a reinstall)
+lastUpdateTime:  2026-11-19 20:57:50
+
+on-device base.apk bytes:  127,971,968
+on-device base.apk sha256: be1622ceac078f4b6c4ee50d9f584a48ea758612c6b8793fa627b9512f31e52f
+                           == the artifact's SHA-256, byte for byte
+on-device signer SHA-256:  13457361f9f405147c8ada63de9c4ee876816383f403ffab9afd29324ce2f7cf
+
+Project storage untouched by the update (same inode sizes and mtimes)
+--------------------------------------------------------------------
+app_webview/Default/IndexedDB/...leveldb/
+  000022.ldb        3236  2026-11-18 20:27
+  000026.ldb        3275  2026-11-18 20:32
+  000030.log         19  2026-11-18 23:40
+  MANIFEST-000028   334  2026-11-18 23:40
+blobs 1/00/3  131359, 1/00/4  131366
+shared_prefs/cutlyra.prefs.xml: hasCompletedFirstRun=true
+/sdcard/Download/qa3-test/: backup archive (3,218,095 B) + 4 media files, all unchanged
