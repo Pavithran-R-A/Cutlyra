@@ -219,10 +219,14 @@ the `aa11372` bundle recorded in §1, with the SHA-256 in §1, and never mix the
 | Emulator smoke | API-35: `installed / package present / independent storage (uid=10209) / launched / process alive / no fatal crash / resumed / QA3 emulator smoke passed` |
 | Difference vs installed QA3 (`40ce2bf`) | PR #89 gesture fix only (plus tests); installed build's own fixes remain |
 
-**Not installed.** Updating the phone needs fresh owner authorization; nothing was pushed to
-the device. Installation/verification plan: push `app-qa3.apk`, confirm the on-device SHA-256
-matches the line above, install over the existing `app.cutlyra.editor.qa3` (same signing key,
-so an in-place update is valid), then run `docs/qa/qa3-manual-acceptance-4-steps.md`.
+**Installed 2026-11-19 as an in-place update** of the existing `app.cutlyra.editor.qa3` on the
+POCO M4 Pro 5G (`CIUWEMJBPBDUWC7D`), with the owner's device authorization. The installed
+`base.apk` was pulled back and hashed to `be1622ce…e52f`, byte-identical to the artifact, under
+the pinned QA3 certificate; `firstInstallTime` was preserved and `lastUpdateTime` moved, which
+is the platform's own proof that this was an update over existing data. The verification log is
+`qa3-evidence-poco-20261119/PREFLIGHT-INSTALL.txt`, the results matrix is
+`qa3-evidence-poco-20261119/RESULTS.md`, and the release verdict is
+`docs/PLAY_ALPHA_GO_NO_GO_2026-11-19.md`.
 
 ## 8. Preconditions still open
 
@@ -230,10 +234,21 @@ so an in-place update is valid), then run `docs/qa/qa3-manual-acceptance-4-steps
 - [ ] Support email in Play Console — currently `HUMAN INPUT` in
       `docs/PLAY_STORE_LISTING.md`; the listing contact must be a real verified address. This
       is a Play Console listing field, not a manifest value, and no address is invented here.
-- [ ] Physical acceptance: **5 of 8 matrix rows PASS, 3 PARTIAL, 0 FAIL** — computed from
-      the case rows in `qa3-evidence-poco-20261118/QA_SUMMARY.json`, hashed file list in
-      `qa3-evidence-poco-20261118/EVIDENCE_INDEX.md`. Trim-handle resize, pinch zoom,
-      Replace Clip through the physical UI and device rotation still need a human-finger
-      pass; emulator and synthetic input cannot stand in for them.
+- [ ] versionCode 2 still unused — not confirmable without Play Console or API access. The
+      documentary evidence (highest accepted vc is 1, no upload ever authorized) says it is
+      free; treat that as expected, not proven.
+- [ ] Physical acceptance on the installed alpha candidate: **6 of 9 rows PASS, 1 PARTIAL,
+      0 FAIL, 2 BLOCKED** — computed from the case rows in
+      `qa3-evidence-poco-20261119/QA_SUMMARY.json`, hashed file list in
+      `qa3-evidence-poco-20261119/EVIDENCE_INDEX.md`. Trim-handle resize (PARTIAL), the
+      two-finger pinch/finger-lift behind PR #89 (BLOCKED) and Fill-vs-Fit (BLOCKED) still
+      need a human pass; synthetic single-pointer input cannot stand in for them, and this
+      build exposes no Fill control in the panels inspected.
 - [ ] Play-delivered smoke test — only possible after the upload is approved and Google
       delivers the build.
+
+## 9. Verdict
+
+See `docs/PLAY_ALPHA_GO_NO_GO_2026-11-19.md`: **GO on technical grounds, NO-GO on
+authorization** for the Alpha upload; production stays NO-GO until the 14-day closed-testing
+window from the 2026-11-16 rejection has elapsed (earliest reapplication ≈ 2026-11-30).

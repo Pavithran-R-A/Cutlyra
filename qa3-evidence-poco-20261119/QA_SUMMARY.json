@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-11-19T16:17:47Z",
+  "generatedBy": "scripts/qa/qa3-evidence-index.sh",
+  "device": {
+    "model": "POCO M4 Pro 5G (22031116AI, evergo_p_in)",
+    "serial": "CIUWEMJBPBDUWC7D",
+    "os": "Android 13 (API 33), MIUI V816"
+  },
+  "package": "app.cutlyra.editor.qa3",
+  "versionName": "0.1.1",
+  "versionCode": 2,
+  "matrix": {
+    "total": 9,
+    "pass": 6,
+    "partial": 1,
+    "fail": 0,
+    "blocked": 2,
+    "notFullyPassed": 3
+  },
+  "cases": [
+    {"id": 1, "result": "PASS", "name": "In-place update + existing projects preserved and accessible", "evidence": "`PREFLIGHT-INSTALL.txt`, `01`, `02`"},
+    {"id": 2, "result": "PARTIAL", "name": "Trim-handle resize with stable release geometry", "evidence": "`05-handle-zoom`, `06-trim-handle-drag`"},
+    {"id": 3, "result": "BLOCKED", "name": "Two-finger pinch, drag and finger-lift (PR #89)", "evidence": "none — needs two real fingers"},
+    {"id": 4, "result": "PASS", "name": "Replace Clip, Undo, Redo", "evidence": "`27`, `28`, `29`, `30`, `31`, `32`"},
+    {"id": 5, "result": "PASS", "name": "Clip rotation ±90 / 180 and horizontal/vertical flip", "evidence": "`21`, `22`, `23`, `24`"},
+    {"id": 6, "result": "PASS", "name": "Fit geometry and preview/export parity", "evidence": "`41`, `42`, `37`, `38`, `export-720p-postreplace.mp4`"},
+    {"id": 7, "result": "BLOCKED", "name": "Fill (crop) mode distinct from Fit", "evidence": "none — no Fill control exposed in the shipped panels"},
+    {"id": 8, "result": "PASS", "name": "720p export with audio", "evidence": "`export-720p-postreplace.mp4`, `36`"},
+    {"id": 9, "result": "PASS", "name": "Save and reopen after edits", "evidence": "`44`, `45`"}
+  ]
+}

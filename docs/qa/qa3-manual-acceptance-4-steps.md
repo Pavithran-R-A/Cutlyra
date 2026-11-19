@@ -1,8 +1,19 @@
 # QA3 manual acceptance — the four remaining physical steps
 
-**Status: NOT EXECUTED.** These four checks require human fingers on the device. Nothing in
-this document has been marked as passed. `adb shell input` cannot inject two pointers, and
-changing the device orientation setting was out of scope, so all four remain open.
+**Status: PARTIALLY EXECUTED — 2026-11-19.** The QA3 build from `aa11372` was installed in
+place on the POCO and the automatable parts of these four checks were run; the parts that need
+human fingers are still open. Current state on the installed alpha candidate
+(`qa3-evidence-poco-20261119/RESULTS.md`):
+
+| Step | State |
+|---|---|
+| 1 — trim-handle resize | **still open.** The handle's hit area was located (`05-handle-zoom`) but a synthetic drag on it pans/scrubs the timeline instead of trimming (`06-trim-handle-drag`). Needs a finger. |
+| 2 — two-finger pinch and finger-lift (#89) | **still open.** `adb shell input` cannot place two pointers. Needs fingers. |
+| 3 — Replace Clip, Undo/Redo | **done and PASS** (system picker → different media → saved → undo restores original → redo restores replacement). |
+| 4 — rotation / Fit / Fill / export | **partly done.** Rotation and flips PASS with numeric read-back; Fit and preview/export parity PASS against the exported 720p file. **Fill** has no control in the panels this build exposes, so Fit-vs-Fill remains open. |
+
+The steps below are kept as written: they are the instructions for the parts that still need a
+human, and running them again for the parts already passed is unnecessary.
 
 This document exists so the remaining device work is a short, mechanical job rather than a
 re-run of the whole QA matrix. The five PASS rows and three PARTIAL rows in
@@ -67,9 +78,11 @@ re-run of the whole QA matrix. The five PASS rows and three PARTIAL rows in
 ## Recording the result
 
 For each step, record the outcome, the timestamp in the recording, and the device/OS. Then
-update `qa3-evidence-poco-20261118/RESULTS.md` rows 2, 3 and 4 to the observed result and
-re-run `scripts/qa/qa3-evidence-index.sh` so `QA_SUMMARY.json` totals are recomputed from the
-rows rather than typed by hand.
+update the row in the `RESULTS.md` of the session you ran it in — the installed alpha candidate
+is covered by `qa3-evidence-poco-20261119/RESULTS.md` — and re-run
+`scripts/qa/qa3-evidence-index.sh <that directory>` so `QA_SUMMARY.json` totals are recomputed
+from the rows rather than typed by hand. Do not edit the 2026-11-18 rows: that session tested
+the older `40ce2bf` build and stands as recorded.
 
 Rules that do not change:
 
