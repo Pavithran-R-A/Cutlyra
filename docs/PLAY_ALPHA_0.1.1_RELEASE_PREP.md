@@ -5,9 +5,8 @@ Console. No AAB was uploaded, no track was created or modified, no rollout was s
 and no tester was added or removed.
 
 Prepared 2026-11-18 against `main` at `c4d1a4f136a3ed2b57f3f89d0b7114ac4fdbfea4`.
-
-Read §7 before uploading: the built AAB predates one app-code change now on `main`
-(PR #89), and §7 states exactly what that does and does not mean.
+Rebuilt 2026-11-19 against qualified `main` at `aa11372b371d7df5346c78e119e68270f3a008ca` so the
+candidate contains PR #89. §7 records the supersession of the earlier `8ca9683` bundle.
 
 ---
 
@@ -20,18 +19,25 @@ Read §7 before uploading: the built AAB predates one app-code change now on `ma
 | versionName | `0.1.1` |
 | versionCode | `2` (Play's highest accepted versionCode is 1; vc2 is strictly greater) |
 | minSdk / targetSdk | 29 / 36 |
-| Artifact | `play-artifacts-dl/cutlyra-play-8ca9683648e5b80cd985afc9bfaa86ba89d90fe9.aab` |
-| Size | 91,331,262 bytes |
-| SHA-256 | `2a368798d54ab55235ece04fa8c5916209be2d0498b6a009d253c7c47fac5c72` (recomputed 2026-11-18, matches `SHA256SUMS.txt`) |
-| Source commit | `8ca9683648e5b80cd985afc9bfaa86ba89d90fe9` |
-| Build run | `play-bundle.yml` 43696665795, 4/4 jobs green (build only) |
+| Artifact | `play-artifacts-dl/run-44530879487/cutlyra-play-aa11372b371d7df5346c78e119e68270f3a008ca.aab` |
+| Size | 91,331,377 bytes |
+| SHA-256 | `c42c2e056dc282fb959afd797afaf903d56442d2e24c72e31a93cbd26dfd51a2` (verified after download with `sha256sum -c SHA256SUMS.txt`) |
+| Source commit | `aa11372b371d7df5346c78e119e68270f3a008ca` |
+| Build run | `play-bundle.yml` [44530879487](https://github.com/Pavithran-R-A/Cutlyra/actions/runs/44530879487) — invariants gate (3/3) + Android Play bundle green; canonical-main assertion logged `Play source OK` |
+| Superseded candidate | `cutlyra-play-8ca96836….aab` (91,331,262 bytes, SHA-256 `2a368798…5c72`) — predates PR #89, must not be uploaded |
 | Signer | `CN=Cutlyra Play Upload, O=Cutlyra` — SHA-256 `90:01:71:5E:20:CF:33:03:F1:4A:4A:50:F2:B3:AB:11:55:0B:65:43:F2:BE:E3:15:87:13:B8:8B:F5:E6:BC:DA` |
 
 The signer matches the Play Console registered upload certificate exactly. The upload
 key was not rotated, regenerated, or re-enrolled. Play App Signing stays in effect.
 
-**Do not rebuild this bundle for the Alpha upload.** It is the verified artifact; a new
-build would need its own signer re-verification.
+**This is now the build to upload.** It was rebuilt from `aa11372` on 2026-11-19 and its
+signature was independently re-verified locally (`keytool -printcert -jarfile`) against the
+registered upload certificate: `CN=Cutlyra Play Upload, O=Cutlyra`,
+SHA-256 `90:01:71:5E:20:CF:33:03:F1:4A:4A:50:F2:B3:AB:11:55:0B:65:43:F2:BE:E3:15:87:13:B8:8B:F5:E6:BC:DA`
+— identical to the certificate recorded for the `8ca9683` bundle, so the upload key was not
+rotated. The web payload differs from that earlier bundle (`editor-shell-BvUqJTpu.js` →
+`editor-shell-jxxTaH7c.js`, `app-root-CqCuf8fL.js` → `app-root-QV17qwqh.js`), which is the
+PR #89 change travelling inside the shipped assets.
 
 ## 2. What changed since the versionCode-1 build
 
@@ -40,9 +46,11 @@ build would need its own signer re-verification.
 - Restore no longer overwrites an existing project — it creates a new project with a fresh ID.
 - Rotation / Fit / Fill export parity improvements.
 - QA3 signing-environment and production-readiness hardening (no user-facing behaviour).
+- Preview drag no longer banks movement that was never displayed, so the first move after a
+  second finger joins does not jump (PR #89).
 
-Everything above is inside the AAB, because all of it merged before its source
-commit `8ca9683`. What merged afterwards is listed in §7.
+Everything above is inside the current AAB: everything but #89 merged before `8ca9683`, and
+#89 is a commit on `aa11372`, the commit this bundle was built from (§7).
 
 No permission changes, no new SDKs, no account, no ads, no analytics, no network
 collection. `allowBackup=false` is unchanged, so the update cannot disturb existing
@@ -53,21 +61,28 @@ on-device projects.
 ```
 Cutlyra 0.1.1 (versionCode 2)
 
-• Timeline lanes now stay in the correct order
-• Drag and resize on the timeline are steadier
-• Restore no longer overwrites an existing project — a backup opens as a new project
-• Preview and export now match for portrait and landscape clips
+• Timeline lanes stay in the correct order
+• Dragging on the preview no longer jumps when a second finger touches
+• Timeline drag and resize are steadier
+• Restore no longer overwrites a project — a backup opens as a new project
+• Preview and export match for portrait and landscape clips
 • Real filmstrip thumbnails on the video track
 • MP4 export keeps its audio
-• Project save and reopen are more reliable
+• Save and reopen are more reliable
 
 Still offline: no account, no ads, no watermark.
 ```
 
-Re-measured this session with `wc -m` after stripping the line breaks: **449
-characters**, including the seven `•` bullets. Play limits release notes to 500
-characters per language, so it fits with margin. If the Console strips the bullet
-character, the same text works with `-`.
+Re-measured on 2026-11-19 with Python `len()` on the flattened text: **479 characters**,
+including the eight `•` bullets and the em dash. Play limits release notes to 500 characters
+per language. The first draft that added the #89 bullet came to 512 and was trimmed rather
+than shipped over the limit — the wording above is the measured one. If the Console strips the
+bullet character, the same text works with `-`.
+
+What these notes do and do not claim: the drag bullet is #89, which is verified by unit and
+instrumented tests but **not** by a physical two-finger pass — §4a marks that distinction, and
+the tester checklist asks the group to exercise it. No bullet here is credited to a device
+result that does not exist.
 
 ## 4. Tester validation checklist
 
@@ -98,6 +113,28 @@ without developer tooling.
 
 Report per tester: device model, Android version, which steps passed, and a screenshot of
 any failure.
+
+## 4a. What is proven, by what method
+
+Use this table when writing anything public about 0.1.1. "Automated" means unit or
+instrumented tests — it is not a device result.
+
+| Claim in the release | In this AAB | Evidence | Physical device |
+|---|---|---|---|
+| Timeline lane ordering correct (#81) | yes | unit tests + QA3 row 1 | **PASS** (2026-11-18) |
+| Duplicate makes exactly one copy (#91 tests) | yes | 9 command-level tests + QA3 row 1 | **PASS** |
+| Preview drag no longer jumps on second-finger join (#89) | **yes** | `preview-gesture.test.ts` (bank/slop cases) + 61 Android instrumentation tests on API-35 and R8, all green on `aa11372` | **not device-verified** — the two-finger lift step is still open (§8) |
+| Touch drag/resize steadier (#82) | yes | unit + instrumentation tests | **PARTIAL** — drag works; trim handle and pinch not automatable |
+| Restore creates a new project (#77) | yes | unit tests + QA3 row 8 | **PASS** |
+| Rotation / Fit / Fill export parity (#78) | yes | unit + actual-media export tests | **PARTIAL** — fit and geometry pass; full Fit/Fill visual confirmation open |
+| Real filmstrip thumbnails | yes | QA3 row 5 | **PASS** |
+| MP4 export keeps audio | yes | QA3 row 6 + ffprobe of the exported file | **PASS** |
+| Save and reopen reliable | yes | QA3 row 7 + OS-kill survival observation | **PASS** |
+| Instagram-style music browsing | **no — not implemented** | none | not attempted |
+
+Emulator and synthetic-input results never upgrade a device row. The three PARTIAL rows in
+`qa3-evidence-poco-20261118/RESULTS.md` stay PARTIAL until a human runs
+`docs/qa/qa3-manual-acceptance-4-steps.md`.
 
 ## 5. Guardrails for the upload step (when authorized)
 
@@ -154,37 +191,45 @@ Triage rules for whoever collects these:
 - Do not ask testers to clear app data, uninstall, or reset their phone to reproduce.
 - Never reword a report into a pass. Unreproduced stays unreproduced.
 
-## 7. Supersession status of the built AAB
+## 7. Supersession status — resolved 2026-11-19
 
 | | |
 |---|---|
-| AAB source commit | `8ca9683648e5b80cd985afc9bfaa86ba89d90fe9` |
-| Merged after it, app code | **PR #89** — preview gesture banking (`fix(preview): stop banking drag movement that was never shown`) |
-| Merged after it, no app code | PR #87 (docs), PR #88 + #90 (CI only) |
+| Current candidate source commit | `aa11372b371d7df5346c78e119e68270f3a008ca` (qualified `main`) |
+| App-code commits between the old and new candidate | PR #89 `6f84c6e` (preview gesture banking) and PR #91 (tests only, 9 cases) |
+| Earlier candidate | `8ca9683…` — **do not upload** |
 
-**The AAB does not contain PR #89.** It is otherwise complete: #81 (lane order), #82
-(pointer re-anchoring), #77 (restore collision), #78 (rotation geometry) and #86
-(production candidate) all predate `8ca9683`.
+`git log 40ce2bf..aa11372 -- packages apps` returns exactly those three commits; nothing else
+in application code changed. So the new bundle's difference from the previously installed QA3
+build, and from the earlier Play candidate, is PR #89 plus test-only work.
 
-Two honest options, in order of preference:
+The earlier plan offered a rebuild or an as-is upload. **The rebuild was taken.** The `8ca9683`
+bundle is superseded: it must not be uploaded, and no document may credit it with #89. Upload
+the `aa11372` bundle recorded in §1, with the SHA-256 in §1, and never mix the two hashes.
 
-1. **Rebuild, then upload.** After #89 is green on main, dispatch `Play Store AAB` on
-   that main commit, record the new SHA-256 and re-verify the signer with
-   `keytool -printcert -jarfile` against the registered upload certificate, then upload
-   the new bundle. The release notes in §3 still apply (add nothing about #89 unless a
-   tester-visible behaviour actually changed on device).
-2. **Upload the verified AAB as-is.** Permitted, but then the upload must be described as
-   "the `8ca9683` build" and no document may credit it with the #89 fix. Do not silently
-   attribute later merges to an older binary.
+## 7a. QA3 candidate built from the same source
 
-Either way: do not reuse the `8ca9683` file after a rebuild, and never mix the two under
-one hash.
+| | |
+|---|---|
+| Artifact | `cutlyra-qa3-apk` from run [44530886713](https://github.com/Pavithran-R-A/Cutlyra/actions/runs/44530886713) (`app-qa3.apk`, 127,971,968 bytes) |
+| SHA-256 | `be1622ceac078f4b6c4ee50d9f584a48ea758612c6b8793fa627b9512f31e52f` |
+| Package / version | `app.cutlyra.editor.qa3`, versionName `0.1.1`, versionCode `2` (aapt2), minSdk 29 / targetSdk 36 |
+| Signer | `CN=Cutlyra QA3, O=Cutlyra, C=IN`, SHA-256 `13457361f9f405147c8ada63de9c4ee876816383f403ffab9afd29324ce2f7cf` — matches the pinned QA3 fingerprint and `vars.CUTLYRA_QA3_CERT_SHA256` |
+| Source | `aa11372`; workflow asserted `QA3_SOURCE_SHA=aa11372…`, both prerequisites (Bun CI, Mobile CI) `completed/success` on that SHA |
+| Emulator smoke | API-35: `installed / package present / independent storage (uid=10209) / launched / process alive / no fatal crash / resumed / QA3 emulator smoke passed` |
+| Difference vs installed QA3 (`40ce2bf`) | PR #89 gesture fix only (plus tests); installed build's own fixes remain |
+
+**Not installed.** Updating the phone needs fresh owner authorization; nothing was pushed to
+the device. Installation/verification plan: push `app-qa3.apk`, confirm the on-device SHA-256
+matches the line above, install over the existing `app.cutlyra.editor.qa3` (same signing key,
+so an in-place update is valid), then run `docs/qa/qa3-manual-acceptance-4-steps.md`.
 
 ## 8. Preconditions still open
 
 - [ ] Owner authorization to upload (explicitly withheld so far).
 - [ ] Support email in Play Console — currently `HUMAN INPUT` in
-      `docs/PLAY_STORE_LISTING.md`; the listing contact must be a real verified address.
+      `docs/PLAY_STORE_LISTING.md`; the listing contact must be a real verified address. This
+      is a Play Console listing field, not a manifest value, and no address is invented here.
 - [ ] Physical acceptance: **5 of 8 matrix rows PASS, 3 PARTIAL, 0 FAIL** — computed from
       the case rows in `qa3-evidence-poco-20261118/QA_SUMMARY.json`, hashed file list in
       `qa3-evidence-poco-20261118/EVIDENCE_INDEX.md`. Trim-handle resize, pinch zoom,
