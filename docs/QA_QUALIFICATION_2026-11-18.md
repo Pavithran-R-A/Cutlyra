@@ -22,7 +22,8 @@ Four separate gates. They are not interchangeable, and none of them is "done".
 | | SHA |
 |---|---|
 | Starting `origin/main` | `c4d1a4f136a3ed2b57f3f89d0b7114ac4fdbfea4` |
-| Final `origin/main` measured here | `585569a926b342dbacc8e7d883339847a6d2bfd0` (this report merges afterwards in #92) |
+| Final `origin/main` measured for the code work | `585569a926b342dbacc8e7d883339847a6d2bfd0` |
+| Final `origin/main` after this report merged (#92) | `6931427463f46f1e506db2a72123e7f8d7d7d70b` — docs-only change; merged-main Bun CI (run 44478530403) and Mobile CI (run 44478530485, 4/4 jobs) both green on it |
 
 `c4d1a4f` matched the SHA named in the mission statement, so the Phase 0 check
 confirmed the stated baseline rather than assuming it.
@@ -53,7 +54,7 @@ Verified with `gh`, not from the historical narrative:
 | [#89](https://github.com/Pavithran-R-A/Cutlyra/pull/89) | `fix(preview): stop banking drag movement that was never shown` | `fix/preview-slop-banking` | `6b8830595be2a90544dbe2c2190baa2d9953f12b` |
 | [#90](https://github.com/Pavithran-R-A/Cutlyra/pull/90) | `ci(qa3): enable KVM before the emulator smoke` | `fix/qa3-emulator-kvm` | `53ca33a74e173f3728e98b9af58eb7f67c3663fe` |
 | [#91](https://github.com/Pavithran-R-A/Cutlyra/pull/91) | `test(timeline): pin one Duplicate action to exactly one copy` | `test/duplicate-one-action` | `585569a926b342dbacc8e7d883339847a6d2bfd0` |
-| [#92](https://github.com/Pavithran-R-A/Cutlyra/pull/92) | `docs(qa): QA3 evidence index, Alpha prep and qualification report` | `docs/qa3-qualification-20261118` | open at time of writing (this PR) |
+| [#92](https://github.com/Pavithran-R-A/Cutlyra/pull/92) | `docs(qa): QA3 evidence index, Alpha prep and qualification report` | `docs/qa3-qualification-20261118` | `6931427463f46f1e506db2a72123e7f8d7d7d70b` |
 
 ### Files changed
 
@@ -146,7 +147,10 @@ re-checked separately per merge commit. All seven ran on every PR head, and Bun 
 | Android instrumentation (API 35) | pass 12m25s | pass 8m40s | pass 12m04s | pass (`6b88305`, `53ca33a`, `585569a`) |
 | Android instrumentation (R8 test variant) | pass 10m08s | pass 12m21s | pass 13m21s | pass (`6b88305`, `53ca33a`, `585569a`) |
 
-No job was skipped, no assertion weakened, no baseline raised, no `paths-ignore`
+The final `main` head `6931427` (this report, docs only) was re-checked the same way and
+is green: **Bun CI run 44478530403 = success**, **Mobile CI run 44478530485 = success**
+with all four jobs green (iOS 2m09s, Android debug 3m47s, Android instrumentation 9m52s,
+R8 instrumentation 11m58s). No job was skipped, no assertion weakened, no baseline raised, no `paths-ignore`
 expanded. The lint/typecheck/test baselines in `scripts/invariants.sh` are unchanged.
 
 `QA3 signed APK` is a separate, dispatch-only workflow on `main`; §8 covers it.
