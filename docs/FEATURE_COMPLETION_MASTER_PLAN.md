@@ -21,8 +21,11 @@ Source-truth check performed:
 ### 1A Stickers
 - Reported emptiness reproduced: flags category thumbnails 404 on Android because `apps/mobile/public/flags` was absent (assets lived only under `apps/web/public/flags`). **Fixed**: copied 271 flag SVGs into `apps/mobile/public/flags`.
 - `logos` provider returns empty and is not exposed as a category (intentional; no bundled logo assets).
-- Shapes category backed by graphics registry (working, canvas-rendered thumbnails).
+- Shapes category expanded from the four bare primitives to a curated 14-tile library (`curated presets` in `stickers/providers/shapes.ts`): rectangle, square, rounded square, pill, ellipse, circle, triangle, diamond, pentagon, hexagon, octagon, star, plus two new locally drawn graphics — heart and arrow (with a rotation parameter). Every tile is the same locally rendered graphic with different parameters, so the library grows with no new downloaded assets and no licence surface. Original graphic ids (shapes:rectangle/ellipse/polygon/star) still resolve, so old projects open unchanged.
 - Insertion via `insertStickerElement` → graphic track; export covered by overlay/crossfade instrumented tests.
+- Library invariants are now tests, not claims: `stickers/__tests__/sticker-library.test.ts` walks `STICKER_CATEGORIES` (the same source of truth the panel builds its chips from) and requires every advertised category to return items, ids to be unique/provider-prefixed, and each item's resolved URL to equal its thumbnail URL. `apps/mobile/src/__tests__/sticker-assets.test.ts` checks every flag sticker against the real `apps/mobile/public` file: exists, has an `<svg>` root, is sized, has drawable geometry, and references no remote URL (offline guarantee).
+- Failed thumbnails no longer render as blank tiles: `ThumbnailGrid` shows the item name in place of an image that errors, so a broken asset cannot be mistaken for an empty category. This is the failure mode a wrong MIME type produces (a host serving `.svg` as `application/octet-stream` makes every flag tile blank while all the data is correct) — observed directly in the parity harness before its static server learned `image/svg+xml`.
+- Browser evidence: the parity harness browses each category, loads every shape tile and a spread of flag tiles, and counts the pixels each one paints — shapes 14/14 painted. Flag tile re-check after the MIME fix was cut short when the browser panel stopped attaching; the file-level SVG checks above cover the same assets in CI.
 
 ### 1B Captions
 - Added SRT export (`buildSrtFromCaptions`) and a "Export captions as SRT" button in the Captions panel (clipboard with textarea fallback).
@@ -57,7 +60,8 @@ Source-truth check performed:
 | Text shadow | GAP | renderer + native parity |
 | Audio fades UI | GAP | DSP + UI |
 | Animated stickers/GIF | GAP | asset + renderer |
-| Templates | FUTURE | product scope |
+| Templates | FUTURE | product scope; toolbar still opens the "not in Cutlyra yet" sheet |
+| Emoji / non-shape sticker categories | GAP | no bundled emoji assets; Shapes+Flags are the only offline categories |
 | Masks/chroma key | GAP | heavy engine work |
 | New transition types | GAP | native compositor |
 | 4K export verification | BLOCKED | device/encoder |

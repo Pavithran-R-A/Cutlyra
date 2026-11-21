@@ -683,6 +683,68 @@ async function run(): Promise<void> {
 		}
 	}
 
+	// --- sticker library: does a tile actually show anything? --------------
+	const { browseCategory } = await import("@cutlyra/editor-core/stickers");
+	async function loadImage(url: string): Promise<HTMLImageElement | null> {
+		return new Promise((resolve) => {
+			const image = new Image();
+			image.onload = () => resolve(image);
+			image.onerror = () => resolve(null);
+			image.src = url;
+		});
+	}
+	/** Fraction of pixels the sticker paints. A tile that loads but draws
+	 *  nothing (transparent / off-canvas path) is the "empty stickers" bug. */
+	function paintedFraction(image: HTMLImageElement): number {
+		const { canvas, ctx } = (() => {
+			const c = document.createElement("canvas");
+			c.width = 64;
+			c.height = 64;
+			return { canvas: c, ctx: c.getContext("2d", { willReadFrequently: true }) };
+		})();
+		if (!ctx) return 0;
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+		const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+		let painted = 0;
+		for (let index = 0; index < data.length; index += 4) {
+			if (data[index + 3] > 8) painted += 1;
+		}
+		return painted / (canvas.width * canvas.height);
+	}
+
+	for (const category of ["shapes", "flags"] as const) {
+		const items = (await browseCategory({ category })).sections.flatMap(
+			(section) => section.items,
+		);
+		// Every shape tile, plus a spread across the flags grid.
+		const sample =
+			category === "shapes" ? items : items.filter((_, index) => index % 20 === 0);
+		const failures: string[] = [];
+		for (const item of sample) {
+			const image = await loadImage(item.previewUrl);
+			if (!image) {
+				failures.push(`${item.id} did not load`);
+				continue;
+			}
+			if (image.naturalWidth === 0) {
+				failures.push(`${item.id} decoded with zero width`);
+				continue;
+			}
+			const painted = paintedFraction(image);
+			if (painted < 0.05) {
+				failures.push(`${item.id} painted ${(painted * 100).toFixed(1)}% of its tile`);
+			}
+		}
+		const result = {
+			name: `${category}-thumbnails-render-visible-pixels`,
+			ok: failures.length === 0,
+			detail: `${sample.length - failures.length}/${sample.length} tiles painted: ${failures.slice(0, 5).join("; ")}`,
+		};
+		results.push(result);
+		log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+	}
+
 	// --- output ------------------------------------------------------------
 	const failures = results.filter((result) => !result.ok);
 	const summary = {

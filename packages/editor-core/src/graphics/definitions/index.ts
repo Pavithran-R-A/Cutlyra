@@ -1,5 +1,7 @@
 import { graphicsRegistry } from "../registry";
+import { arrowGraphicDefinition } from "./arrow";
 import { ellipseGraphicDefinition } from "./ellipse";
+import { heartGraphicDefinition } from "./heart";
 import { polygonGraphicDefinition } from "./polygon";
 import { rectangleGraphicDefinition } from "./rectangle";
 import { starGraphicDefinition } from "./star";
@@ -9,6 +11,8 @@ const defaultGraphicDefinitions = [
 	ellipseGraphicDefinition,
 	polygonGraphicDefinition,
 	starGraphicDefinition,
+	heartGraphicDefinition,
+	arrowGraphicDefinition,
 ];
 
 export function registerDefaultGraphics(): void {
@@ -24,7 +28,9 @@ export function registerDefaultGraphics(): void {
 }
 
 export {
+	arrowGraphicDefinition,
 	ellipseGraphicDefinition,
+	heartGraphicDefinition,
 	polygonGraphicDefinition,
 	rectangleGraphicDefinition,
 	starGraphicDefinition,
