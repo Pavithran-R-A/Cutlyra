@@ -43,7 +43,7 @@ Source-truth check performed:
 - iOS export has no crop mapper yet.
 
 ### 1C Other panels
-- Transcript and Template intentionally show "not in Cutlyra yet" sheet (per `docs/DECISIONS.md`, tracked as FUTURE, not a bug).
+- Transcript intentionally shows the "not in Cutlyra yet" sheet (per `docs/DECISIONS.md`). Template is now a real library — see Phase 2.
 - Filters/Adjust exposed and export-safe (#48 scoped slice).
 - Background panel offers color swatches; blur background exists in engine/web but native Android export does not honor it, so not exposed on mobile (consistent with "no preview-only tools").
 
@@ -60,13 +60,62 @@ Source-truth check performed:
 | Text shadow | GAP | renderer + native parity |
 | Audio fades UI | GAP | DSP + UI |
 | Animated stickers/GIF | GAP | asset + renderer |
-| Templates | FUTURE | product scope; toolbar still opens the "not in Cutlyra yet" sheet |
+| Templates | IMPLEMENTED (12 offline templates + schema/planner/apply engine, UI wired) | No on-device Android UI-automation or exported-MP4 parity run yet |
 | Emoji / non-shape sticker categories | GAP | no bundled emoji assets; Shapes+Flags are the only offline categories |
 | Masks/chroma key | GAP | heavy engine work |
 | New transition types | GAP | native compositor |
 | 4K export verification | BLOCKED | device/encoder |
 | Multi-select import | BLOCKED | device Photo Picker |
 | Physical-device parity | BLOCKED | owner device session |
+
+## Phase 2 — Templates (implemented 2026-11-21)
+
+The Templates tab is no longer a placeholder. It is data plus one reusable
+execution engine — there is no per-template code:
+
+- **Schema** (`packages/editor-core/src/templates/types.ts`): identity +
+  `version`, category, canvas, fps, duration, background, palette, main-track
+  `mediaSlots` (kind/label/start/duration/framing/transform/transition/audio),
+  `textSlots` (real default content, label, style, transform) and optional
+  bundled `graphics` slots. Everything an apply needs is declared.
+- **Pure planner** (`plan.ts`): descriptor + user media/text choices →
+  `TemplatePlan`. Clamps videos to their source, keeps stills at full slot
+  length, never emits a media element for a slot the user skipped, and never
+  drops text overrides. No editor, canvas or storage involved, so the whole
+  library is testable headlessly.
+- **Executor** (`apply.ts`): creates a NEW project (applying never merges into
+  and overwrites the current edit), pins `canvasSizeMode: "custom"` so the
+  first imported clip cannot re-adopt the canvas aspect (GitHub #30), inserts
+  media on the main track, text on text tracks, graphics on graphic tracks, and
+  writes `fade` transitions between adjacent clips — all through the ordinary
+  `InsertElementCommand` / `UpdateProjectSettingsCommand` /
+  `TransitionsSnapshotCommand` path, so the result is undoable, persisted and
+  exported by the same native EDL.
+- **Native media hook**: `prepareMedia` runs after project creation (before any
+  insert) because `createNewProject` clears the media manager — assets picked
+  earlier would be lost. `applyTemplateFromDevice` (mobile-ui) walks the slots
+  one pick at a time through `importMediaFromNative`; a cancel/failure leaves
+  that slot empty and is reported.
+- **Library** (`library.ts`): 12 original templates across 7 categories — Reel
+  Pop, Short Hook, Birthday Wish, Romantic Memories, Travel Montage, Cinematic
+  Intro, Minimal Slideshow, Product Ad, Poetry Quote, Before & After, Daily
+  Vlog, Celebration Montage. Original text and palettes, bundled graphics only,
+  no music assets, no network.
+- **UI** (`packages/mobile-ui/src/components/panels/templates-panel.tsx`):
+  category chips, descriptor-derived preview cards (gradient + the template's
+  own headline + duration + aspect), a detail view listing the media
+  placeholders and editable text fields, and an apply button that reports empty
+  slots instead of failing silently.
+
+Verified locally: 17 template tests (14 library/planner invariants, 3
+integration tests that drive the REAL `EditorCore` apply path — canvas/fps/
+background pinning, main-track order/durations/framing, transition count and
+kind, edited text content, graphics, and the skipped-media path) plus clean
+typechecks for `editor-core`, `mobile-ui` and `apps/mobile`, zero ESLint errors
+on the touched files, and a successful `vite build` of `apps/mobile`.
+
+Not yet verified: on-device Android UI automation of the Templates journey and
+exported-MP4 parity for a template project (needs the emulator/device cycle).
 
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.
@@ -77,3 +126,5 @@ Source-truth check performed:
 ## Evidence
 - Stickers fix: `apps/mobile/public/flags` now contains 271 SVGs matching `apps/web/public/flags`.
 - No engineering code changes beyond the asset copy; no protected QA packages touched.
+- PR #96 (crop end-to-end + sticker library + lint debt) merged as `ac73e53` with every required check green on the PR head and on merged main (Bun CI 44925424430, Mobile CI 44925424390).
+- Templates: `bun test packages/editor-core/src/templates` → 17 pass / 0 fail; `bun test packages` → 813 pass / 0 fail.

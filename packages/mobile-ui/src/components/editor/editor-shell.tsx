@@ -16,6 +16,7 @@ import { EditPanel } from "../panels/edit-panel";
 import { AudioPanel } from "../panels/audio-panel";
 import { TextPanel } from "../panels/text-panel";
 import { StickersPanel } from "../panels/stickers-panel";
+import { TemplatesPanel } from "../panels/templates-panel";
 import { OverlayPanel } from "../panels/overlay-panel";
 import { CaptionsPanel } from "../panels/captions-panel";
 import { FiltersPanel } from "../panels/filters-panel";
@@ -49,6 +50,8 @@ import {
 	togglePlayback,
 	seekToSeconds,
 	importAndPlaceMedia,
+	applyTemplateFromDevice,
+	seekToStart,
 	pickReplacementMedia,
 	applyClipReplacement,
 	isClipMediaMissing,
@@ -917,15 +920,59 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 				</PanelSheet>
 			)}
 
-			{(activeSheet === "transcript" || activeSheet === "template") && (
+			{activeSheet === "transcript" && (
 				<PanelSheet onScrimClick={closeSheet} header={<SheetHeader onClose={closeSheet} />}>
-					<p className="cc-sheet-title">{activeSheet === "transcript" ? "Transcript" : "Template"}</p>
+					<p className="cc-sheet-title">Transcript</p>
 					<p className="cc-panel-note">
-						{activeSheet === "transcript"
-							? "Transcript editing isn't in Cutlyra yet — use Captions for on-device auto-captions."
-							: "Templates aren't in Cutlyra yet."}
+						Transcript editing is not in Cutlyra yet — use Captions for on-device
+						auto-captions.
 					</p>
 				</PanelSheet>
+			)}
+
+			{activeSheet === "template" && (
+				<TemplatesPanel
+					onClose={closeSheet}
+					onApply={async ({ template, text }) => {
+						if (importProgress) return; // one import at a time
+						setChromeError(null);
+						setChromeNotice(null);
+						setImportProgress({ percent: 0, label: "Choosing media…" });
+						try {
+							const summary = await applyTemplateFromDevice({
+								editor,
+								template,
+								text,
+								onProgress: (p) => {
+									const overall =
+										((p.index + Math.min(1, Math.max(0, p.fraction))) /
+											Math.max(1, p.total)) *
+										100;
+									setImportProgress({
+										percent: Math.round(overall),
+										label:
+											p.stage === "picking"
+												? `Preparing media ${p.index + 1} of ${p.total}…`
+												: `Importing ${p.fileName}…`,
+									});
+								},
+							});
+							const empty = summary.unfilledSlots.length;
+							setChromeNotice(
+								empty === 0
+									? `${template.name}: ${summary.insertedElements} clips added.`
+									: `${template.name}: ${summary.insertedElements} clips added, ${empty} media slot${empty === 1 ? "" : "s"} left empty (${summary.unfilledSlots.map((slot) => slot.label).join(", ")}).`,
+							);
+							closeSheet();
+							seekToStart({ editor });
+						} catch (cause) {
+							reportChromeError(cause);
+							throw cause;
+						} finally {
+							setImportProgress(null);
+						}
+					}}
+				/>
 			)}
 
 			{activeSheet === "graph" && selectedRef && visualElement && (
