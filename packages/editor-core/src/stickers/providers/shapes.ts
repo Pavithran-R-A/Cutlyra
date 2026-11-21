@@ -41,13 +41,77 @@ const LEGACY_SHAPE_PRESETS: Record<string, ShapeGraphicPreset> = {
 	star: { shapeKey: "star", name: "Star", definitionId: "star" },
 };
 
+/**
+ * The Shapes category as the user sees it.
+ *
+ * Deliberately curated rather than "one tile per registered graphic": the
+ * primitives (rectangle/ellipse/polygon/star) are parameterised shapes, so
+ * the registry alone exposes four tiles and the category reads as unfinished.
+ * Each entry here is the same locally rendered graphic with the parameters
+ * that make it a recognisable sticker (a square is a rectangle, a triangle is
+ * a three-sided polygon), so the library grows without shipping one SVG per
+ * shape. Ids are stored in projects, so the original graphic ids stay as
+ * aliases of themselves and can never stop resolving.
+ */
+const CURATED_SHAPE_PRESETS: ShapeGraphicPreset[] = [
+	{ shapeKey: "rectangle", name: "Rectangle", definitionId: "rectangle" },
+	{ shapeKey: "square", name: "Square", definitionId: "rectangle" },
+	{
+		shapeKey: "rounded-square",
+		name: "Rounded square",
+		definitionId: "rectangle",
+		params: { cornerRadius: 25 },
+	},
+	{
+		shapeKey: "pill",
+		name: "Pill",
+		definitionId: "rectangle",
+		params: { cornerRadius: 50 },
+	},
+	{ shapeKey: "ellipse", name: "Ellipse", definitionId: "ellipse" },
+	{ shapeKey: "circle", name: "Circle", definitionId: "ellipse" },
+	{
+		shapeKey: "triangle",
+		name: "Triangle",
+		definitionId: "polygon",
+		params: { sides: 3 },
+	},
+	{
+		shapeKey: "diamond",
+		name: "Diamond",
+		definitionId: "polygon",
+		params: { sides: 4 },
+	},
+	{
+		shapeKey: "pentagon",
+		name: "Pentagon",
+		definitionId: "polygon",
+		params: { sides: 5 },
+	},
+	{
+		shapeKey: "hexagon",
+		name: "Hexagon",
+		definitionId: "polygon",
+		params: { sides: 6 },
+	},
+	{
+		shapeKey: "octagon",
+		name: "Octagon",
+		definitionId: "polygon",
+		params: { sides: 8 },
+	},
+	{ shapeKey: "star", name: "Star", definitionId: "star" },
+	{ shapeKey: "heart", name: "Heart", definitionId: "heart" },
+	{ shapeKey: "arrow", name: "Arrow", definitionId: "arrow" },
+];
+
 function getShapePresets(): ShapeGraphicPreset[] {
 	registerDefaultGraphics();
-	return graphicsRegistry.getAll().map((definition) => ({
-		shapeKey: definition.id,
-		name: definition.name,
-		definitionId: definition.id,
-	}));
+	// Defensive: a preset whose graphic failed to register would render as an
+	// empty tile, so drop it instead of advertising a broken sticker.
+	return CURATED_SHAPE_PRESETS.filter((preset) =>
+		graphicsRegistry.has(preset.definitionId),
+	);
 }
 
 function getShapePreset({

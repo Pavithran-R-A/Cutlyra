@@ -240,6 +240,28 @@ class EdlParserTest {
     }
 
     @Test
+    fun `defaults crop to the full frame when the field is absent`() {
+        val edl = EdlParser.parse(sampleEdlJson())
+        val crop = edl.mainTrack()!!.clips[0].crop
+        assertEquals(0.0, crop.x, 0.0)
+        assertEquals(0.0, crop.y, 0.0)
+        assertEquals(1.0, crop.width, 0.0)
+        assertEquals(1.0, crop.height, 0.0)
+    }
+
+    @Test
+    fun `parses a normalised crop rectangle`() {
+        val withCrop = sampleEdlJson()
+        val clip = withCrop.getJSONArray("tracks").getJSONObject(0).getJSONArray("clips").getJSONObject(0)
+        clip.put("crop", JSONObject().put("x", 0.25).put("y", 0.1).put("width", 0.5).put("height", 0.4))
+        val crop = EdlParser.parse(withCrop).mainTrack()!!.clips[0].crop
+        assertEquals(0.25, crop.x, 0.0)
+        assertEquals(0.1, crop.y, 0.0)
+        assertEquals(0.5, crop.width, 0.0)
+        assertEquals(0.4, crop.height, 0.0)
+    }
+
+    @Test
     fun `parses keyframe animation channels with handles (round 47)`() {
         val clipJson = JSONObject(
             """

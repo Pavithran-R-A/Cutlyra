@@ -4,7 +4,15 @@ import { incrementCounter } from "@/diagnostics/render-perf";
 import type { AnyBaseNode } from "../nodes/base-node";
 import type { CanvasRenderer } from "../canvas-renderer";
 import { createCanvasSurface } from "../canvas-utils";
-import { DEFAULT_FRAMING, resolveFramingScale, type FramingMode } from "@/rendering";
+import {
+	DEFAULT_FRAMING,
+	FULL_CROP,
+	croppedSourceSize,
+	isFullCrop,
+	resolveFramingScale,
+	type CropRect,
+	type FramingMode,
+} from "@/rendering";
 import { BlurBackgroundNode } from "../nodes/blur-background-node";
 import { ColorNode } from "../nodes/color-node";
 import { EffectLayerNode } from "../nodes/effect-layer-node";
@@ -29,12 +37,20 @@ import type {
 } from "./types";
 import { DEFAULT_GRAPHIC_SOURCE_SIZE } from "@/graphics";
 
+/**
+ * Everything this module needs from a renderer is the output canvas size.
+ * Keeping the parameter this narrow (instead of `CanvasRenderer`) lets the crop
+ * geometry tests pass a plain `{ width, height }` — `bun test` has no
+ * OffscreenCanvas to construct a real renderer with.
+ */
+export type FrameCanvasSize = Pick<CanvasRenderer, "width" | "height">;
+
 export async function buildFrameDescriptor({
 	node,
 	renderer,
 }: {
 	node: AnyBaseNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 }): Promise<{
 	frame: FrameDescriptor;
 	textures: TextureUploadDescriptor[];
@@ -74,7 +90,7 @@ async function collectNode({
 	textures,
 }: {
 	node: AnyBaseNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	items: FrameItemDescriptor[];
 	textures: Map<string, TextureUploadDescriptor>;
@@ -230,7 +246,7 @@ function collectCaptionNode({
 	textures,
 }: {
 	node: CaptionNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	items: FrameItemDescriptor[];
 	textures: Map<string, TextureUploadDescriptor>;
@@ -278,7 +294,7 @@ async function collectVisualSourceNode({
 	textures,
 }: {
 	node: VideoNode | ImageNode | StickerNode | GraphicNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	items: FrameItemDescriptor[];
 	textures: Map<string, TextureUploadDescriptor>;
@@ -305,20 +321,29 @@ async function collectVisualSourceNode({
 			: (node.resolved as ResolvedVisualSourceNodeState).sourceHeight;
 
 	const textureId = `${path}:source`;
+	// Only source-bearing nodes resolve a revision (video); graphics never do.
+	const sourceRevision =
+		"sourceRevision" in node.resolved ? node.resolved.sourceRevision : undefined;
 	textures.set(textureId, {
 		kind: "external",
 		id: textureId,
 		source,
 		width: sourceWidth,
 		height: sourceHeight,
+		// Video frames arrive in pooled canvases (see
+		// `ResolvedVisualSourceNodeState.sourceRevision`), so tell the cache
+		// which pixels these are rather than relying on object identity.
+		...(sourceRevision ? { contentHash: sourceRevision } : {}),
 	});
 
+	const crop = node.params.crop ?? FULL_CROP;
 	const transform = computeVisualTransform({
 		renderer,
 		resolved: node.resolved,
 		sourceWidth,
 		sourceHeight,
 		framing: node.params.framing ?? DEFAULT_FRAMING,
+		crop,
 	});
 	const { mask, strokeLayer } = buildMaskArtifacts({
 		node,
@@ -332,6 +357,10 @@ async function collectVisualSourceNode({
 		type: "layer",
 		textureId,
 		transform,
+		// The texture keeps the full decoded frame (no CPU re-copy); only the
+		// sampled UV rectangle shrinks. Undefined for an untouched crop so
+		// uncropped descriptors stay identical to the pre-crop schema.
+		...(isFullCrop(crop) ? {} : { sourceRect: crop }),
 		opacity: node.resolved.opacity,
 		blendMode: node.params.blendMode ?? "normal",
 		effectPassGroups: node.resolved.effectPasses,
@@ -350,7 +379,7 @@ function collectTextNode({
 	textures,
 }: {
 	node: TextNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	items: FrameItemDescriptor[];
 	textures: Map<string, TextureUploadDescriptor>;
@@ -396,22 +425,31 @@ function computeVisualTransform({
 	sourceWidth,
 	sourceHeight,
 	framing = DEFAULT_FRAMING,
+	crop = FULL_CROP,
 }: {
-	renderer: CanvasRenderer;
-	resolved: ResolvedVisualSourceNodeState | ResolvedGraphicNodeState;
+	renderer: FrameCanvasSize;
+	resolved:
+		| Pick<ResolvedVisualSourceNodeState, "transform">
+		| Pick<ResolvedGraphicNodeState, "transform">;
 	sourceWidth: number;
 	sourceHeight: number;
 	framing?: FramingMode;
+	crop?: CropRect;
 }): QuadTransformDescriptor {
+	// Framing (and the quad's on-canvas size) works on the CROPPED source, so
+	// the crop is a real re-frame: the kept region is what gets fitted or
+	// filled. The texture itself is still the whole decoded frame and the
+	// shader samples `sourceRect` out of it.
+	const cropped = croppedSourceSize({ sourceWidth, sourceHeight, crop });
 	const framingScale = resolveFramingScale({
 		canvasWidth: renderer.width,
 		canvasHeight: renderer.height,
-		sourceWidth,
-		sourceHeight,
+		sourceWidth: cropped.width,
+		sourceHeight: cropped.height,
 		framing,
 	});
-	const scaledWidth = sourceWidth * framingScale * resolved.transform.scaleX;
-	const scaledHeight = sourceHeight * framingScale * resolved.transform.scaleY;
+	const scaledWidth = cropped.width * framingScale * resolved.transform.scaleX;
+	const scaledHeight = cropped.height * framingScale * resolved.transform.scaleY;
 	const absWidth = Math.abs(scaledWidth);
 	const absHeight = Math.abs(scaledHeight);
 
@@ -427,7 +465,7 @@ function computeVisualTransform({
 }
 
 function fullCanvasTransform(
-	renderer: CanvasRenderer,
+	renderer: FrameCanvasSize,
 ): QuadTransformDescriptor {
 	return {
 		centerX: renderer.width / 2,
@@ -448,7 +486,7 @@ function buildMaskArtifacts({
 	textures,
 }: {
 	node: VideoNode | ImageNode | StickerNode | GraphicNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	transform: QuadTransformDescriptor;
 	textures: Map<string, TextureUploadDescriptor>;
@@ -634,6 +672,8 @@ function drawTransformedCanvas({
 function transformHash(transform: QuadTransformDescriptor): string {
 	return `${transform.centerX}:${transform.centerY}:${transform.width}:${transform.height}:${transform.rotationDegrees}:${transform.flipX ? 1 : 0}:${transform.flipY ? 1 : 0}`;
 }
+
+export { computeVisualTransform };
 
 // Stable identity key for CanvasImageSource. Using a WeakMap → counter keeps
 // hash string length bounded and avoids holding sources alive.

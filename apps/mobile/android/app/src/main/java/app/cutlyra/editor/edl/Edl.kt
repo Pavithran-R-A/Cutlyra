@@ -72,6 +72,18 @@ enum class EdlTrackKind { MAIN, OVERLAY, AUDIO }
 // frames, so no native builder consumes it beyond parsing.
 enum class EdlTrackType { VIDEO, TEXT, AUDIO, GRAPHIC, EFFECT, CAPTION }
 
+/**
+ * Normalised source-space crop rectangle (top-left origin, 0..1). `width` and
+ * `height` are the kept region's size, not its far edge. The default is the
+ * full frame, which is what pre-crop EDL documents decode to.
+ */
+data class EdlCrop(
+    val x: Double = 0.0,
+    val y: Double = 0.0,
+    val width: Double = 1.0,
+    val height: Double = 1.0,
+)
+
 data class EdlTransform(
     val positionX: Double,
     val positionY: Double,
@@ -98,6 +110,8 @@ data class EdlClip(
     val opacity: Double,
     /** `fit` (default, preserve whole frame) or `fill` (cover + crop). */
     val framing: String = "fit",
+    /** Source region kept by Crop; full-frame by default (additive v1 field). */
+    val crop: EdlCrop = EdlCrop(),
     val effects: List<EdlEffect>,
     val hasMasks: Boolean,
     /** Keyframe channels, `EdlAnimationChannel` per (propertyPath,

@@ -80,3 +80,6 @@ apps/web/public/qa-*.png
 # privacy policy, Data Safety declaration and Play listing in the same change.
 # ---------------------------------------------------------------------------
 preserved/
+
+# Isolated JDK 21 toolchain (not committed)
+tools/

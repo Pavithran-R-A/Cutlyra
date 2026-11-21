@@ -88,6 +88,9 @@ export default defineConfig({
 			input: {
 				main: "index.html",
 				spike: "spike.html",
+				// NOT preview-parity.html: that harness is diagnostics only and is
+				// built by vite.preview-parity.config.ts so it never ships in the
+				// packaged Capacitor bundle.
 			},
 		},
 	},

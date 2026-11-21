@@ -19,7 +19,7 @@ import {
 } from "@/text/measure-element";
 import { resolveColorAtTime, resolveOpacityAtTime } from "@/animation/values";
 import { resolveTransformAtTime } from "@/rendering/animation-values";
-import { resolveFramingScale } from "@/rendering";
+import { FULL_CROP, croppedSourceSize } from "@/rendering";
 import { videoCache } from "@/services/video-cache/service";
 import type { CanvasRenderer } from "./canvas-renderer";
 import type { AnyBaseNode } from "./nodes/base-node";
@@ -178,15 +178,24 @@ function resolveVisualState({
 		animations: params.animations,
 		localTime,
 	});
+	// Effects operate on the CROPPED frame (the same frame the compositor
+	// samples through `sourceRect`), so a crop also changes the dimensions a
+	// pixel-space effect sizes itself against — matching native export, where
+	// Media3's `Crop` produces a smaller frame before the effect chain.
+	const cropped = croppedSourceSize({
+		sourceWidth,
+		sourceHeight,
+		crop: params.crop ?? FULL_CROP,
+	});
 	const containScale = Math.min(
-		context.renderer.width / sourceWidth,
-		context.renderer.height / sourceHeight,
+		context.renderer.width / cropped.width,
+		context.renderer.height / cropped.height,
 	);
 	const effectWidth = Math.round(
-		Math.abs(sourceWidth * containScale * transform.scaleX),
+		Math.abs(cropped.width * containScale * transform.scaleX),
 	);
 	const effectHeight = Math.round(
-		Math.abs(sourceHeight * containScale * transform.scaleY),
+		Math.abs(cropped.height * containScale * transform.scaleY),
 	);
 
 	return {
@@ -246,6 +255,12 @@ async function resolveVideoNode({
 		source: frame.canvas,
 		sourceWidth: frame.canvas.width,
 		sourceHeight: frame.canvas.height,
+		// The sink behind `getFrameAt` pools canvases: the same canvas object
+		// can come back holding a LATER frame's pixels, so the timestamp (not
+		// the object) is what tells the compositor's texture cache that this
+		// is new content. Without it a pooled canvas reads as a cache hit and
+		// the preview keeps showing the previous frame.
+		sourceRevision: `video:${roundMediaTime({ time: sourceTimeTicks })}:${frame.timestamp}`,
 	};
 }
 
