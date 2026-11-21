@@ -313,12 +313,19 @@ async function collectVisualSourceNode({
 			: (node.resolved as ResolvedVisualSourceNodeState).sourceHeight;
 
 	const textureId = `${path}:source`;
+	// Only source-bearing nodes resolve a revision (video); graphics never do.
+	const sourceRevision =
+		"sourceRevision" in node.resolved ? node.resolved.sourceRevision : undefined;
 	textures.set(textureId, {
 		kind: "external",
 		id: textureId,
 		source,
 		width: sourceWidth,
 		height: sourceHeight,
+		// Video frames arrive in pooled canvases (see
+		// `ResolvedVisualSourceNodeState.sourceRevision`), so tell the cache
+		// which pixels these are rather than relying on object identity.
+		...(sourceRevision ? { contentHash: sourceRevision } : {}),
 	});
 
 	const crop = node.params.crop ?? FULL_CROP;

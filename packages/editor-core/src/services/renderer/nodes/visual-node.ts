@@ -32,6 +32,15 @@ export interface ResolvedVisualSourceNodeState extends ResolvedVisualNodeState {
 	source: CanvasImageSource;
 	sourceWidth: number;
 	sourceHeight: number;
+	/**
+	 * Identity of the PIXELS currently in `source`, for sources whose backing
+	 * object is reused while its content changes (mediabunny's `CanvasSink`
+	 * cycles a small pool of canvases, so a later frame can arrive in the very
+	 * same canvas object as an earlier one). The texture cache compares this
+	 * before skipping an upload; absent (images, stickers, graphics) means the
+	 * source's object identity alone is enough.
+	 */
+	sourceRevision?: string;
 }
 
 export abstract class VisualNode<

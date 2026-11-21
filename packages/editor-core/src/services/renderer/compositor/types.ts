@@ -55,6 +55,11 @@ export type TextureCanvasDrawFn = (
  * A layer texture whose pixels come from somewhere outside the renderer —
  * typically a decoded video/image frame or a sticker. Cached by reference
  * identity of the source object.
+ *
+ * `contentHash` is required whenever the source object is REUSED for new
+ * pixels (video: mediabunny's `CanvasSink` pools its canvases). Reference
+ * identity alone would then report a cache hit for a different frame and the
+ * preview would hold the stale pixels.
  */
 export type ExternalTextureDescriptor = {
 	kind: "external";
@@ -62,6 +67,7 @@ export type ExternalTextureDescriptor = {
 	source: CanvasImageSource;
 	width: number;
 	height: number;
+	contentHash?: string;
 };
 
 /**

@@ -60,6 +60,7 @@ interface EditPanelProps {
  */
 export function EditPanel({
 	editor,
+	elementRef,
 	element,
 	onClose,
 	onSplit,

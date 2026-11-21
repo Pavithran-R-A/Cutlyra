@@ -121,6 +121,67 @@ describe("crop -> frame descriptor", () => {
 	});
 });
 
+describe("video frame revisions reach the texture cache", () => {
+	test("a pooled-canvas frame revision becomes the texture contentHash", async () => {
+		const node = new ImageNode({
+			url: "fixture.png",
+			duration: 1000,
+			timeOffset: 0,
+			trimStart: 0,
+			trimEnd: 1000,
+			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
+			opacity: 1,
+			crop: { x: 0, y: 0, width: 0.5, height: 1 },
+		});
+		node.resolved = {
+			localTime: 0,
+			opacity: 1,
+			effectPasses: [],
+			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
+			source: {} as CanvasImageSource,
+			sourceWidth: 1000,
+			sourceHeight: 1000,
+			sourceRevision: "video:120000:0.5",
+		};
+
+		const { textures } = await buildFrameDescriptor({
+			node,
+			renderer: { width: 1000, height: 1000 } as unknown as CanvasRenderer,
+		});
+		expect(textures[0]).toMatchObject({
+			kind: "external",
+			contentHash: "video:120000:0.5",
+		});
+	});
+
+	test("an image source (no revision) emits no contentHash", async () => {
+		const node = new ImageNode({
+			url: "fixture.png",
+			duration: 1000,
+			timeOffset: 0,
+			trimStart: 0,
+			trimEnd: 1000,
+			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
+			opacity: 1,
+		});
+		node.resolved = {
+			localTime: 0,
+			opacity: 1,
+			effectPasses: [],
+			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
+			source: {} as CanvasImageSource,
+			sourceWidth: 1000,
+			sourceHeight: 1000,
+		};
+
+		const { textures } = await buildFrameDescriptor({
+			node,
+			renderer: { width: 1000, height: 1000 } as unknown as CanvasRenderer,
+		});
+		expect(textures[0]).not.toHaveProperty("contentHash");
+	});
+});
+
 describe("crop -> preview quad geometry", () => {
 	test("uncropped geometry is unchanged", () => {
 		expect(transform({})).toEqual({

@@ -18,7 +18,6 @@ import {
 import { setCaptionText } from "../../editor/actions";
 import { ToggleRow } from "../editor/param-row";
 import { captionText } from "../../editor/caption-text";
-import type { CaptionElement } from "@cutlyra/editor-core/timeline";
 
 interface CaptionsPanelProps {
 	/** The selected caption element, when one is selected — drives the

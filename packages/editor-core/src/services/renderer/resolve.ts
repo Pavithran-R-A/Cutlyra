@@ -255,6 +255,12 @@ async function resolveVideoNode({
 		source: frame.canvas,
 		sourceWidth: frame.canvas.width,
 		sourceHeight: frame.canvas.height,
+		// The sink behind `getFrameAt` pools canvases: the same canvas object
+		// can come back holding a LATER frame's pixels, so the timestamp (not
+		// the object) is what tells the compositor's texture cache that this
+		// is new content. Without it a pooled canvas reads as a cache hit and
+		// the preview keeps showing the previous frame.
+		sourceRevision: `video:${roundMediaTime({ time: sourceTimeTicks })}:${frame.timestamp}`,
 	};
 }
 
