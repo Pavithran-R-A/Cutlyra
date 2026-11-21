@@ -24,7 +24,10 @@ Source-truth check performed:
 - Shapes category backed by graphics registry (working, canvas-rendered thumbnails).
 - Insertion via `insertStickerElement` → graphic track; export covered by overlay/crossfade instrumented tests.
 
-### 1B Other panels
+### 1B Captions
+- Added SRT export (`buildSrtFromCaptions`) and a "Export captions as SRT" button in the Captions panel (clipboard with textarea fallback).
+
+### 1C Other panels
 - Transcript and Template intentionally show "not in Cutlyra yet" sheet (per `docs/DECISIONS.md`, tracked as FUTURE, not a bug).
 - Filters/Adjust exposed and export-safe (#48 scoped slice).
 - Background panel offers color swatches; blur background exists in engine/web but native Android export does not honor it, so not exposed on mobile (consistent with "no preview-only tools").
