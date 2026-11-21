@@ -37,12 +37,20 @@ import type {
 } from "./types";
 import { DEFAULT_GRAPHIC_SOURCE_SIZE } from "@/graphics";
 
+/**
+ * Everything this module needs from a renderer is the output canvas size.
+ * Keeping the parameter this narrow (instead of `CanvasRenderer`) lets the crop
+ * geometry tests pass a plain `{ width, height }` — `bun test` has no
+ * OffscreenCanvas to construct a real renderer with.
+ */
+export type FrameCanvasSize = Pick<CanvasRenderer, "width" | "height">;
+
 export async function buildFrameDescriptor({
 	node,
 	renderer,
 }: {
 	node: AnyBaseNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 }): Promise<{
 	frame: FrameDescriptor;
 	textures: TextureUploadDescriptor[];
@@ -82,7 +90,7 @@ async function collectNode({
 	textures,
 }: {
 	node: AnyBaseNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	items: FrameItemDescriptor[];
 	textures: Map<string, TextureUploadDescriptor>;
@@ -238,7 +246,7 @@ function collectCaptionNode({
 	textures,
 }: {
 	node: CaptionNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	items: FrameItemDescriptor[];
 	textures: Map<string, TextureUploadDescriptor>;
@@ -286,7 +294,7 @@ async function collectVisualSourceNode({
 	textures,
 }: {
 	node: VideoNode | ImageNode | StickerNode | GraphicNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	items: FrameItemDescriptor[];
 	textures: Map<string, TextureUploadDescriptor>;
@@ -371,7 +379,7 @@ function collectTextNode({
 	textures,
 }: {
 	node: TextNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	items: FrameItemDescriptor[];
 	textures: Map<string, TextureUploadDescriptor>;
@@ -419,8 +427,10 @@ function computeVisualTransform({
 	framing = DEFAULT_FRAMING,
 	crop = FULL_CROP,
 }: {
-	renderer: CanvasRenderer;
-	resolved: ResolvedVisualSourceNodeState | ResolvedGraphicNodeState;
+	renderer: FrameCanvasSize;
+	resolved:
+		| Pick<ResolvedVisualSourceNodeState, "transform">
+		| Pick<ResolvedGraphicNodeState, "transform">;
 	sourceWidth: number;
 	sourceHeight: number;
 	framing?: FramingMode;
@@ -455,7 +465,7 @@ function computeVisualTransform({
 }
 
 function fullCanvasTransform(
-	renderer: CanvasRenderer,
+	renderer: FrameCanvasSize,
 ): QuadTransformDescriptor {
 	return {
 		centerX: renderer.width / 2,
@@ -476,7 +486,7 @@ function buildMaskArtifacts({
 	textures,
 }: {
 	node: VideoNode | ImageNode | StickerNode | GraphicNode;
-	renderer: CanvasRenderer;
+	renderer: FrameCanvasSize;
 	path: string;
 	transform: QuadTransformDescriptor;
 	textures: Map<string, TextureUploadDescriptor>;

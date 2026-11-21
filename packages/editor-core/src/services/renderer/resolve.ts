@@ -19,7 +19,7 @@ import {
 } from "@/text/measure-element";
 import { resolveColorAtTime, resolveOpacityAtTime } from "@/animation/values";
 import { resolveTransformAtTime } from "@/rendering/animation-values";
-import { FULL_CROP, croppedSourceSize, resolveFramingScale } from "@/rendering";
+import { FULL_CROP, croppedSourceSize } from "@/rendering";
 import { videoCache } from "@/services/video-cache/service";
 import type { CanvasRenderer } from "./canvas-renderer";
 import type { AnyBaseNode } from "./nodes/base-node";

@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import {
+	canvasDouble,
+	offscreenCanvasDouble,
+} from "@/test-support/canvas-double";
 import { isExternalTextureCacheHit } from "../wasm-compositor";
 import type { ExternalTextureDescriptor } from "../types";
 
@@ -18,8 +22,8 @@ function external({
 	return { kind: "external", id: "layer:source", source, width: 320, height: 240, contentHash };
 }
 
-const canvas = {} as CanvasImageSource;
-const otherCanvas = {} as CanvasImageSource;
+const canvas = canvasDouble();
+const otherCanvas = canvasDouble();
 
 function previousEntry(texture: ExternalTextureDescriptor) {
 	return {
@@ -74,7 +78,7 @@ describe("external texture cache", () => {
 			isExternalTextureCacheHit({
 				previous: {
 					kind: "rendered",
-					canvas: {} as OffscreenCanvas,
+					canvas: offscreenCanvasDouble(),
 					contentHash: "x",
 					width: 320,
 					height: 240,

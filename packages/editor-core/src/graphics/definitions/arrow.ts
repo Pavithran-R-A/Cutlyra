@@ -1,6 +1,6 @@
 import type { ParamDefinition } from "@/params";
 import { applyAlignedStroke } from "../stroke";
-import { STROKE_ALIGN_PARAM, type GraphicStrokeAlign } from "./shared";
+import { STROKE_ALIGN_PARAM, resolveStrokeAlign, type GraphicStrokeAlign } from "./shared";
 import type { GraphicDefinition } from "../types";
 
 interface ArrowParams {
@@ -64,7 +64,7 @@ export const arrowGraphicDefinition: GraphicDefinition = {
 		const fill = String(params.fill ?? "#ffffff");
 		const stroke = String(params.stroke ?? "#000000");
 		const strokeWidth = Math.max(0, Number(params.strokeWidth ?? 0));
-		const strokeAlign = (params.strokeAlign ?? "center") as GraphicStrokeAlign;
+		const strokeAlign = resolveStrokeAlign(params.strokeAlign);
 		const rotation = Number(params.rotation ?? 0);
 		const inset = strokeAlign === "center" ? strokeWidth / 2 : 0;
 		const size = Math.max(1, Math.min(width, height) - inset * 2);

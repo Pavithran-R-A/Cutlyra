@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { CanvasRenderer } from "../../canvas-renderer";
+import { canvasDouble } from "@/test-support/canvas-double";
 import { ImageNode } from "../../nodes/image-node";
 import type { ResolvedVisualSourceNodeState } from "../../nodes/visual-node";
 import { buildFrameDescriptor, computeVisualTransform } from "../frame-descriptor";
@@ -10,7 +10,9 @@ import { buildFrameDescriptor, computeVisualTransform } from "../frame-descripto
  * shader samples the sub-rectangle. Native export mirrors this by putting
  * Media3's `Crop` before the framing `Presentation`.
  */
-const renderer = { width: 1000, height: 1000 } as unknown as CanvasRenderer;
+// `bun test` has no OffscreenCanvas, and the descriptor only reads the output
+// size — see FrameCanvasSize.
+const renderer = { width: 1000, height: 1000 };
 
 function transform({
 	crop,
@@ -33,26 +35,27 @@ function transform({
 	positionX?: number;
 	positionY?: number;
 }) {
+	const resolved: ResolvedVisualSourceNodeState = {
+		localTime: 0,
+		opacity: 1,
+		effectPasses: [],
+		transform: {
+			scaleX,
+			scaleY,
+			rotate,
+			position: { x: positionX, y: positionY },
+		},
+		source: canvasDouble(),
+		sourceWidth,
+		sourceHeight,
+	};
 	return computeVisualTransform({
 		renderer,
 		crop,
 		framing,
 		sourceWidth,
 		sourceHeight,
-		resolved: {
-			localTime: 0,
-			opacity: 1,
-			effectPasses: [],
-			transform: {
-				scaleX,
-				scaleY,
-				rotate,
-				position: { x: positionX, y: positionY },
-			},
-			source: {} as CanvasImageSource,
-			sourceWidth,
-			sourceHeight,
-		} as ResolvedVisualSourceNodeState,
+		resolved,
 	});
 }
 
@@ -74,14 +77,14 @@ describe("crop -> frame descriptor", () => {
 			opacity: 1,
 			effectPasses: [],
 			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
-			source: {} as CanvasImageSource,
+			source: canvasDouble(),
 			sourceWidth: 1000,
 			sourceHeight: 1000,
 		};
 
 		const { frame, textures } = await buildFrameDescriptor({
 			node,
-			renderer: { width: 1000, height: 1000 } as unknown as CanvasRenderer,
+			renderer,
 		});
 		const layer = frame.items[0];
 		if (layer.type !== "layer") throw new Error("expected a layer item");
@@ -106,14 +109,14 @@ describe("crop -> frame descriptor", () => {
 			opacity: 1,
 			effectPasses: [],
 			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
-			source: {} as CanvasImageSource,
+			source: canvasDouble(),
 			sourceWidth: 1000,
 			sourceHeight: 1000,
 		};
 
 		const { frame } = await buildFrameDescriptor({
 			node,
-			renderer: { width: 1000, height: 1000 } as unknown as CanvasRenderer,
+			renderer,
 		});
 		const layer = frame.items[0];
 		if (layer.type !== "layer") throw new Error("expected a layer item");
@@ -138,7 +141,7 @@ describe("video frame revisions reach the texture cache", () => {
 			opacity: 1,
 			effectPasses: [],
 			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
-			source: {} as CanvasImageSource,
+			source: canvasDouble(),
 			sourceWidth: 1000,
 			sourceHeight: 1000,
 			sourceRevision: "video:120000:0.5",
@@ -146,7 +149,7 @@ describe("video frame revisions reach the texture cache", () => {
 
 		const { textures } = await buildFrameDescriptor({
 			node,
-			renderer: { width: 1000, height: 1000 } as unknown as CanvasRenderer,
+			renderer,
 		});
 		expect(textures[0]).toMatchObject({
 			kind: "external",
@@ -169,14 +172,14 @@ describe("video frame revisions reach the texture cache", () => {
 			opacity: 1,
 			effectPasses: [],
 			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
-			source: {} as CanvasImageSource,
+			source: canvasDouble(),
 			sourceWidth: 1000,
 			sourceHeight: 1000,
 		};
 
 		const { textures } = await buildFrameDescriptor({
 			node,
-			renderer: { width: 1000, height: 1000 } as unknown as CanvasRenderer,
+			renderer,
 		});
 		expect(textures[0]).not.toHaveProperty("contentHash");
 	});

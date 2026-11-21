@@ -12,8 +12,8 @@ import type { StickerCategory, StickerItem } from "../types";
  * The panel derives its chips from `STICKER_CATEGORIES`, so this walks the same
  * source of truth rather than a hand-written list that could drift from it.
  */
-const panelCategories = (Object.keys(STICKER_CATEGORIES) as StickerCategory[]).filter(
-	(category) => category !== "all",
+const panelCategories = Object.keys(STICKER_CATEGORIES).filter(
+	(category): category is StickerCategory => category !== "all",
 );
 
 async function itemsFor(category: StickerCategory): Promise<StickerItem[]> {

@@ -109,7 +109,6 @@ function createQuadrantFixture(
 
 function resolvedState({
 	fixture,
-	crop,
 	scaleX = 1,
 	scaleY = 1,
 	rotate = 0,
@@ -117,7 +116,6 @@ function resolvedState({
 	sourceRevision,
 }: {
 	fixture: Fixture;
-	crop?: CropRect;
 	scaleX?: number;
 	scaleY?: number;
 	rotate?: number;
@@ -173,7 +171,6 @@ function imageNode({
 	});
 	node.resolved = resolvedState({
 		fixture,
-		crop,
 		scaleX,
 		scaleY,
 		rotate,
@@ -619,7 +616,6 @@ async function run(): Promise<void> {
 		});
 		node.resolved = resolvedState({
 			fixture: pooled,
-			crop: { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
 			sourceRevision: "video:1",
 		});
 		const pixels = await renderNode(node);
@@ -672,7 +668,7 @@ async function run(): Promise<void> {
 		const node = imageNode({ fixture });
 		for (const step of steps) {
 			node.params.crop = step.crop;
-			node.resolved = resolvedState({ fixture, crop: step.crop });
+			node.resolved = resolvedState({ fixture });
 			const pixels = await renderNode(node);
 			const result = check({
 				name: `crop-changes-during-playback:${step.name}`,

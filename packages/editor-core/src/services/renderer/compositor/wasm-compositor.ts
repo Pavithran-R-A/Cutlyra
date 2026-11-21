@@ -91,9 +91,10 @@ class WasmCompositor {
 	render(frame: FrameDescriptor) {
 		renderFrame(frame);
 		if (isRenderPerfEnabled()) {
-			recordWasmFrameProfile(
-				getLastFrameProfile() as Array<{ name: string; durationMs: number }>,
-			);
+			const profile = readFrameProfile(getLastFrameProfile());
+			if (profile) {
+				recordWasmFrameProfile(profile);
+			}
 		}
 	}
 
@@ -221,6 +222,29 @@ function createBackingCanvas({
 		throw new Error("OffscreenCanvas is not supported in this environment");
 	}
 	return new OffscreenCanvas(width, height);
+}
+
+/**
+ * `opencut-wasm` declares `getLastFrameProfile(): Array<any>` — wasm-bindgen
+ * cannot express the profile struct — so the report side validates each entry
+ * instead of trusting it. A release build with profiling compiled out is
+ * allowed to hand back something that is not a profile list at all.
+ */
+function readFrameProfile(
+	value: unknown,
+): Array<{ name: string; durationMs: number }> | null {
+	if (!Array.isArray(value)) return null;
+	const entries: Array<{ name: string; durationMs: number }> = [];
+	for (const item of value) {
+		const entry: unknown = item;
+		if (!(entry instanceof Object)) return null;
+		if (!("name" in entry) || typeof entry.name !== "string") return null;
+		if (!("durationMs" in entry) || typeof entry.durationMs !== "number") {
+			return null;
+		}
+		entries.push({ name: entry.name, durationMs: entry.durationMs });
+	}
+	return entries;
 }
 
 function ensureOffscreenCanvas({

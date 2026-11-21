@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { CC_ICON_STROKE } from "../tokens";
 import { cn } from "../lib/cn";
@@ -41,11 +41,11 @@ function Thumbnail({
 	selected: boolean;
 	onSelect?: (id: string) => void;
 }) {
-	const [failed, setFailed] = useState(false);
-
-	useEffect(() => {
-		setFailed(false);
-	}, [item.imageSrc]);
+	// Remember WHICH src failed rather than a boolean: a new url is then a new
+	// key, so the tile recovers without resetting state from an effect (which
+	// would be a cascading render on every prop change).
+	const [failedSrc, setFailedSrc] = useState<string | null>(null);
+	const failed = failedSrc !== null && failedSrc === item.imageSrc;
 
 	return (
 		<button
@@ -58,7 +58,7 @@ function Thumbnail({
 			    dependency (it also ships to the plain-Vite apps/mobile
 			    shell), so next/image is not available here. */}
 			{item.imageSrc && !failed && (
-				<img src={item.imageSrc} alt="" onError={() => setFailed(true)} />
+				<img src={item.imageSrc} alt="" onError={() => setFailedSrc(item.imageSrc ?? null)} />
 			)}
 			{failed && (
 				<span

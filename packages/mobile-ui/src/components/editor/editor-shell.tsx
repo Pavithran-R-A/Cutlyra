@@ -67,7 +67,6 @@ import {
 	type DeadSpaceCutOutcome,
 } from "../../editor/actions";
 import { Scissors, ScissorsLineDashed, Trash2, CopyPlus, SlidersHorizontal, Spline, Type } from "lucide-react";
-import { CC_ICON_STROKE } from "../../tokens";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
 import { ProgressOverlay } from "../progress-overlay";
