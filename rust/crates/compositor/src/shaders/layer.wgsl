@@ -11,6 +11,8 @@ struct LayerUniforms {
     opacity: f32,
     flip_x: f32,
     flip_y: f32,
+    // [x0, y0, x1, y1] in source UV space: the crop rectangle.
+    source_rect: vec4f,
     _padding: vec2f,
 }
 
@@ -41,9 +43,17 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
         return vec4f(0.0, 0.0, 0.0, 0.0);
     }
 
-    let sample_uv = vec2f(
+    // Mirror inside the quad first, then map the quad's 0..1 UV onto the
+    // cropped sub-rectangle of the texture. Both are affine per axis, so the
+    // mirror stays a mirror of the CROPPED content and the uncropped case
+    // (0,0,1,1) reduces to the original sampling exactly.
+    let mirrored_uv = vec2f(
         select(uv.x, 1.0 - uv.x, uniforms.flip_x > 0.5),
         select(uv.y, 1.0 - uv.y, uniforms.flip_y > 0.5),
+    );
+    let sample_uv = vec2f(
+        mix(uniforms.source_rect.x, uniforms.source_rect.z, mirrored_uv.x),
+        mix(uniforms.source_rect.y, uniforms.source_rect.w, mirrored_uv.y),
     );
     let color = textureSampleLevel(source_texture, source_sampler, sample_uv, 0.0);
     return vec4f(color.rgb, color.a * uniforms.opacity);

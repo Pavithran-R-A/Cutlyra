@@ -1,7 +1,7 @@
 import { BaseNode } from "./base-node";
 import type { Effect, EffectPass } from "@/effects/types";
 import type { Mask } from "@/masks/types";
-import type { BlendMode, FramingMode, Transform } from "@/rendering";
+import type { BlendMode, CropRect, FramingMode, Transform } from "@/rendering";
 import type { RetimeConfig, VisualElement } from "@/timeline";
 
 export interface VisualNodeParams {
@@ -15,6 +15,8 @@ export interface VisualNodeParams {
 	opacity: number;
 	blendMode?: BlendMode;
 	framing?: FramingMode;
+	/** Normalised source region, resolved by `scene-builder.ts`. Absent = full frame. */
+	crop?: CropRect;
 	effects?: Effect[];
 	masks?: Mask[];
 }

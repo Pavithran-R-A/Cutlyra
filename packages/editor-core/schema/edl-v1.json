@@ -335,6 +335,39 @@
 				}
 			}
 		},
+		"crop": {
+			"description": "Normalised source region kept by Crop (top-left origin). Absent means the whole frame.",
+			"type": "object",
+			"required": [
+				"x",
+				"y",
+				"width",
+				"height"
+			],
+			"additionalProperties": false,
+			"properties": {
+				"x": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 1
+				},
+				"y": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 1
+				},
+				"width": {
+					"type": "number",
+					"minimum": 0.01,
+					"maximum": 1
+				},
+				"height": {
+					"type": "number",
+					"minimum": 0.01,
+					"maximum": 1
+				}
+			}
+		},
 		"transform": {
 			"type": "object",
 			"required": [
@@ -644,6 +677,9 @@
 						"fill"
 					],
 					"description": "Clip-to-canvas framing for visual sources; absent defaults to fit."
+				},
+				"crop": {
+					"$ref": "#/$defs/crop"
 				}
 			}
 		},

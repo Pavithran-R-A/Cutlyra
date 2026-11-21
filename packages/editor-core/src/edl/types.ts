@@ -141,6 +141,13 @@ export type EdlClipKind =
 	| "effect"
 	| "caption";
 
+export interface EdlCropRect {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
 export interface EdlTransform {
 	positionX: number;
 	positionY: number;
@@ -263,6 +270,10 @@ export interface EdlClip {
 	 *  `fill` scales to cover and crops the overflow. Additive in v1;
 	 *  readers default absent values to `fit`. */
 	framing?: "fit" | "fill";
+	/** Normalised source region kept by Crop (top-left origin, 0..1).
+	 *  Absent means the whole frame — readers must treat it as untransformed,
+	 *  which keeps every pre-crop project byte-identical. */
+	crop?: EdlCropRect;
 	opacity: number;
 	blendMode: string;
 	effects: EdlEffect[];

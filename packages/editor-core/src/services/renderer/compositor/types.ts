@@ -1,4 +1,4 @@
-import type { BlendMode } from "@/rendering";
+import type { BlendMode, CropRect } from "@/rendering";
 import type { EffectPass } from "@/effects/types";
 
 export type FrameDescriptor = {
@@ -15,6 +15,12 @@ export type FrameItemDescriptor =
 			type: "layer";
 			textureId: string;
 			transform: QuadTransformDescriptor;
+			/**
+			 * Normalised source region sampled by this quad (UV sub-rectangle).
+			 * Absent/undefined means the whole texture, preserving the descriptor
+			 * shape every pre-crop frame already used.
+			 */
+			sourceRect?: CropRect;
 			opacity: number;
 			blendMode: BlendMode;
 			effectPassGroups: EffectPass[][];

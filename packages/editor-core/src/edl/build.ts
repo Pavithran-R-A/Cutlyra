@@ -21,7 +21,9 @@ import { TICKS_PER_SECOND, mediaTimeFromSeconds } from "@/wasm";
 import { clampRetimeRate } from "@/retime/rate";
 import {
 	buildTransformFromParams,
+	isFullCrop,
 	readBlendModeFromParams,
+	readCropFromParams,
 	readFramingFromParams,
 	readOpacityFromParams,
 } from "@/rendering";
@@ -277,6 +279,10 @@ function buildClip({ element }: { element: TimelineElement }): EdlClip {
 			? element.mediaId
 			: null;
 
+	// Omitted when full-frame: an additive field that costs nothing on
+	// existing projects and keeps the golden EDL fixtures unchanged.
+	const crop = readCropFromParams({ params: element.params });
+
 	return {
 		clipId: element.id,
 		kind,
@@ -294,6 +300,7 @@ function buildClip({ element }: { element: TimelineElement }): EdlClip {
 		hidden: "hidden" in element ? element.hidden === true : false,
 		transform,
 		framing: readFramingFromParams({ params: element.params }),
+		...(isFullCrop(crop) ? {} : { crop }),
 		opacity: readOpacityFromParams({ params: element.params }),
 		blendMode: readBlendModeFromParams({ params: element.params }),
 		effects:

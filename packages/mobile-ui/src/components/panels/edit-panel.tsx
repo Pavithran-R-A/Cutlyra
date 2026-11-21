@@ -271,7 +271,7 @@ export function EditPanel({
 						<span>Reset crop</span>
 					</button>
 					<p className="cc-hint" style={{ marginTop: 6, fontSize: 12, opacity: 0.72 }}>
-						Crop region is saved with the clip. Preview/export rendering of the crop region is not yet applied (see documented blocker).
+						Crop applies to the preview and to exports. The kept region is then fitted or filled like any other source frame.
 					</p>
 				</div>
 			)}
