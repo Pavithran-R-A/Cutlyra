@@ -666,6 +666,7 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 
 			{activeSheet === "edit" && selectedRef && selectedElement && (
 				<EditPanel
+					editor={editor}
 					elementRef={selectedRef}
 					element={selectedElement}
 					onClose={closeSheet}

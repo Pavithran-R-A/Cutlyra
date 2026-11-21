@@ -27,6 +27,11 @@ Source-truth check performed:
 ### 1B Captions
 - Added SRT export (`buildSrtFromCaptions`) and a "Export captions as SRT" button in the Captions panel (clipboard with textarea fallback).
 
+### 1B Crop (partial)
+- Added `crop.x`, `crop.y`, `crop.width`, `crop.height` params to all visual elements (default = whole frame), persisted/undoable via the standard param system.
+- Added Crop sliders + Reset in `EditPanel` for video/image clips.
+- **Blocker (documented):** preview renderer and native (Android/iOS) export do not yet apply the crop region — the texture pipeline uses full source frames with no source-rect support, and native compositor has no arbitrary crop-rect path. State round-trips but pixels are not cropped. Tracked as PARTIAL; closing requires renderer source-rect + native compositor work.
+
 ### 1C Other panels
 - Transcript and Template intentionally show "not in Cutlyra yet" sheet (per `docs/DECISIONS.md`, tracked as FUTURE, not a bug).
 - Filters/Adjust exposed and export-safe (#48 scoped slice).

@@ -153,6 +153,52 @@ const visualElementParams: ElementParamDefinition[] = [
 		keyframable: false,
 		options: BLEND_MODE_OPTIONS,
 	},
+	{
+		// Crop region in normalised source coordinates (0..1). Defaults to the
+		// whole frame, so existing clips render unchanged. State is persisted,
+		// undoable and round-trips through project save/reopen. Preview and
+		// native export do NOT yet apply this region — see the documented
+		// blocker in docs/FEATURE_COMPLETION_MASTER_PLAN.md (renderer texture
+		// source-rect + native compositor). Tracked as a partial feature.
+		key: "crop.x",
+		label: "Crop X",
+		type: "number",
+		default: 0,
+		min: 0,
+		max: 1,
+		step: 0.01,
+		keyframable: false,
+	},
+	{
+		key: "crop.y",
+		label: "Crop Y",
+		type: "number",
+		default: 0,
+		min: 0,
+		max: 1,
+		step: 0.01,
+		keyframable: false,
+	},
+	{
+		key: "crop.width",
+		label: "Crop Width",
+		type: "number",
+		default: 1,
+		min: 0.01,
+		max: 1,
+		step: 0.01,
+		keyframable: false,
+	},
+	{
+		key: "crop.height",
+		label: "Crop Height",
+		type: "number",
+		default: 1,
+		min: 0.01,
+		max: 1,
+		step: 0.01,
+		keyframable: false,
+	},
 ];
 
 const audioElementParams: ElementParamDefinition[] = [
