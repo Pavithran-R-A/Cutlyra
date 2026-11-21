@@ -32,8 +32,10 @@ Source-truth check performed:
 - One shared reader/clamper: `packages/editor-core/src/rendering/crop.ts` (`readCropFromParams`, `croppedSourceSize`, `isFullCrop`). Preview, EDL and native export all use it, so defaults and clamping cannot drift.
 - **Preview (WASM):** `LayerDescriptor.sourceRect` is a backwards-compatible optional UV sub-rectangle. `frame-descriptor.ts` computes the quad from the CROPPED source (so fit/fill/transform/rotation act on the kept region) while the texture stays the full decoded frame — no extra CPU copy, no new cache key, and video frames still invalidate by source identity. The layer shader mirrors inside the quad, then maps UVs onto `sourceRect`; the uniform grew 48 -> 64 bytes (16-byte aligned). Uncapped crop emits no `sourceRect`, so uncropped descriptors are byte-identical to before.
 - **Android export (Media3 1.11.0):** EDL gains optional `clip.crop`; `EdlCropEffect` converts to `androidx.media3.effect.Crop` NDC bounds (`left,right,bottom,top`, y-up) with the same clamping. The effect is inserted FIRST in the per-item chain, so crop changes the frame before `EdlTransformEffect`, opacity/colour grade and the fit/fill `Presentation` — matching the preview order. Full-frame crops add no effect.
-- Tests: TS crop reader (6), preview quad geometry (5), EDL propagation (3), Rust descriptor back-compat/round-trip (2), Kotlin NDC conversion (8), Kotlin EDL parsing (2). `ExportCropInstrumentedTest` exports a four-quadrant fixture through the real `Media3Exporter` and asserts DECODED frame colours for left/right/top/bottom/centre/off-centre crops.
-- **Not yet run:** the decoded-frame instrumentation (no device attached in this session). Crop is implemented end-to-end in code but stays PARTIAL until `ExportCropInstrumentedTest` passes on hardware. iOS export has no crop mapper yet.
+- Tests: TS crop reader (6), preview quad geometry (5), frame-descriptor `sourceRect` emission (2), EDL propagation (3), Rust descriptor back-compat/round-trip (2), Kotlin NDC conversion (8), Kotlin EDL parsing (2).
+- **Native export verified on decoded frames:** `ExportCropInstrumentedTest` exports a four-quadrant fixture through the real `Media3Exporter` for uncropped, left/right/top/bottom half, centre-quarter and off-centre crops, then decodes the MP4 and samples pixels. Result: `OK (1 test)` on a disposable API 35 emulator (`cutlyra_ci35`) on 2026-11-21, 16.2 s. The protected physical device was never used (the repo's device-isolation guard blocks Gradle there by design; APKs were installed with device-scoped adb onto the emulator only).
+- **Preview status:** geometry/descriptor/EDL paths are unit-tested and `rust/wasm/pkg` was rebuilt with the new shader/descriptor, but pixel parity between preview and export was NOT visually compared in this session (no automated WebGL frame capture). Treat that last check as open.
+- iOS export has no crop mapper yet.
 
 ### 1C Other panels
 - Transcript and Template intentionally show "not in Cutlyra yet" sheet (per `docs/DECISIONS.md`, tracked as FUTURE, not a bug).
@@ -46,7 +48,7 @@ Source-truth check performed:
 | --- | --- | --- |
 | Reverse | PARTIAL (param only) | native export + compositor; no UI |
 | Freeze frame | GAP | needs engine + UI + export |
-| Per-clip crop | IMPLEMENTED, on-device verification pending | run `ExportCropInstrumentedTest` on a device; iOS mapper not written |
+| Per-clip crop | IMPLEMENTED; native export decoded-frame verified | preview pixel parity still uncompared; iOS mapper not written |
 | Background blur (mobile) | GAP (engine exists) | native Android export support |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
 | SRT/VTT import/export | GAP | serializer + file I/O |
