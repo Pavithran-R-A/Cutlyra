@@ -1603,3 +1603,157 @@
 .cc-text-content-input:focus {
 	border-color: var(--cc-accent, #00cae0);
 }
+
+/* Templates panel. A template card is generated from the descriptor itself
+   (palette gradient + its own headline + duration), so there is no bundled
+   artwork per template and nothing to drift from what applying it produces. */
+.cc-template-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--cc-space-3);
+	padding: var(--cc-space-2) 0;
+}
+.cc-template-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--cc-space-1);
+	background: none;
+	border: none;
+	padding: 0;
+	color: var(--cc-text-primary);
+	font-family: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.cc-template-card__art {
+	position: relative;
+	display: block;
+	width: 100%;
+	aspect-ratio: 4 / 5;
+	border-radius: var(--cc-radius-card);
+	overflow: hidden;
+}
+.cc-template-card__title {
+	position: absolute;
+	left: var(--cc-space-3);
+	right: var(--cc-space-3);
+	bottom: var(--cc-space-3);
+	font-size: var(--cc-text-body);
+	font-weight: 700;
+	line-height: 1.2;
+	text-shadow: 0 1px 6px rgb(0 0 0 / 45%);
+}
+.cc-template-card__badge {
+	position: absolute;
+	top: var(--cc-space-2);
+	right: var(--cc-space-2);
+	padding: 2px 8px;
+	border-radius: var(--cc-radius-pill);
+	background: rgb(0 0 0 / 45%);
+	font-size: var(--cc-text-caption, 0.75rem);
+}
+.cc-template-card__meta {
+	font-size: var(--cc-text-caption, 0.75rem);
+	color: var(--cc-text-secondary);
+}
+.cc-template-detail {
+	display: flex;
+	flex-direction: column;
+	gap: var(--cc-space-2);
+}
+.cc-template-preview {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	min-height: 180px;
+	padding: var(--cc-space-4);
+	border-radius: var(--cc-radius-card);
+}
+.cc-template-preview__headline {
+	font-size: 1.375rem;
+	font-weight: 700;
+	line-height: 1.2;
+}
+.cc-template-preview__meta {
+	font-size: var(--cc-text-label);
+	color: rgb(255 255 255 / 82%);
+}
+.cc-template-section {
+	margin: var(--cc-space-2) 0 0;
+	font-size: var(--cc-text-label);
+	color: var(--cc-text-secondary);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+.cc-template-slots {
+	display: flex;
+	flex-direction: column;
+	gap: var(--cc-space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.cc-template-slots li {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--cc-space-2);
+	font-size: var(--cc-text-body);
+}
+.cc-template-slot__meta {
+	color: var(--cc-text-secondary);
+	font-size: var(--cc-text-caption, 0.75rem);
+}
+.cc-template-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: var(--cc-text-label);
+	color: var(--cc-text-secondary);
+}
+.cc-template-field input {
+	width: 100%;
+	padding: var(--cc-space-2) var(--cc-space-3);
+	border-radius: var(--cc-radius-card);
+	border: 1px solid var(--cc-border-subtle, rgb(255 255 255 / 12%));
+	background: var(--cc-bg-raised);
+	color: var(--cc-text-primary);
+	font-family: inherit;
+	font-size: var(--cc-text-body);
+}
+.cc-template-actions {
+	display: flex;
+	gap: var(--cc-space-2);
+	padding: var(--cc-space-2) 0;
+}
+.cc-template-apply {
+	flex: 1;
+	padding: var(--cc-space-3) var(--cc-space-4);
+	border: none;
+	border-radius: var(--cc-radius-pill);
+	background: var(--cc-accent, #ffffff);
+	color: var(--cc-accent-ink, #000000);
+	font-family: inherit;
+	font-size: var(--cc-text-body);
+	font-weight: 600;
+	cursor: pointer;
+}
+.cc-template-apply:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+.cc-template-back {
+	padding: var(--cc-space-3) var(--cc-space-4);
+	border: 1px solid var(--cc-bg-raised);
+	border-radius: var(--cc-radius-pill);
+	background: transparent;
+	color: var(--cc-text-primary);
+	font-family: inherit;
+	font-size: var(--cc-text-body);
+	cursor: pointer;
+}
+.cc-template-error {
+	margin: 0;
+	font-size: var(--cc-text-label);
+	color: var(--cc-danger, #ff6b6b);
+}

@@ -10,6 +10,13 @@
 import type { EditorCore, MediaAsset, MediaType, TCanvasSize } from "@cutlyra/editor-core";
 import type { CaptionWord, ElementRef, RetimeConfig, TimelineElement } from "@cutlyra/editor-core/timeline";
 import type { ParamValues } from "@cutlyra/editor-core/params";
+import type {
+	Template,
+	TemplateApplySummary,
+	TemplateMediaAssignments,
+	TemplateTextOverrides,
+} from "@cutlyra/editor-core/templates";
+import { applyTemplateToNewProject } from "@cutlyra/editor-core/templates";
 import {
 	DuplicateElementsCommand,
 	SplitElementsCommand,
@@ -1145,6 +1152,61 @@ export function insertStickerElement({
 	editor.command.execute({ command });
 	const trackId = command.getTrackId();
 	return trackId ? { trackId, elementId: command.getElementId() } : null;
+}
+
+// -------------------------------- Templates ---------------------------------
+
+/**
+ * Apply a template: create the project, walk its media slots through the real
+ * native import pipeline (picker → custody → proxy → asset), then let
+ * editor-core insert the plan.
+ *
+ * The slot order IS the picker order, one pick per slot: a montage asks for
+ * "Opening shot", then "Middle shot", and so on. A cancelled or failed pick
+ * leaves that slot empty and is REPORTED in the summary instead of aborting
+ * the template or inventing a clip — the text and graphics the user already
+ * edited are still inserted, so nothing typed is thrown away.
+ */
+export async function applyTemplateFromDevice({
+	editor,
+	template,
+	text,
+	onProgress,
+}: {
+	editor: EditorCore;
+	template: Template;
+	text?: TemplateTextOverrides;
+	onProgress?: NativeImportProgressHandler;
+}): Promise<TemplateApplySummary> {
+	const bridge = await getNativeBridge();
+	const { summary } = await applyTemplateToNewProject({
+		editor,
+		template,
+		text,
+		prepareMedia: async ({ projectId, slots }) => {
+			const assignments: TemplateMediaAssignments = {};
+			for (const slot of slots) {
+				const { imported } = await importMediaFromNative({
+					editor,
+					projectId,
+					source: bridge,
+					kinds: [slot.kind],
+					allowMultiple: false,
+					onProgress,
+				});
+				const asset = imported[0];
+				if (!asset) continue;
+				assignments[slot.id] = {
+					mediaId: asset.id,
+					name: asset.name,
+					type: asset.type === "image" ? "image" : "video",
+					sourceDuration: asset.duration || undefined,
+				};
+			}
+			return assignments;
+		},
+	});
+	return summary;
 }
 
 // -------------------------------- Overlay -----------------------------------
