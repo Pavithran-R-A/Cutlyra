@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { CanvasRenderer } from "../../canvas-renderer";
+import { ImageNode } from "../../nodes/image-node";
 import type { ResolvedVisualSourceNodeState } from "../../nodes/visual-node";
-import { computeVisualTransform } from "../frame-descriptor";
+import { buildFrameDescriptor, computeVisualTransform } from "../frame-descriptor";
 
 /**
  * Preview crop geometry: the quad must shrink to the CROPPED source's framing
@@ -54,6 +55,71 @@ function transform({
 		} as ResolvedVisualSourceNodeState,
 	});
 }
+
+describe("crop -> frame descriptor", () => {
+	test("emits sourceRect and keeps the full-size texture", async () => {
+		const crop = { x: 0.5, y: 0, width: 0.5, height: 1 };
+		const node = new ImageNode({
+			url: "fixture.png",
+			duration: 1000,
+			timeOffset: 0,
+			trimStart: 0,
+			trimEnd: 1000,
+			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
+			opacity: 1,
+			crop,
+		});
+		node.resolved = {
+			localTime: 0,
+			opacity: 1,
+			effectPasses: [],
+			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
+			source: {} as CanvasImageSource,
+			sourceWidth: 1000,
+			sourceHeight: 1000,
+		};
+
+		const { frame, textures } = await buildFrameDescriptor({
+			node,
+			renderer: { width: 1000, height: 1000 } as unknown as CanvasRenderer,
+		});
+		const layer = frame.items[0];
+		if (layer.type !== "layer") throw new Error("expected a layer item");
+		expect(layer.sourceRect).toEqual(crop);
+		expect(layer.transform.width).toBeCloseTo(500);
+		expect(textures).toHaveLength(1);
+		expect(textures[0]).toMatchObject({ kind: "external", width: 1000, height: 1000 });
+	});
+
+	test("omits sourceRect for an uncropped clip", async () => {
+		const node = new ImageNode({
+			url: "fixture.png",
+			duration: 1000,
+			timeOffset: 0,
+			trimStart: 0,
+			trimEnd: 1000,
+			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
+			opacity: 1,
+		});
+		node.resolved = {
+			localTime: 0,
+			opacity: 1,
+			effectPasses: [],
+			transform: { scaleX: 1, scaleY: 1, rotate: 0, position: { x: 0, y: 0 } },
+			source: {} as CanvasImageSource,
+			sourceWidth: 1000,
+			sourceHeight: 1000,
+		};
+
+		const { frame } = await buildFrameDescriptor({
+			node,
+			renderer: { width: 1000, height: 1000 } as unknown as CanvasRenderer,
+		});
+		const layer = frame.items[0];
+		if (layer.type !== "layer") throw new Error("expected a layer item");
+		expect("sourceRect" in layer).toBe(false);
+	});
+});
 
 describe("crop -> preview quad geometry", () => {
 	test("uncropped geometry is unchanged", () => {
