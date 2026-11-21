@@ -57,7 +57,9 @@ struct LayerUniformBuffer {
     opacity: f32,
     flip_x: f32,
     flip_y: f32,
-    _padding: [f32; 2], // WebGL requires uniform buffer sizes to be multiples of 16 bytes (40 → 48)
+    /// `[x0, y0, x1, y1]` in texture UV space (crop).
+    source_rect: [f32; 4],
+    _padding: [f32; 2], // 16-byte multiple: 64 bytes total (WebGL uniform alignment)
 }
 
 #[repr(C)]
@@ -602,6 +604,11 @@ impl Compositor {
                         opacity: layer.opacity,
                         flip_x: if layer.transform.flip_x { 1.0 } else { 0.0 },
                         flip_y: if layer.transform.flip_y { 1.0 } else { 0.0 },
+                        source_rect: layer
+                            .source_rect
+                            .as_ref()
+                            .map(|rect| rect.uv_bounds())
+                            .unwrap_or([0.0, 0.0, 1.0, 1.0]),
                         _padding: [0.0; 2],
                     }),
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -867,4 +874,42 @@ fn map_effect_passes(passes: &[EffectPassDescriptor]) -> Vec<EffectPass> {
                 .collect(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod uniform_layout_tests {
+    use super::*;
+
+    /// `shaders/layer.wgsl` mirrors this struct field for field. A crop added
+    /// a `vec4f` to the WGSL side only, which pushed the struct to 80 bytes
+    /// against this 64-byte buffer and moved the rectangle to offset 48 while
+    /// Rust wrote it at 40 — every frame then failed pipeline validation and
+    /// the preview went black. Pin the layout so it cannot drift again.
+    #[test]
+    fn layer_uniform_layout_matches_the_shader() {
+        let uniform = LayerUniformBuffer {
+            resolution: [0.0; 2],
+            center: [0.0; 2],
+            size: [0.0; 2],
+            rotation_radians: 0.0,
+            opacity: 0.0,
+            flip_x: 0.0,
+            flip_y: 0.0,
+            source_rect: [0.0; 4],
+            _padding: [0.0; 2],
+        };
+        let base = &uniform as *const LayerUniformBuffer as usize;
+        let offset = |field: *const f32| field as usize - base;
+
+        assert_eq!(std::mem::size_of::<LayerUniformBuffer>(), 64);
+        assert_eq!(offset(uniform.resolution.as_ptr()), 0);
+        assert_eq!(offset(uniform.center.as_ptr()), 8);
+        assert_eq!(offset(uniform.size.as_ptr()), 16);
+        assert_eq!(offset(&uniform.rotation_radians), 24);
+        assert_eq!(offset(&uniform.opacity), 28);
+        assert_eq!(offset(&uniform.flip_x), 32);
+        assert_eq!(offset(&uniform.flip_y), 36);
+        assert_eq!(offset(uniform.source_rect.as_ptr()), 40);
+        assert_eq!(offset(uniform._padding.as_ptr()), 56);
+    }
 }

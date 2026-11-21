@@ -137,6 +137,14 @@ object EdlParser {
             ),
             opacity = o.getDouble("opacity"),
             framing = o.optString("framing", "fit"),
+            crop = o.optJSONObject("crop")?.let { cropObj ->
+                EdlCrop(
+                    x = cropObj.getDouble("x"),
+                    y = cropObj.getDouble("y"),
+                    width = cropObj.getDouble("width"),
+                    height = cropObj.getDouble("height"),
+                )
+            } ?: EdlCrop(),
             effects = (o.optJSONArray("effects") ?: JSONArray()).map(::parseEffect),
             hasMasks = masks != null && masks.length() > 0,
             animations = (animations ?: JSONArray()).map(::parseAnimationChannel),

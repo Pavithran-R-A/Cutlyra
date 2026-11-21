@@ -7,6 +7,15 @@ export {
 	type FramingMode,
 } from "./framing";
 
+export {
+	FULL_CROP,
+	MIN_CROP_SIZE,
+	croppedSourceSize,
+	isFullCrop,
+	readCropFromParams,
+	type CropRect,
+} from "./crop";
+
 export interface Transform {
 	scaleX: number;
 	scaleY: number;

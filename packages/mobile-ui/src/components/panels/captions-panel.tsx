@@ -5,7 +5,8 @@ import { SheetHeader } from "../sheet-header";
 import { ChipRow } from "../chip-row";
 import type { EditorCore } from "@cutlyra/editor-core";
 import type { ElementRef } from "@cutlyra/editor-core/timeline";
-import { CAPTION_STYLE_PRESETS, DEFAULT_CAPTION_STYLE_PRESET_ID } from "@cutlyra/editor-core/captions";
+import { CAPTION_STYLE_PRESETS, DEFAULT_CAPTION_STYLE_PRESET_ID, buildSrtFromCaptions } from "@cutlyra/editor-core/captions";
+import type { CaptionElement } from "@cutlyra/editor-core/timeline";
 import {
 	generateCaptions,
 	applyCaptionStyleToAll,
@@ -17,7 +18,6 @@ import {
 import { setCaptionText } from "../../editor/actions";
 import { ToggleRow } from "../editor/param-row";
 import { captionText } from "../../editor/caption-text";
-import type { CaptionElement } from "@cutlyra/editor-core/timeline";
 
 interface CaptionsPanelProps {
 	/** The selected caption element, when one is selected — drives the
@@ -64,6 +64,39 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 	// on timeline changes, same as the caption textarea's words).
 	const highlightEnabled = getCaptionHighlightEnabled({ editor });
 	const borderEnabled = getCaptionBorderEnabled({ editor });
+	const [srtStatus, setSrtStatus] = useState<"idle" | "copied" | "error">("idle");
+	const [srtText, setSrtText] = useState<string>("");
+
+	const gatherCaptions = (): CaptionElement[] => {
+		const scene = editor.scenes.getActiveSceneOrNull();
+		if (!scene) return [];
+		const out: CaptionElement[] = [];
+		for (const track of scene.tracks.overlay) {
+			if (track.type === "caption") {
+				out.push(...(track.elements as CaptionElement[]));
+			}
+		}
+		return out;
+	};
+
+	const handleExportSrt = async () => {
+		const srt = buildSrtFromCaptions(gatherCaptions());
+		setSrtText(srt);
+		if (!srt) {
+			setSrtStatus("error");
+			return;
+		}
+		try {
+			if (navigator.clipboard?.writeText) {
+				await navigator.clipboard.writeText(srt);
+				setSrtStatus("copied");
+				return;
+			}
+			setSrtStatus("error");
+		} catch {
+			setSrtStatus("error");
+		}
+	};
 
 	const handleGenerate = () => {
 		setState("generating");
@@ -168,6 +201,20 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 				active={borderEnabled}
 				onToggle={() => setCaptionBorderEnabled({ editor, enabled: !borderEnabled })}
 			/>
+			<button type="button" className="cc-panel-actions__btn" onClick={handleExportSrt}>
+				<span>
+					{srtStatus === "copied"
+						? "Copied SRT to clipboard"
+						: srtStatus === "error"
+							? srtText
+								? "Copy failed — select text below"
+								: "No captions to export"
+							: "Export captions as SRT"}
+				</span>
+			</button>
+			{srtStatus === "error" && srtText && (
+				<textarea className="cc-text-content-input" rows={4} value={srtText} readOnly aria-label="SRT output" />
+			)}
 		</PanelSheet>
 	);
 }

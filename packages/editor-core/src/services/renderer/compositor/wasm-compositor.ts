@@ -37,6 +37,7 @@ type ExternalCacheEntry = {
 	source: CanvasImageSource;
 	width: number;
 	height: number;
+	contentHash?: string;
 };
 
 class WasmCompositor {
@@ -90,20 +91,16 @@ class WasmCompositor {
 	render(frame: FrameDescriptor) {
 		renderFrame(frame);
 		if (isRenderPerfEnabled()) {
-			recordWasmFrameProfile(
-				getLastFrameProfile() as Array<{ name: string; durationMs: number }>,
-			);
+			const profile = readFrameProfile(getLastFrameProfile());
+			if (profile) {
+				recordWasmFrameProfile(profile);
+			}
 		}
 	}
 
 	private syncExternalTexture(texture: ExternalTextureDescriptor) {
 		const previous = this.cache.get(texture.id);
-		if (
-			previous?.kind === "external" &&
-			previous.source === texture.source &&
-			previous.width === texture.width &&
-			previous.height === texture.height
-		) {
+		if (isExternalTextureCacheHit({ previous, texture })) {
 			incrementCounter({ name: "textureCacheHit" });
 			return;
 		}
@@ -129,6 +126,7 @@ class WasmCompositor {
 			source: texture.source,
 			width: texture.width,
 			height: texture.height,
+			contentHash: texture.contentHash,
 		});
 	}
 
@@ -184,6 +182,35 @@ class WasmCompositor {
 
 export const wasmCompositor = new WasmCompositor();
 
+/**
+ * Whether an external texture already on the GPU is still the right pixels for
+ * this descriptor.
+ *
+ * Reference identity is only sufficient when the source object's content is
+ * immutable. Video is not: mediabunny's `CanvasSink` hands frames back in a
+ * pooled canvas, so the SAME object can later hold a different frame —
+ * `contentHash` (the resolved frame's revision) is then what has to match, or
+ * the preview would keep displaying the previous frame forever.
+ */
+export function isExternalTextureCacheHit({
+	previous,
+	texture,
+}: {
+	previous: RenderedCacheEntry | ExternalCacheEntry | undefined;
+	texture: ExternalTextureDescriptor;
+}): boolean {
+	if (!previous || previous.kind !== "external") return false;
+	if (previous.width !== texture.width) return false;
+	if (previous.height !== texture.height) return false;
+	if (previous.source !== texture.source) return false;
+	// A descriptor that says nothing about its content keeps the old
+	// identity-only behaviour (immutable image/sticker/graphic sources).
+	if (texture.contentHash !== undefined) {
+		return previous.contentHash === texture.contentHash;
+	}
+	return true;
+}
+
 function createBackingCanvas({
 	width,
 	height,
@@ -195,6 +222,29 @@ function createBackingCanvas({
 		throw new Error("OffscreenCanvas is not supported in this environment");
 	}
 	return new OffscreenCanvas(width, height);
+}
+
+/**
+ * `opencut-wasm` declares `getLastFrameProfile(): Array<any>` — wasm-bindgen
+ * cannot express the profile struct — so the report side validates each entry
+ * instead of trusting it. A release build with profiling compiled out is
+ * allowed to hand back something that is not a profile list at all.
+ */
+function readFrameProfile(
+	value: unknown,
+): Array<{ name: string; durationMs: number }> | null {
+	if (!Array.isArray(value)) return null;
+	const entries: Array<{ name: string; durationMs: number }> = [];
+	for (const item of value) {
+		const entry: unknown = item;
+		if (!(entry instanceof Object)) return null;
+		if (!("name" in entry) || typeof entry.name !== "string") return null;
+		if (!("durationMs" in entry) || typeof entry.durationMs !== "number") {
+			return null;
+		}
+		entries.push({ name: entry.name, durationMs: entry.durationMs });
+	}
+	return entries;
 }
 
 function ensureOffscreenCanvas({

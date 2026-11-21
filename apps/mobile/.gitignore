@@ -27,3 +27,6 @@ android/app/src/main/assets/public/
 android/local.properties
 android/.idea/
 android/**/*.iml
+
+# Crop preview pixel parity harness build (diagnostics only, see vite.preview-parity.config.ts).
+preview-parity-dist/

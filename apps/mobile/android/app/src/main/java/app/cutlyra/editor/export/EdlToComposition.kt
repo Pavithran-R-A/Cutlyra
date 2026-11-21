@@ -632,6 +632,14 @@ object EdlToComposition {
         }
 
         val videoEffects = mutableListOf<Effect>()
+        // Crop FIRST: it is a vertex-shader MatrixTransformation whose output
+        // frame is the cropped region (`Crop.configure`), so every following
+        // effect — transform, opacity, colour grade, framing Presentation —
+        // sees the cropped frame exactly like the preview compositor, which
+        // samples `sourceRect` out of the full texture.
+        if (!removeVideo) {
+            EdlCropEffect.create(clip.crop)?.let { videoEffects.add(it) }
+        }
         val itemStartUs = us(itemStartTicks)
         val animated = KeyframeEvaluator.hasVisualAnimations(clip)
         if (animated || !EdlTransformEffect.isIdentity(clip.transform)) {

@@ -546,6 +546,54 @@ describe("framing (#22)", () => {
 	});
 });
 
+describe("crop propagation", () => {
+	function edlWithCrop(
+		params: Record<string, number | string | boolean>,
+	): Edl {
+		const scene = buildFixtureScene();
+		const clip = scene.tracks.main.elements.find((e) => e.id === "clip-a");
+		if (!clip) throw new Error("clip-a missing");
+		Object.assign(clip.params, params);
+		return buildEdl({
+			project: buildFixtureProject(),
+			scene,
+			mediaAssets: buildFixtureMediaAssets(),
+			output: FIXTURE_OUTPUT,
+			resolveAsset: fixtureAssetResolver,
+		});
+	}
+
+	function mainClip(edl: Edl) {
+		const clip = edl.tracks[0].clips.find((c) => c.clipId === "clip-a");
+		if (!clip) throw new Error("clip-a missing from EDL");
+		return clip;
+	}
+
+	test("omits the field entirely for an untouched (full-frame) crop", () => {
+		const clip = mainClip(edlWithCrop({}));
+		expect(clip.crop).toBeUndefined();
+		expect("crop" in clip).toBe(false);
+	});
+
+	test("carries a normalised crop rectangle through to the EDL", () => {
+		const clip = mainClip(
+			edlWithCrop({
+				"crop.x": 0.25,
+				"crop.y": 0.1,
+				"crop.width": 0.5,
+				"crop.height": 0.4,
+			}),
+		);
+		expect(clip.crop).toEqual({ x: 0.25, y: 0.1, width: 0.5, height: 0.4 });
+	});
+
+	test("clamps an out-of-range persisted crop like the preview does", () => {
+		const clip = mainClip(edlWithCrop({ "crop.x": 0.9, "crop.width": 0.5 }));
+		expect(clip.crop?.x).toBeCloseTo(0.5);
+		expect(clip.crop?.width).toBeCloseTo(0.5);
+	});
+});
+
 describe("rotate/mirror propagation (#50)", () => {
 	function edlWithMainClipParams(
 		params: Record<string, number | string | boolean>,

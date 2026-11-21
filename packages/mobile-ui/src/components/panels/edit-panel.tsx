@@ -1,4 +1,5 @@
 import { Copy, FlipHorizontal2, FlipVertical2, RefreshCw, RotateCcw, RotateCw, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
+import { setElementParam } from "../../editor/actions";
 import { CC_ICON_STROKE } from "../../tokens";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
@@ -16,6 +17,7 @@ const FRAMING_SEGMENTS = [
 ] as const;
 
 interface EditPanelProps {
+	editor: import("@cutlyra/editor-core").EditorCore;
 	elementRef: ElementRef;
 	element: TimelineElement;
 	onClose: () => void;
@@ -57,6 +59,8 @@ interface EditPanelProps {
  * them to write to on those types.
  */
 export function EditPanel({
+	editor,
+	elementRef,
 	element,
 	onClose,
 	onSplit,
@@ -84,6 +88,10 @@ export function EditPanel({
 	const volumeDb = typeof element.params.volume === "number" ? element.params.volume : 0;
 	const framing = element.params.framing === "fill" ? "fill" : "fit";
 	const rotateDeg = typeof element.params["transform.rotate"] === "number" ? element.params["transform.rotate"] : 0;
+	const cropX = typeof element.params["crop.x"] === "number" ? element.params["crop.x"] : 0;
+	const cropY = typeof element.params["crop.y"] === "number" ? element.params["crop.y"] : 0;
+	const cropW = typeof element.params["crop.width"] === "number" ? element.params["crop.width"] : 1;
+	const cropH = typeof element.params["crop.height"] === "number" ? element.params["crop.height"] : 1;
 
 	return (
 		<PanelSheet onScrimClick={onClose} header={<SheetHeader onClose={onClose} />}>
@@ -203,6 +211,68 @@ export function EditPanel({
 						{framing === "fill"
 							? "Fill crops the media to cover the canvas. Use Transform to reposition."
 							: "Fit keeps the whole frame visible; the canvas background shows around it."}
+					</p>
+				</div>
+			)}
+
+			{isFramable && (
+				<div className="cc-param-row">
+					<div className="cc-param-row__head">
+						<span className="cc-param-row__label">Crop</span>
+						<span className="cc-param-row__value">
+							{`${Math.round(cropW * 100)}% x ${Math.round(cropH * 100)}%`}
+						</span>
+					</div>
+					<ParamRow
+						label="Crop X"
+						value={cropX}
+						min={0}
+						max={1}
+						step={0.01}
+						formatValue={(v) => `${Math.round(v * 100)}%`}
+						onChange={(v) => setElementParam({ editor, ref: elementRef, key: "crop.x", value: v })}
+					/>
+					<ParamRow
+						label="Crop Y"
+						value={cropY}
+						min={0}
+						max={1}
+						step={0.01}
+						formatValue={(v) => `${Math.round(v * 100)}%`}
+						onChange={(v) => setElementParam({ editor, ref: elementRef, key: "crop.y", value: v })}
+					/>
+					<ParamRow
+						label="Crop Width"
+						value={cropW}
+						min={0.01}
+						max={1}
+						step={0.01}
+						formatValue={(v) => `${Math.round(v * 100)}%`}
+						onChange={(v) => setElementParam({ editor, ref: elementRef, key: "crop.width", value: v })}
+					/>
+					<ParamRow
+						label="Crop Height"
+						value={cropH}
+						min={0.01}
+						max={1}
+						step={0.01}
+						formatValue={(v) => `${Math.round(v * 100)}%`}
+						onChange={(v) => setElementParam({ editor, ref: elementRef, key: "crop.height", value: v })}
+					/>
+					<button
+						type="button"
+						className="cc-panel-actions__btn"
+						onClick={() => {
+							setElementParam({ editor, ref: elementRef, key: "crop.x", value: 0 });
+							setElementParam({ editor, ref: elementRef, key: "crop.y", value: 0 });
+							setElementParam({ editor, ref: elementRef, key: "crop.width", value: 1 });
+							setElementParam({ editor, ref: elementRef, key: "crop.height", value: 1 });
+						}}
+					>
+						<span>Reset crop</span>
+					</button>
+					<p className="cc-hint" style={{ marginTop: 6, fontSize: 12, opacity: 0.72 }}>
+						Crop applies to the preview and to exports. The kept region is then fitted or filled like any other source frame.
 					</p>
 				</div>
 			)}
