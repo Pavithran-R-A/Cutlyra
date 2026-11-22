@@ -148,6 +148,21 @@ export interface EdlCropRect {
 	height: number;
 }
 
+/**
+ * A clip's audio gain envelope: a linear ramp up from silence over
+ * `inTicks`, then a linear ramp back down over `outTicks`, measured in
+ * TICKS OF THE CLIP'S TIMELINE SPAN (`EdlClip.durationTicks`). The ramp is
+ * applied by the native exporter on the decoded PCM, so the preview and the
+ * exported file cannot disagree about where a fade starts.
+ *
+ * Absent means "no fade": the field is omitted entirely for unfaded clips,
+ * which keeps every pre-fade descriptor byte-identical.
+ */
+export interface EdlAudioFade {
+	inTicks: number;
+	outTicks: number;
+}
+
 export interface EdlTransform {
 	positionX: number;
 	positionY: number;
@@ -262,6 +277,8 @@ export interface EdlClip {
 	maintainPitch: boolean;
 	/** Decibels, matching the engine's `volume` param. 0 dB is unity. */
 	volumeDb: number;
+	/** Optional per-clip fade envelope. Absent = no fade (legacy path). */
+	audioFade?: EdlAudioFade;
 	muted: boolean;
 	hidden: boolean;
 	transform: EdlTransform;

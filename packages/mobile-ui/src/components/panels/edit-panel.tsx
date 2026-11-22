@@ -8,6 +8,7 @@ import { ParamRow, ToggleRow } from "../editor/param-row";
 import type { ElementRef, TimelineElement } from "@cutlyra/editor-core/timeline";
 import { DEFAULT_RETIME_RATE, MAX_RETIME_RATE, MIN_RETIME_RATE } from "@cutlyra/editor-core/retime";
 import { VOLUME_DB_MAX, VOLUME_DB_MIN } from "@cutlyra/editor-core/timeline/audio-constants";
+import { mediaTimeToSeconds } from "@cutlyra/editor-core/wasm";
 
 const RETIMABLE_TYPES = new Set(["video", "audio"]);
 const FRAMING_TYPES = new Set(["video", "image"]);
@@ -30,6 +31,8 @@ interface EditPanelProps {
 	onCutDeadSpace?: () => void;
 	onSetSpeed: (args: { rate: number; maintainPitch: boolean }) => void;
 	onSetVolume: (db: number) => void;
+	/** Fade lengths in SECONDS; the engine clamps in + out to the clip. */
+	onSetAudioFade?: (args: { fadeIn: number; fadeOut: number }) => void;
 	onSetFraming?: (mode: "fit" | "fill") => void;
 	/** Video/image transform edits. Preview and native export must honor these
 	 *  operations before exposing them in release UI. */
@@ -69,6 +72,7 @@ export function EditPanel({
 	onCutDeadSpace,
 	onSetSpeed,
 	onSetVolume,
+	onSetAudioFade,
 	onSetFraming,
 	onRotate,
 	onFlipHorizontal,
@@ -86,6 +90,11 @@ export function EditPanel({
 	const rate = retime?.rate ?? DEFAULT_RETIME_RATE;
 	const maintainPitch = retime?.maintainPitch ?? false;
 	const volumeDb = typeof element.params.volume === "number" ? element.params.volume : 0;
+	const fadeIn = typeof element.params.fadeIn === "number" ? element.params.fadeIn : 0;
+	const fadeOut = typeof element.params.fadeOut === "number" ? element.params.fadeOut : 0;
+	// Slider ceilings leave room for the other side; the engine clamps again
+	// (and proportionally scales) when the two are edited past the clip.
+	const clipSeconds = mediaTimeToSeconds({ time: element.duration });
 	const framing = element.params.framing === "fill" ? "fill" : "fit";
 	const rotateDeg = typeof element.params["transform.rotate"] === "number" ? element.params["transform.rotate"] : 0;
 	const cropX = typeof element.params["crop.x"] === "number" ? element.params["crop.x"] : 0;
@@ -190,6 +199,28 @@ export function EditPanel({
 							)
 						}
 					/>
+					{onSetAudioFade && (
+						<>
+							<ParamRow
+								label="Fade in"
+								value={fadeIn}
+								min={0}
+								max={Math.max(0, clipSeconds - fadeOut)}
+								step={0.05}
+								formatValue={(v) => `${v.toFixed(2)}s`}
+								onChange={(v) => onSetAudioFade({ fadeIn: v, fadeOut })}
+							/>
+							<ParamRow
+								label="Fade out"
+								value={fadeOut}
+								min={0}
+								max={Math.max(0, clipSeconds - fadeIn)}
+								step={0.05}
+								formatValue={(v) => `${v.toFixed(2)}s`}
+								onChange={(v) => onSetAudioFade({ fadeIn, fadeOut: v })}
+							/>
+						</>
+					)}
 				</>
 			)}
 

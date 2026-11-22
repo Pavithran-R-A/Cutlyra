@@ -54,6 +54,7 @@ import { registerDefaultGraphics } from "@cutlyra/editor-core/graphics";
 import { buildElementFromMedia } from "@cutlyra/editor-core/timeline";
 import { rewriteCaptionWords } from "./caption-text";
 import { DEFAULT_TEXT_SHADOW } from "@cutlyra/editor-core/text/typography";
+import { buildAudioFadeParamsPatch } from "@cutlyra/editor-core/timeline/audio-fades";
 import {
 	adjacentClipKeyframeTime,
 	applyClipKeyframeEasing,
@@ -602,6 +603,47 @@ export function setCaptionText({
 					trackId: ref.trackId,
 					elementId: ref.elementId,
 					patch: { words: rewriteCaptionWords({ words, newText: text }) },
+				},
+			],
+		}),
+	});
+}
+
+/**
+ * Edit panel's Fade in / Fade out controls. One undoable patch for both
+ * lengths, clamped against the clip's own duration by the shared engine rule
+ * (`clampAudioFades`: each side to the clip length, then proportional scaling
+ * when the two together would exceed it) — the same function `buildEdl`
+ * applies, so what the slider shows and what the exporter ramps cannot drift.
+ */
+export function setAudioFades({
+	editor,
+	ref,
+	fadeIn,
+	fadeOut,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	fadeIn: number;
+	fadeOut: number;
+}): void {
+	const element = getElement({ editor, ref });
+	if (!element) return;
+	editor.command.execute({
+		command: new UpdateElementsCommand({
+			updates: [
+				{
+					trackId: ref.trackId,
+					elementId: ref.elementId,
+					patch: {
+						params: {
+							...element.params,
+							...buildAudioFadeParamsPatch({
+								params: { fadeIn, fadeOut },
+								durationTicks: element.duration,
+							}),
+						},
+					},
 				},
 			],
 		}),

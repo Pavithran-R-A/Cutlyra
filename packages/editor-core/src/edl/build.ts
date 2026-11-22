@@ -19,6 +19,7 @@ import type {
 } from "@/animation/types";
 import { TICKS_PER_SECOND, mediaTimeFromSeconds } from "@/wasm";
 import { clampRetimeRate } from "@/retime/rate";
+import { buildAudioFadeEnvelope } from "@/timeline/audio-fades";
 import {
 	buildTransformFromParams,
 	isFullCrop,
@@ -282,6 +283,13 @@ function buildClip({ element }: { element: TimelineElement }): EdlClip {
 	// Omitted when full-frame: an additive field that costs nothing on
 	// existing projects and keeps the golden EDL fixtures unchanged.
 	const crop = readCropFromParams({ params: element.params });
+	// Per-clip audio fade. Omitted entirely when the clip has none, so
+	// unfaded projects keep their exact previous descriptor.
+	const audioFade = buildAudioFadeEnvelope({
+		params: element.params,
+		durationTicks: element.duration,
+		ticksPerSecond: TICKS_PER_SECOND,
+	});
 
 	return {
 		clipId: element.id,
@@ -301,6 +309,7 @@ function buildClip({ element }: { element: TimelineElement }): EdlClip {
 		transform,
 		framing: readFramingFromParams({ params: element.params }),
 		...(isFullCrop(crop) ? {} : { crop }),
+		...(audioFade ? { audioFade } : {}),
 		opacity: readOpacityFromParams({ params: element.params }),
 		blendMode: readBlendModeFromParams({ params: element.params }),
 		effects:

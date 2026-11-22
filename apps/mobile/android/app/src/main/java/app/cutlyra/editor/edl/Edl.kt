@@ -84,6 +84,18 @@ data class EdlCrop(
     val height: Double = 1.0,
 )
 
+/**
+ * Optional per-clip audio gain envelope (TS `EdlAudioFade`): a linear ramp up
+ * from silence over `inTicks`, then a linear ramp back down over `outTicks`,
+ * both in TICKS OF THE CLIP'S TIMELINE SPAN (`EdlClip.durationTicks`). Absent
+ * (`EdlClip.audioFade == null`) means no fade, which is every project saved
+ * before fades existed.
+ */
+data class EdlAudioFade(
+    val inTicks: Long = 0,
+    val outTicks: Long = 0,
+)
+
 data class EdlTransform(
     val positionX: Double,
     val positionY: Double,
@@ -112,6 +124,8 @@ data class EdlClip(
     val framing: String = "fit",
     /** Source region kept by Crop; full-frame by default (additive v1 field). */
     val crop: EdlCrop = EdlCrop(),
+    /** Optional fade envelope; `null` means no fade (additive v1 field). */
+    val audioFade: EdlAudioFade? = null,
     val effects: List<EdlEffect>,
     val hasMasks: Boolean,
     /** Keyframe channels, `EdlAnimationChannel` per (propertyPath,

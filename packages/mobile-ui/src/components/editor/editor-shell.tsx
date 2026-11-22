@@ -67,6 +67,7 @@ import {
 	seekToClipKeyframe,
 	seekToClipKeyframeTime,
 	setClipKeyframeEasing,
+	setAudioFades,
 	type DeadSpaceCutOutcome,
 } from "../../editor/actions";
 import { Scissors, ScissorsLineDashed, Trash2, CopyPlus, SlidersHorizontal, Spline, Type } from "lucide-react";
@@ -688,6 +689,9 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 					}
 					onSetSpeed={({ rate, maintainPitch }) => setRetime({ editor, ref: selectedRef, rate, maintainPitch })}
 					onSetVolume={(db) => setElementParam({ editor, ref: selectedRef, key: "volume", value: db })}
+					onSetAudioFade={({ fadeIn, fadeOut }) =>
+						setAudioFades({ editor, ref: selectedRef, fadeIn, fadeOut })
+					}
 					onSetFraming={
 						(selectedElement.type === "video" || selectedElement.type === "image") &&
 						selectedRef.trackId === editor.scenes.getActiveScene()?.tracks.main.id
