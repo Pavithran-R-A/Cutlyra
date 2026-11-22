@@ -22,7 +22,7 @@ Source-truth check performed:
 - Reported emptiness reproduced: flags category thumbnails 404 on Android because `apps/mobile/public/flags` was absent (assets lived only under `apps/web/public/flags`). **Fixed**: copied 271 flag SVGs into `apps/mobile/public/flags`.
 - `logos` provider returns empty and is not exposed as a category (intentional; no bundled logo assets).
 - Shapes category expanded from the four bare primitives to a curated 14-tile library (`curated presets` in `stickers/providers/shapes.ts`): rectangle, square, rounded square, pill, ellipse, circle, triangle, diamond, pentagon, hexagon, octagon, star, plus two new locally drawn graphics — heart and arrow (with a rotation parameter). Every tile is the same locally rendered graphic with different parameters, so the library grows with no new downloaded assets and no licence surface. Original graphic ids (shapes:rectangle/ellipse/polygon/star) still resolve, so old projects open unchanged.
-- Insertion via `insertStickerElement` → graphic track; export covered by overlay/crossfade instrumented tests.
+- Insertion via `insertStickerElement` → graphic track. **Correction (2026-11-22):** the earlier claim that export was "covered by overlay/crossfade instrumented tests" was wrong — those tests only proved the overlay COMPOSITOR, and stickers were never drawn into an overlay at all. Worse, on Android a sticker clip reached `requireAsset` with no `assetId` and the whole export failed with `ExportUnsupportedException`. Both halves are fixed in Phase 6.
 - Library invariants are now tests, not claims: `stickers/__tests__/sticker-library.test.ts` walks `STICKER_CATEGORIES` (the same source of truth the panel builds its chips from) and requires every advertised category to return items, ids to be unique/provider-prefixed, and each item's resolved URL to equal its thumbnail URL. `apps/mobile/src/__tests__/sticker-assets.test.ts` checks every flag sticker against the real `apps/mobile/public` file: exists, has an `<svg>` root, is sized, has drawable geometry, and references no remote URL (offline guarantee).
 - Failed thumbnails no longer render as blank tiles: `ThumbnailGrid` shows the item name in place of an image that errors, so a broken asset cannot be mistaken for an empty category. This is the failure mode a wrong MIME type produces (a host serving `.svg` as `application/octet-stream` makes every flag tile blank while all the data is correct) — observed directly in the parity harness before its static server learned `image/svg+xml`.
 - Browser evidence: the parity harness browses each category, loads every shape tile and a spread of flag tiles, and counts the pixels each one paints — shapes 14/14 painted. Flag tile re-check after the MIME fix was cut short when the browser panel stopped attaching; the file-level SVG checks above cover the same assets in CI.
@@ -59,6 +59,7 @@ Source-truth check performed:
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
 | Text shadow | IMPLEMENTED for text elements (preview + native export by construction) | captions not covered |
 | Audio fades | IMPLEMENTED (params + EDL envelope + Android ramp + panel; decoded-audio test in CI) | iOS export ignores the envelope; no per-clip fade on library sounds until re-materialised as uploads |
+| Sticker/graphic export | IMPLEMENTED (prerendered overlay + native skip) | no emulator run of the full app journey yet |
 | Animated stickers/GIF | GAP | asset + renderer |
 | Templates | IMPLEMENTED (12 offline templates + schema/planner/apply engine, UI wired) | No on-device Android UI-automation or exported-MP4 parity run yet |
 | Emoji / non-shape sticker categories | GAP | no bundled emoji assets; Shapes+Flags are the only offline categories |
@@ -265,6 +266,49 @@ Not covered: iOS audio export does not read `audioFade` yet; fades on bundled
 library sounds apply once the sound is materialised as a file-backed upload
 (the existing library-audio path).
 
+## Phase 6 — Stickers and graphics actually export (2026-11-22)
+
+Two independent defects made a sticker-bearing project unusable outside the
+preview:
+
+1. **Android export failed outright.** Sticker/graphic clips live on a
+   `GRAPHIC` overlay track, and `EdlToComposition` built every overlay clip as
+   a PiP media item. A sticker has no `assetId` (it is generated content), so
+   `requireAsset` threw `ExportUnsupportedException` and no export was
+   produced. Fix: `EdlToComposition.isPrerenderedOverlayClip` skips sticker,
+   graphic, text and caption clips that carry no asset. A VIDEO/IMAGE clip with
+   a missing asset still throws — that is a real broken project and must be
+   surfaced.
+2. **Nothing drew the sticker into the exported pixels.** `renderOverlayFrames`
+   only included text and caption tracks, so even after the crash was fixed a
+   sticker would simply be absent. Fix: graphic tracks are now part of the
+   overlay pass, and the new `export/visual-overlay.ts` builds each sticker's
+   draw plan from the SAME `computeVisualTransform` the preview compositor
+   uses — framing (fit/fill), crop source rect, position, scale, rotation,
+   flip and opacity — then draws the source into the existing full-canvas
+   overlay PNG. Export and preview therefore share one geometry
+   implementation, and stickers ride the overlay compositor that already has
+   decoded-frame instrumentation coverage.
+
+Safety: a missing sticker asset now degrades to "that sticker is not drawn"
+instead of rejecting the render tree, and the failed load is evicted from the
+sticker cache so a later attempt can succeed. This also removes a preview
+crash for projects whose sticker asset disappeared.
+
+Tests: 9 headless geometry tests in `export/__tests__/visual-overlay.test.ts`
+(fit/fill, crop sampling, intrinsic-vs-decoded size, flip/rotation, opacity,
+missing/degenerate source, which tracks are rasterized) and 2 regression tests
+in `renderer/__tests__/missing-sticker.test.ts`; a JVM test
+`PrerenderedOverlayClipTest` pins the native skip predicate. `bun test
+packages` → 860 pass / 0 fail (851 before this change).
+
+**Not yet proven:** no decoded-frame run exists for a sticker inserted through
+this machine's Android app (there is no local `adb`/emulator here, and the
+repository has no CI-driven job that drives the app's WebView to export a
+project with stickers). The geometry and the native skip are unit-verified;
+the end-to-end app journey (insert → move → save → reopen → export → decode)
+and the template journeys remain device-unverified.
+
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.
 2. Confirm versionCode 2 availability in Play Console.
@@ -279,3 +323,4 @@ library sounds apply once the sound is materialised as a file-backed upload
 - Subtitle import: `bun test packages/editor-core/src/captions` → 59 pass / 0 fail; `bun test packages` → 826 pass / 0 fail.
 - Text shadow: `bun test packages/editor-core/src/text` → 4 new tests pass; `bun test packages` → 830 pass / 0 fail.
 - Audio fades: `bun test packages` → 849 pass / 0 fail (fade math, undo/redo, save/reopen, schema-valid EDL); Kotlin `AudioFadeMathTest` + `EdlParserTest` fade cases and `ExportAudioFadeInstrumentedTest` run in Mobile CI.
+- Sticker export repair: `bun test packages` → 860 pass / 0 fail (9 visual-overlay geometry tests, 2 missing-asset regressions); `PrerenderedOverlayClipTest` added to the JVM suite; typecheck + ESLint + `scripts/invariants.sh` green.

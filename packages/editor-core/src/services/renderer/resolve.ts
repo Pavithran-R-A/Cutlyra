@@ -301,7 +301,17 @@ async function resolveStickerNode({
 	node: StickerNode;
 	context: ResolveContext;
 }): Promise<ResolvedVisualSourceNodeState | null> {
-	const source = await loadStickerSource({ stickerId: node.params.stickerId });
+	let source: Awaited<ReturnType<typeof loadStickerSource>>;
+	try {
+		source = await loadStickerSource({ stickerId: node.params.stickerId });
+	} catch {
+		// A sticker whose asset is missing or unreadable resolves to "not
+		// visible" instead of rejecting the whole render tree. That keeps
+		// preview playback, editor repaint and export alive: the user sees
+		// the rest of the project, with that sticker absent rather than a
+		// crashed renderer or an export that fails at 99%.
+		return null;
+	}
 	const sourceWidth = node.params.intrinsicWidth ?? source.width;
 	const sourceHeight = node.params.intrinsicHeight ?? source.height;
 	const visualState = resolveVisualState({
