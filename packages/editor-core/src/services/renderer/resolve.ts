@@ -17,6 +17,7 @@ import {
 	getTextMeasurementContext,
 	measureTextElement,
 } from "@/text/measure-element";
+import { DEFAULT_TEXT_SHADOW } from "@/text/typography";
 import { resolveColorAtTime, resolveOpacityAtTime } from "@/animation/values";
 import { resolveTransformAtTime } from "@/rendering/animation-values";
 import { FULL_CROP, croppedSourceSize } from "@/rendering";
@@ -402,6 +403,26 @@ function resolveTextNode({
 			typeof node.params.params.strokeWidth === "number"
 				? node.params.params.strokeWidth
 				: 0,
+		// Drop shadow (percent-of-font-size units, like strokeWidth). The
+		// toggle is the off switch; the numbers are read unconditionally so
+		// turning the toggle back on restores the user's last settings.
+		shadowEnabled: node.params.params.shadowEnabled === true,
+		shadowColor:
+			typeof node.params.params.shadowColor === "string"
+				? node.params.params.shadowColor
+				: DEFAULT_TEXT_SHADOW.color,
+		shadowBlur:
+			typeof node.params.params.shadowBlur === "number"
+				? node.params.params.shadowBlur
+				: DEFAULT_TEXT_SHADOW.blurPercent,
+		shadowOffsetX:
+			typeof node.params.params.shadowOffsetX === "number"
+				? node.params.params.shadowOffsetX
+				: DEFAULT_TEXT_SHADOW.offsetXPercent,
+		shadowOffsetY:
+			typeof node.params.params.shadowOffsetY === "number"
+				? node.params.params.shadowOffsetY
+				: DEFAULT_TEXT_SHADOW.offsetYPercent,
 		effectPasses: resolveEffectPassGroups({
 			effects: node.params.effects,
 			animations: node.params.animations,

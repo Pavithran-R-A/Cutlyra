@@ -2,6 +2,7 @@ import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
 import type { TTimelineViewState } from "@/project/types";
 import type { BlendMode, Transform } from "@/rendering";
 import { ZERO_MEDIA_TIME } from "@/wasm";
+import { DEFAULT_TEXT_SHADOW } from "@/text/typography";
 import type { TextElement } from "./types";
 
 const defaultTransform: Transform = {
@@ -60,6 +61,13 @@ const defaultTextElement: Omit<TextElement, "id"> = {
 		"transform.rotate": defaultTransform.rotate,
 		opacity: defaultOpacity,
 		blendMode: defaultBlendMode,
+		// Drop shadow, off by default (the toggle in the Text panel turns it
+		// on). Percent-of-font-size units, like strokeWidth.
+		shadowEnabled: false,
+		shadowColor: DEFAULT_TEXT_SHADOW.color,
+		shadowBlur: DEFAULT_TEXT_SHADOW.blurPercent,
+		shadowOffsetX: DEFAULT_TEXT_SHADOW.offsetXPercent,
+		shadowOffsetY: DEFAULT_TEXT_SHADOW.offsetYPercent,
 	},
 };
 

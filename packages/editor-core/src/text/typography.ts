@@ -27,3 +27,22 @@ export const FONT_SIZE_SCALE_REFERENCE = 90;
  * CapCut's own weight.
  */
 export const DEFAULT_TEXT_BORDER_WIDTH = 2;
+
+/**
+ * The drop shadow a text element gets when its Shadow toggle is switched on.
+ * Every value is in the SAME percent-of-font-size unit as
+ * `DEFAULT_TEXT_BORDER_WIDTH`, so a shadow keeps its proportion to the
+ * glyphs at any canvas size and the preview raster (which the native
+ * exporters composite verbatim — see `export/overlay-frames.ts`) is the only
+ * implementation.
+ *
+ * `blurPercent` is the canvas `shadowBlur` radius as a percent of the scaled
+ * font size; the offsets are per-axis percentages of the same size, which
+ * keeps the shadow down-right like the poster look this mirrors.
+ */
+export const DEFAULT_TEXT_SHADOW = {
+	color: "#000000",
+	blurPercent: 25,
+	offsetXPercent: 4,
+	offsetYPercent: 6,
+} as const;

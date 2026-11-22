@@ -2,7 +2,7 @@ import { BaseNode } from "./base-node";
 import type { TextElement } from "@/timeline";
 import type { EffectPass } from "@/effects/types";
 import type { BlendMode, Transform } from "@/rendering";
-import { drawMeasuredTextLayout, strokeMeasuredTextLayout } from "@/text/primitives";
+import { drawMeasuredTextLayout, drawTextShadow, strokeMeasuredTextLayout } from "@/text/primitives";
 import type { MeasuredTextElement } from "@/text/measure-element";
 
 export type TextNodeParams = TextElement & {
@@ -24,6 +24,13 @@ export interface ResolvedTextNodeState {
 	 *  same weight relative to the glyphs at every canvas size. 0 = off. */
 	strokeColor: string;
 	strokeWidth: number;
+	/** Drop shadow (percent-of-font-size units, like `strokeWidth`). Drawn
+	 *  under both the border and the fill — see `drawTextShadow`. */
+	shadowEnabled: boolean;
+	shadowColor: string;
+	shadowBlur: number;
+	shadowOffsetX: number;
+	shadowOffsetY: number;
 	effectPasses: EffectPass[][];
 	measuredText: MeasuredTextElement;
 }
@@ -53,11 +60,27 @@ export function renderTextToContext({
 		ctx.rotate((resolved.transform.rotate * Math.PI) / 180);
 	}
 
+	const layout = resolved.measuredText;
+	if (resolved.shadowEnabled) {
+		// Percent-of-font-size -> canvas pixels, exactly like the border below.
+		const toPx = (percent: number) => (percent / 100) * layout.scaledFontSize;
+		drawTextShadow({
+			ctx,
+			layout,
+			shadow: {
+				color: resolved.shadowColor,
+				blurPx: toPx(resolved.shadowBlur),
+				offsetXPx: toPx(resolved.shadowOffsetX),
+				offsetYPx: toPx(resolved.shadowOffsetY),
+			},
+			textBaseline: baseline,
+		});
+	}
+
 	if (resolved.strokeWidth > 0) {
 		// Border under the fill (CapCut's stroke+fill model). strokeWidth is a
 		// PERCENT of the font size — the unit CoreText's kCTStrokeWidth uses
 		// in the export, so preview and export agree at any canvas size.
-		const layout = resolved.measuredText;
 		strokeMeasuredTextLayout({
 			ctx,
 			layout,

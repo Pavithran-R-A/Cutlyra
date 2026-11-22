@@ -293,6 +293,51 @@ const textElementParams: ElementParamDefinition[] = [
 		step: 0.5,
 	},
 	{
+		// Drop shadow. Every number is a PERCENT OF FONT SIZE, the same unit
+		// strokeWidth uses, so the shadow keeps its proportion to the glyphs
+		// at any canvas size and the preview raster (which native export
+		// composites verbatim — see `export/overlay-frames.ts`) is the only
+		// implementation of the look.
+		key: "shadowEnabled",
+		label: "Shadow",
+		type: "boolean",
+		default: false,
+		keyframable: false,
+	},
+	{
+		key: "shadowColor",
+		label: "Shadow Color",
+		type: "color",
+		default: "#000000",
+	},
+	{
+		key: "shadowBlur",
+		label: "Shadow Blur",
+		type: "number",
+		default: 25,
+		min: 0,
+		max: 100,
+		step: 1,
+	},
+	{
+		key: "shadowOffsetX",
+		label: "Shadow Offset X",
+		type: "number",
+		default: 4,
+		min: -100,
+		max: 100,
+		step: 1,
+	},
+	{
+		key: "shadowOffsetY",
+		label: "Shadow Offset Y",
+		type: "number",
+		default: 6,
+		min: -100,
+		max: 100,
+		step: 1,
+	},
+	{
 		key: "textAlign",
 		label: "Text Align",
 		type: "select",
