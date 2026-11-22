@@ -441,7 +441,9 @@ class ExportAudioFadeInstrumentedTest {
             // unity, which is why an earlier threshold here mis-measured.
             val midRamp = windowRms(decoded, 0.10, 0.16)
             val middle = windowRms(decoded, 0.45, 0.55)
-            val late = windowRms(decoded, 0.76, 0.84)
+            // Same lesson on the way out: 0.76-0.84s is the TOP of the 0.25s
+            // fade-out (gain ~0.64-0.96), so probe further into the ramp.
+            val late = windowRms(decoded, 0.84, 0.90)
             val tail = windowRms(decoded, 0.94, 1.0)
 
             assertTrue(
@@ -459,7 +461,7 @@ class ExportAudioFadeInstrumentedTest {
             assertTrue("middle of the clip should be at full level, got $middle", middle > 5_000.0)
             assertTrue(
                 "fade-out is missing: late RMS $late should be well below the middle $middle",
-                late < middle * 0.85,
+                late < middle * 0.75,
             )
             assertTrue(
                 "the clip should end near silence: tail RMS $tail",
