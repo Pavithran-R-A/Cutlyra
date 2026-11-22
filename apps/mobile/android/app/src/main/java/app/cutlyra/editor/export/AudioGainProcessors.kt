@@ -3,6 +3,8 @@ package app.cutlyra.editor.export
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
+import app.cutlyra.editor.edl.EdlAudioFade
+import app.cutlyra.editor.edl.EdlRational
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.pow
@@ -71,27 +73,82 @@ internal abstract class Int16AudioProcessor : BaseAudioProcessor() {
  * fades), so a +20 dB boost through it would wrap around before any limiter
  * downstream ever saw the signal.
  */
-internal class ClipGainAudioProcessor(volumeDb: Double) : Int16AudioProcessor() {
+internal class ClipGainAudioProcessor(
+    volumeDb: Double,
+    /** Clip fade envelope, or `null` for a clip that never set one — the
+     *  unchanged legacy path (a constant gain). */
+    private val audioFade: EdlAudioFade? = null,
+    private val ticksPerSecond: Long = 120_000L,
+    private val speed: EdlRational = EdlRational(1, 1),
+    /** Source ticks this item decodes; the fade-out is measured from its end. */
+    private val sourceDurationTicks: Long = 0L,
+) : Int16AudioProcessor() {
     private val linearGain: Float = 10.0.pow(volumeDb / 20.0).toFloat()
     private var limiter: LookaheadLimiter? = null
 
+    /** Interleaved channels in the incoming PCM; the envelope is per FRAME. */
+    private var channels: Int = 1
+    /** Non-null only when this clip actually fades. */
+    private var windows: AudioFadeMath.Windows? = null
+    private var framesProcessed: Long = 0L
+
+    private val hasFade: Boolean =
+        audioFade != null && (audioFade.inTicks > 0L || audioFade.outTicks > 0L)
+
     override fun isActive(): Boolean =
-        super.isActive() && kotlin.math.abs(linearGain - 1f) > 1e-4f
+        super.isActive() && (hasFade || kotlin.math.abs(linearGain - 1f) > 1e-4f)
 
     override fun onConfigure(
         inputAudioFormat: AudioProcessor.AudioFormat,
     ): AudioProcessor.AudioFormat {
         val format = super.onConfigure(inputAudioFormat)
         limiter = LookaheadLimiter(sampleRate = format.sampleRate)
+        channels = format.channelCount.coerceAtLeast(1)
+        framesProcessed = 0L
+        val fade = audioFade
+        windows = if (hasFade && fade != null) {
+            AudioFadeMath.windowsFor(
+                fade = fade,
+                sourceDurationTicks = sourceDurationTicks,
+                ticksPerSecond = ticksPerSecond,
+                sampleRate = format.sampleRate,
+                speed = speed,
+            )
+        } else {
+            null
+        }
         return format
     }
 
     override fun onFlush() {
         limiter = null
+        // Media3 restarts the stream at flush; the fade clock restarts with
+        // it (an export never seeks mid-clip, so this only happens between
+        // items or on reconfiguration).
+        framesProcessed = 0L
     }
 
     override fun transform(samples: FloatArray, count: Int) {
-        for (i in 0 until count) samples[i] *= linearGain
+        val fade = windows
+        if (fade == null) {
+            for (i in 0 until count) samples[i] *= linearGain
+        } else {
+            val frameCount = count / channels
+            for (frame in 0 until frameCount) {
+                val envelope = AudioFadeMath.gainAt(
+                    frameIndex = framesProcessed + frame,
+                    frameCount = fade.totalFrames,
+                    fadeInFrames = fade.fadeInFrames,
+                    fadeOutFrames = fade.fadeOutFrames,
+                )
+                val gain = linearGain * envelope
+                val base = frame * channels
+                for (channel in 0 until channels) {
+                    samples[base + channel] *= gain
+                }
+            }
+            framesProcessed += frameCount
+        }
         // Limited here too, not just at the mix: this processor's own output
         // goes back out as int16, so a boosted clip would be clamped at THIS
         // boundary before the mixer ever saw it.

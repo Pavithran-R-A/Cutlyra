@@ -58,7 +58,7 @@ Source-truth check performed:
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
 | Text shadow | IMPLEMENTED for text elements (preview + native export by construction) | captions not covered |
-| Audio fades UI | GAP | DSP + UI |
+| Audio fades | IMPLEMENTED (params + EDL envelope + Android ramp + panel; decoded-audio test in CI) | iOS export ignores the envelope; no per-clip fade on library sounds until re-materialised as uploads |
 | Animated stickers/GIF | GAP | asset + renderer |
 | Templates | IMPLEMENTED (12 offline templates + schema/planner/apply engine, UI wired) | No on-device Android UI-automation or exported-MP4 parity run yet |
 | Emoji / non-shape sticker categories | GAP | no bundled emoji assets; Shapes+Flags are the only offline categories |
@@ -203,6 +203,68 @@ tests exercise the real render function with a recording context, not real
 pixels. Captions do not get a shadow yet (caption word drawing is a separate
 path in `caption-node.ts`).
 
+## Phase 5 — Per-clip audio fades (implemented 2026-11-22)
+
+Fade in / fade out on audio AND video clips, end to end:
+
+- **Params** (`params/registry.ts`, used by `audio` and `video` elements):
+  `fadeIn` / `fadeOut` in SECONDS (the unit transition lengths are authored in).
+  Non-keyframable; absent means 0, so every existing project is untouched.
+- **Clamp + envelope** (`timeline/audio-fades.ts`): `clampAudioFades` clamps
+  each side to the clip length and, when the two together exceed the clip,
+  scales both proportionally (a 1s + 1s fade on a 1s clip becomes 0.5 + 0.5).
+  `buildAudioFadeParamsPatch` is the panel's write (same rule, rounded to
+  milliseconds); `buildAudioFadeEnvelope` converts seconds to TICKS and returns
+  `null` when there is no fade; `audioFadeGainAt` is the linear ramp (min of
+  the two ramps where they overlap).
+- **EDL** (`edl/types.ts`, `edl/build.ts`, `schema/edl-v1.json`,
+  `edl/validate.ts`): optional `clip.audioFade = { inTicks, outTicks }` in
+  ticks of the clip's TIMELINE span. OMITTED for unfaded clips, so those
+  descriptors are unchanged; `validateEdl` rejects negative or over-long
+  envelopes; the schema entry makes the shape part of the frozen v1 contract.
+- **Android export** (`Edl.kt`, `EdlParser.kt`, `AudioFadeMath.kt`,
+  `AudioGainProcessors.kt`, `EdlToComposition.kt`): `ClipGainAudioProcessor`
+  (already the per-clip volume stage) now also applies the envelope per PCM
+  frame, after converting the timeline fade window to SOURCE frames through
+  the clip's speed rational. Media3 1.11's own `GainProcessor` is a constant
+  gain (its documented range 0..1, built for one-shot fades), so a
+  time-varying ramp has to live in the existing `BaseAudioProcessor` — which
+  it does, in the same pass as the volume gain and the look-ahead limiter.
+  When there is no envelope the processor takes its original constant-gain
+  path (and is inactive at 0 dB), so unfaded output is unchanged.
+- **UI** (`edit-panel.tsx`, `editor/actions.ts`, `editor-shell.tsx`): "Fade in"
+  and "Fade out" sliders on every audio/video clip, each capped at the clip
+  length minus the other side, written as ONE undoable `UpdateElementsCommand`
+  patch through `setAudioFades`.
+
+Verified locally: TS — 20 new assertions across
+`timeline/__tests__/audio-fades.test.ts` (ramp shape both sides, overlap takes
+min, proportional clamp, zero/absent = flat unity, schema-validated EDL,
+unfaded descriptor has no `audioFade` key, video clips too),
+`timeline/__tests__/audio-fades-undo.test.ts` (real `EditorCore`:
+execute -> params -> undo -> absent -> redo -> same envelope), and a
+save/reopen test in `scene-serialization.test.ts` (params survive a structured
+clone). Kotlin: `AudioFadeMathTest` (JVM ramp shape + tick->source-frame
+conversion) and two `EdlParserTest` cases (absent = null, envelope parsed).
+`bun test packages` -> 849 pass / 0 fail; `tsc --noEmit` clean for
+`editor-core`, `mobile-ui`, `apps/mobile`; ESLint clean on touched files.
+
+Decoded-audio verification: `ExportAudioFadeInstrumentedTest` exports a
+tone-only WAV clip twice (with and without an envelope), decodes the MP4's
+audio track and compares RMS windows (early ramp, quarter point, middle, late
+ramp, tail) plus a control that an unfaded clip stays level at both edges. It
+runs in the existing Android instrumentation job. **Local execution of that
+test and of the Kotlin unit tests is blocked on this machine**: there is no
+`adb`/emulator, and `./gradlew testDebugUnitTest` fails at
+`:capacitor-android:compileDebugJavaWithJavac` with `invalid source release:
+21` (the installed JDK is older than the project's toolchain). Both are run by
+CI (`mobile-ci.yml` `gradlew testDebugUnitTest` and the API-35 instrumentation
+job); their results are the sample-level evidence, not this machine.
+
+Not covered: iOS audio export does not read `audioFade` yet; fades on bundled
+library sounds apply once the sound is materialised as a file-backed upload
+(the existing library-audio path).
+
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.
 2. Confirm versionCode 2 availability in Play Console.
@@ -216,3 +278,4 @@ path in `caption-node.ts`).
 - Templates: `bun test packages/editor-core/src/templates` → 17 pass / 0 fail; `bun test packages` → 813 pass / 0 fail.
 - Subtitle import: `bun test packages/editor-core/src/captions` → 59 pass / 0 fail; `bun test packages` → 826 pass / 0 fail.
 - Text shadow: `bun test packages/editor-core/src/text` → 4 new tests pass; `bun test packages` → 830 pass / 0 fail.
+- Audio fades: `bun test packages` → 849 pass / 0 fail (fade math, undo/redo, save/reopen, schema-valid EDL); Kotlin `AudioFadeMathTest` + `EdlParserTest` fade cases and `ExportAudioFadeInstrumentedTest` run in Mobile CI.

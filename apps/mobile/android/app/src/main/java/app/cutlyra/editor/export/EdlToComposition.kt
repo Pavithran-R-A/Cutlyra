@@ -712,7 +712,15 @@ object EdlToComposition {
                     if (removeAudio) {
                         emptyList()
                     } else {
-                        listOf(ClipGainAudioProcessor(clip.volumeDb))
+                        listOf(
+                            ClipGainAudioProcessor(
+                                volumeDb = clip.volumeDb,
+                                audioFade = clip.audioFade,
+                                ticksPerSecond = ticksPerSecond,
+                                speed = clip.speed,
+                                sourceDurationTicks = clip.sourceEndTicks - clip.sourceStartTicks,
+                            ),
+                        )
                     },
                     videoEffects,
                 ),

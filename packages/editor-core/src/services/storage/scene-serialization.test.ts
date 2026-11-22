@@ -56,6 +56,38 @@ describe("scene persistence: POCO transition regression", () => {
 		expect(reopened.updatedAt.toISOString()).toBe("2026-10-08T11:00:00.000Z");
 	});
 
+	test("audio fade params survive save -> JSON clone -> reopen", () => {
+		const scene = fixtureScene();
+		scene.tracks.audio.push({
+			id: "audio",
+			name: "Audio",
+			type: "audio",
+			muted: false,
+			elements: [
+				{
+					id: "music",
+					type: "audio",
+					sourceType: "upload",
+					name: "music.wav",
+					mediaId: "media-music",
+					startTime: t(0),
+					duration: t(1_440_000),
+					trimStart: t(0),
+					trimEnd: t(0),
+					params: { volume: 0, fadeIn: 0.75, fadeOut: 0.5 },
+				},
+			],
+		});
+
+		const saved = serializeScene({ scene });
+		// A real structured clone, i.e. what crosses IndexedDB: no widening
+		// assertion needed (unlike the JSON.parse pattern above).
+		const reopened = deserializeScene({ scene: structuredClone(saved) });
+		const params = reopened.tracks.audio[0].elements[0].params;
+		expect(params.fadeIn).toBe(0.75);
+		expect(params.fadeOut).toBe(0.5);
+	});
+
 	test("legacy scenes without transitions still reopen unchanged", () => {
 		const scene = fixtureScene();
 		delete scene.transitions;

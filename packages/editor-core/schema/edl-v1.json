@@ -335,6 +335,25 @@
 				}
 			}
 		},
+		"audioFade": {
+			"description": "Linear gain envelope in TICKS OF THE CLIP'S TIMELINE SPAN. Absent means no fade.",
+			"type": "object",
+			"required": [
+				"inTicks",
+				"outTicks"
+			],
+			"additionalProperties": false,
+			"properties": {
+				"inTicks": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"outTicks": {
+					"type": "integer",
+					"minimum": 0
+				}
+			}
+		},
 		"crop": {
 			"description": "Normalised source region kept by Crop (top-left origin). Absent means the whole frame.",
 			"type": "object",
@@ -680,6 +699,9 @@
 				},
 				"crop": {
 					"$ref": "#/$defs/crop"
+				},
+				"audioFade": {
+					"$ref": "#/$defs/audioFade"
 				}
 			}
 		},

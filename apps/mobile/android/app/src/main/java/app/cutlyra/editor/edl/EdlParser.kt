@@ -145,6 +145,12 @@ object EdlParser {
                     height = cropObj.getDouble("height"),
                 )
             } ?: EdlCrop(),
+            audioFade = o.optJSONObject("audioFade")?.let { fade ->
+                EdlAudioFade(
+                    inTicks = fade.getLong("inTicks"),
+                    outTicks = fade.getLong("outTicks"),
+                )
+            },
             effects = (o.optJSONArray("effects") ?: JSONArray()).map(::parseEffect),
             hasMasks = masks != null && masks.length() > 0,
             animations = (animations ?: JSONArray()).map(::parseAnimationChannel),

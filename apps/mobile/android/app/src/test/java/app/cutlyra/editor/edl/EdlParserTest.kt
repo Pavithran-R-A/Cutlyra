@@ -262,6 +262,22 @@ class EdlParserTest {
     }
 
     @Test
+    fun `absent audio fade parses as null, not a zero envelope`() {
+        val edl = EdlParser.parse(sampleEdlJson())
+        assertNull(edl.mainTrack()!!.clips[0].audioFade)
+    }
+
+    @Test
+    fun `parses an audio fade envelope in clip ticks`() {
+        val withFade = sampleEdlJson()
+        val clip = withFade.getJSONArray("tracks").getJSONObject(0).getJSONArray("clips").getJSONObject(0)
+        clip.put("audioFade", JSONObject().put("inTicks", 60000).put("outTicks", 30000))
+        val fade = EdlParser.parse(withFade).mainTrack()!!.clips[0].audioFade
+        assertEquals(60000L, fade!!.inTicks)
+        assertEquals(30000L, fade.outTicks)
+    }
+
+    @Test
     fun `parses keyframe animation channels with handles (round 47)`() {
         val clipJson = JSONObject(
             """

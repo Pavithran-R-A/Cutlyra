@@ -180,6 +180,29 @@ function validateClip({
 		}
 	}
 
+	// Audio fade envelope: present only on faded clips, and never longer than
+	// the clip itself (one tick of slack for the engine's own rounding after
+	// the proportional clamp in `timeline/audio-fades.ts`).
+	if (clip.audioFade) {
+		const { inTicks, outTicks } = clip.audioFade;
+		if (!isInt(inTicks) || inTicks < 0 || !isInt(outTicks) || outTicks < 0) {
+			issues.error({
+				path: `${path}.audioFade`,
+				message: `expected non-negative integer inTicks/outTicks, got ${JSON.stringify(clip.audioFade)}`,
+			});
+		} else if (
+			isInt(clip.durationTicks) &&
+			inTicks + outTicks > clip.durationTicks + 1
+		) {
+			issues.error({
+				path: `${path}.audioFade`,
+				message:
+					`fade lengths (${inTicks} + ${outTicks}) exceed the clip's duration (${clip.durationTicks}); ` +
+					"the exporter would ramp past the end of the audio.",
+			});
+		}
+	}
+
 	const needsAsset =
 		clip.kind === "video" || clip.kind === "image" || clip.kind === "audio";
 	if (needsAsset) {

@@ -212,6 +212,31 @@ const audioElementParams: ElementParamDefinition[] = [
 		step: 0.01,
 	},
 	{
+		// Per-clip fade lengths in SECONDS (the unit the Edit panel's fade
+		// sliders author; transition durations are authored in seconds too).
+		// `timeline/audio-fades.ts` clamps them so in + out never exceeds the
+		// clip, and converts to the EDL's tick envelope. 0 = no fade, which is
+		// what every existing project resolves to.
+		key: "fadeIn",
+		label: "Fade In",
+		type: "number",
+		default: 0,
+		min: 0,
+		max: 600,
+		step: 0.05,
+		keyframable: false,
+	},
+	{
+		key: "fadeOut",
+		label: "Fade Out",
+		type: "number",
+		default: 0,
+		min: 0,
+		max: 600,
+		step: 0.05,
+		keyframable: false,
+	},
+	{
 		key: "muted",
 		label: "Muted",
 		type: "boolean",

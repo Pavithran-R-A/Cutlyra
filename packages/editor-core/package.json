@@ -22,6 +22,7 @@
     "./commands": "./src/commands/index.ts",
     "./timeline": "./src/timeline/index.ts",
     "./timeline/audio-constants": "./src/timeline/audio-constants.ts",
+    "./timeline/audio-fades": "./src/timeline/audio-fades.ts",
     "./params": "./src/params/index.ts",
     "./params/registry": "./src/params/registry.ts",
     "./effects": "./src/effects/index.ts",
