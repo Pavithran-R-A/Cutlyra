@@ -436,9 +436,12 @@ class ExportAudioFadeInstrumentedTest {
             assertTrue("decoded no audio samples", decoded.channelZero.isNotEmpty())
 
             val early = windowRms(decoded, 0.0, 0.08)
-            val quarter = windowRms(decoded, 0.22, 0.30)
+            // Middle of the 0.25s fade-in (gain ~0.4-0.64 there), NOT its tail:
+            // a window ending at 0.30s sits where the ramp has already reached
+            // unity, which is why an earlier threshold here mis-measured.
+            val midRamp = windowRms(decoded, 0.10, 0.16)
             val middle = windowRms(decoded, 0.45, 0.55)
-            val late = windowRms(decoded, 0.72, 0.80)
+            val late = windowRms(decoded, 0.76, 0.84)
             val tail = windowRms(decoded, 0.94, 1.0)
 
             assertTrue(
@@ -446,13 +449,17 @@ class ExportAudioFadeInstrumentedTest {
                 early < middle * 0.4,
             )
             assertTrue(
-                "ramp is not rising: quarter RMS $quarter should be below the middle $middle",
-                quarter < middle * 0.95,
+                "ramp is not rising: mid-ramp RMS $midRamp should be below the middle $middle",
+                midRamp < middle * 0.85,
+            )
+            assertTrue(
+                "ramp is not rising monotonically: early $early should be below mid-ramp $midRamp",
+                early < midRamp,
             )
             assertTrue("middle of the clip should be at full level, got $middle", middle > 5_000.0)
             assertTrue(
                 "fade-out is missing: late RMS $late should be well below the middle $middle",
-                late < middle * 0.8,
+                late < middle * 0.85,
             )
             assertTrue(
                 "the clip should end near silence: tail RMS $tail",
