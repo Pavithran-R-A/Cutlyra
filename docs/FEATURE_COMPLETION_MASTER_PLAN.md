@@ -56,7 +56,7 @@ Source-truth check performed:
 | Per-clip crop | IMPLEMENTED; preview pixels + native export verified | iOS mapper not written; physical-device fingertip check pending |
 | Background blur (mobile) | GAP (engine exists) | native Android export support |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
-| SRT/VTT import/export | GAP | serializer + file I/O |
+| SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
 | Text shadow | GAP | renderer + native parity |
 | Audio fades UI | GAP | DSP + UI |
 | Animated stickers/GIF | GAP | asset + renderer |
@@ -117,6 +117,50 @@ on the touched files, and a successful `vite build` of `apps/mobile`.
 Not yet verified: on-device Android UI automation of the Templates journey and
 exported-MP4 parity for a template project (needs the emulator/device cycle).
 
+## Phase 3 — Subtitle import (implemented 2026-11-22)
+
+The Captions panel could already export SRT; importing subtitles existed only in
+`apps/web`'s dev harness, whose parser reaches into DOM text measurement and is
+not in the mobile bundle. Import is now a shared, DOM-free engine feature:
+
+- **Parser** (`packages/editor-core/src/captions/subtitles.ts`,
+  `parseSubtitleText`): SRT and WebVTT, format detected from the `WEBVTT`
+  header. Handles BOM/CRLF, cue identifiers, VTT cue settings after the end
+  timestamp, VTT `NOTE`/`STYLE`/`REGION` blocks, SRT position data, VTT's short
+  `MM:SS.mmm` timestamps, ASS override tags (`{\an8}`), HTML-ish inline tags and
+  the entities subtitle files actually carry. Malformed blocks are counted
+  (`skippedCueCount`) instead of failing the whole file; a cue-less document
+  returns a warning, never a throw.
+- **Builder** (`buildCaptionElementsFromCues`): one caption element per cue with
+  the cue's own start and duration — deliberately NOT run through
+  `chunkTranscriptSegments`, which would retime imported subtitles. Words get
+  synthetic per-word times spread proportionally to word length, because
+  `CaptionElement` (karaoke rendering, per-word editing, split, EDL
+  `captionWords`) requires them while a subtitle file only carries cue timing.
+- **Phone wiring** (`importCaptionsFromText` in
+  `packages/mobile-ui/src/editor/captions-actions.ts`): parse -> build -> inherit
+  existing caption layout/highlight params -> `insertGeneratedCaptions`, i.e. the
+  same undoable `AddTrackCommand` + `InsertElementCommand` batch "Generate"
+  uses. Nothing else in preview or native export changed; imported captions ride
+  the burn-in path already verified for generated captions.
+- **UI** (`captions-panel.tsx`): an "Import SRT / VTT" textarea and button,
+  reporting how many cues were imported and how many blocks were skipped. Paste
+  is used instead of a file picker because neither shell has a native text-file
+  bridge yet (the backup/restore SAF path returns archives, not arbitrary
+  files); the paste path behaves identically in the Android WebView and the dev
+  harness with no new permission surface.
+
+Verified locally: `bun test packages` -> 826 pass / 0 fail (13 new tests in
+`captions/__tests__/subtitles.test.ts`, covering parser edge cases, cue->element
+timing/word invariants, the import->export SRT round trip, and an imported cue
+reaching the real `buildEdl` descriptor as a schema-valid caption overlay with
+per-word timings); clean `tsc --noEmit` for `editor-core`, `mobile-ui` and
+`apps/mobile`; zero ESLint errors on the touched files.
+
+Not yet verified: the panel itself has not been driven on a device or in a
+browser (the import data path is tested, the button wiring is typechecked and
+linted only), and there is still no `.srt`/`.vtt` file picker.
+
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.
 2. Confirm versionCode 2 availability in Play Console.
@@ -128,3 +172,4 @@ exported-MP4 parity for a template project (needs the emulator/device cycle).
 - No engineering code changes beyond the asset copy; no protected QA packages touched.
 - PR #96 (crop end-to-end + sticker library + lint debt) merged as `ac73e53` with every required check green on the PR head and on merged main (Bun CI 44925424430, Mobile CI 44925424390).
 - Templates: `bun test packages/editor-core/src/templates` → 17 pass / 0 fail; `bun test packages` → 813 pass / 0 fail.
+- Subtitle import: `bun test packages/editor-core/src/captions` → 59 pass / 0 fail; `bun test packages` → 826 pass / 0 fail.

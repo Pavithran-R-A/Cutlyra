@@ -46,6 +46,8 @@ import type { CaptionElement, CreateCaptionElement, VideoElement } from "@cutlyr
 import type { ParamValues } from "@cutlyra/editor-core/params";
 import {
 	buildCaptionElementsFromTranscript,
+	buildCaptionElementsFromSubtitleText,
+	type SubtitleFormat,
 	type TranscriptSegmentInput,
 } from "@cutlyra/editor-core/captions";
 import {
@@ -65,6 +67,58 @@ import {
 export interface GenerateCaptionsResult {
 	trackId: string;
 	elementIds: string[];
+}
+
+export interface ImportCaptionsResult extends GenerateCaptionsResult {
+	format: SubtitleFormat;
+	/** Blocks the file contained that had no usable timing or text. */
+	skippedCueCount: number;
+}
+
+/**
+ * Import an SRT or WebVTT document (pasted by the user) as real caption
+ * elements on a new caption track, as one undoable action — the counterpart
+ * to the panel's "Export captions as SRT", and the phone's only subtitle
+ * import path (`apps/web`'s parser is app-local and not reachable from the
+ * mobile bundle).
+ *
+ * The document is parsed by `@cutlyra/editor-core/captions`
+ * (`parseSubtitleText`), so the format handling, tag/entity cleanup and
+ * skipped-cue accounting are the same code the tests exercise — this
+ * function only binds the result to the editor: one caption element per cue
+ * (never re-chunked, so the file's own cue timings survive), existing
+ * caption layout/highlight params inherited, then `insertGeneratedCaptions`
+ * — the same command path "Generate" uses, so undo, persistence, preview and
+ * the native EDL export all work without a second code path.
+ */
+export function importCaptionsFromText({
+	editor,
+	text,
+	stylePresetId,
+}: {
+	editor: EditorCore;
+	text: string;
+	stylePresetId: string;
+}): ImportCaptionsResult {
+	if (!text.trim()) {
+		throw new Error("Paste an SRT or VTT file's contents first.");
+	}
+
+	const { elements, format, skippedCueCount } = buildCaptionElementsFromSubtitleText({
+		input: text,
+		timelineStartTime: ZERO_MEDIA_TIME,
+		stylePresetId,
+	});
+
+	const inserted = insertGeneratedCaptions({
+		editor,
+		elements: inheritSharedCaptionParams({ editor, elements }),
+	});
+	if (!inserted) {
+		throw new Error("Nothing to import — the document had no usable cues.");
+	}
+
+	return { ...inserted, format, skippedCueCount };
 }
 
 /**

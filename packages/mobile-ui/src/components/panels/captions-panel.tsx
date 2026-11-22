@@ -9,6 +9,7 @@ import { CAPTION_STYLE_PRESETS, DEFAULT_CAPTION_STYLE_PRESET_ID, buildSrtFromCap
 import type { CaptionElement } from "@cutlyra/editor-core/timeline";
 import {
 	generateCaptions,
+	importCaptionsFromText,
 	applyCaptionStyleToAll,
 	getCaptionHighlightEnabled,
 	setCaptionHighlightEnabled,
@@ -66,6 +67,12 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 	const borderEnabled = getCaptionBorderEnabled({ editor });
 	const [srtStatus, setSrtStatus] = useState<"idle" | "copied" | "error">("idle");
 	const [srtText, setSrtText] = useState<string>("");
+	// Subtitle import (SRT/VTT). Kept as a textarea draft rather than a file
+	// picker: the paste path works identically in the Android WebView and the
+	// dev harness with no new native bridge surface and no storage permission.
+	const [importText, setImportText] = useState<string>("");
+	const [importStatus, setImportStatus] = useState<string | null>(null);
+	const [importError, setImportError] = useState<string | null>(null);
 
 	const gatherCaptions = (): CaptionElement[] => {
 		const scene = editor.scenes.getActiveSceneOrNull();
@@ -95,6 +102,28 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 			setSrtStatus("error");
 		} catch {
 			setSrtStatus("error");
+		}
+	};
+
+	const handleImport = () => {
+		setImportError(null);
+		setImportStatus(null);
+		try {
+			const result = importCaptionsFromText({
+				editor,
+				text: importText,
+				stylePresetId: stylePreset,
+			});
+			const count = result.elementIds.length;
+			const skipped =
+				result.skippedCueCount > 0 ? ` · ${result.skippedCueCount} skipped` : "";
+			setImportStatus(`Imported ${count} ${count === 1 ? "cue" : "cues"}${skipped}`);
+			setImportText("");
+			if (result.elementIds[0]) {
+				onInserted({ trackId: result.trackId, elementId: result.elementIds[0] });
+			}
+		} catch (error) {
+			setImportError(error instanceof Error ? error.message : String(error));
 		}
 	};
 
@@ -215,6 +244,32 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 			{srtStatus === "error" && srtText && (
 				<textarea className="cc-text-content-input" rows={4} value={srtText} readOnly aria-label="SRT output" />
 			)}
+			<div className="cc-param-row">
+				<div className="cc-param-row__head">
+					<span className="cc-param-row__label">Import SRT / VTT</span>
+				</div>
+				<textarea
+					className="cc-text-content-input"
+					rows={4}
+					value={importText}
+					placeholder="Paste the contents of an .srt or .vtt file"
+					aria-label="SRT or VTT text"
+					onChange={(event) => {
+						setImportText(event.target.value);
+						setImportError(null);
+						setImportStatus(null);
+					}}
+				/>
+				<button
+					type="button"
+					className="cc-panel-actions__btn"
+					disabled={importText.trim().length === 0}
+					onClick={handleImport}
+				>
+					<span>{importStatus ?? "Add captions from subtitles"}</span>
+				</button>
+				{importError && <p className="cc-panel-note">{importError}</p>}
+			</div>
 		</PanelSheet>
 	);
 }

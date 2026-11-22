@@ -10,3 +10,4 @@ export * from "./styles";
 export * from "./layout";
 export * from "./resolve-style";
 export * from "./srt";
+export * from "./subtitles";
