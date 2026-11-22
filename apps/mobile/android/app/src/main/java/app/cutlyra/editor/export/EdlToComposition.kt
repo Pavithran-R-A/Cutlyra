@@ -60,6 +60,9 @@ import app.cutlyra.editor.edl.EdlTrackType
  * paper over.
  */
 object EdlToComposition {
+    /** Element kinds drawn by the webview into overlay PNGs. */
+    private val PRERENDERED_OVERLAY_KINDS = setOf("sticker", "graphic", "text", "caption")
+
     fun buildComposition(
         edl: Edl,
         /** Preview-rendered text/caption images (round 37). When non-empty
@@ -271,6 +274,12 @@ object EdlToComposition {
         }
         for (track in overlayVisualTracks) {
             for (rawClip in track.clips.sortedBy { it.startTicks }) {
+                // Stickers and graphics are GENERATED content: the webview
+                // prerenders them into the overlay bitmaps (overlay-frames.ts)
+                // and they carry no media asset. Treating them as PiP layers
+                // made `requireAsset` throw ExportUnsupportedException, so a
+                // project with a single sticker failed to export at all.
+                if (isPrerenderedOverlayClip(rawClip)) continue
                 // Nominal -> output clock (cumulative cross-fade shift ahead
                 // of this clip) — same start-only remap as the preview.
                 val clip = rawClip.copy(startTicks = placements.remapNominalTick(rawClip.startTicks))
@@ -544,6 +553,16 @@ object EdlToComposition {
     // kind so the offending clip can be identified in the timeline. The sheet
     // pre-flights the same conditions (`assertMediaReferencesResolved`), so
     // this text is the last line of defence, not the first thing users read.
+    /**
+     * Clips whose pixels arrive as prerendered overlay frames rather than from
+     * a decoded media asset. They belong to a visual overlay track (stickers
+     * and graphics share `EdlTrackType.GRAPHIC`) but must not be built as PiP
+     * media items. Text and captions already bypass this loop by track type;
+     * listed here too so the predicate stands on its own.
+     */
+    internal fun isPrerenderedOverlayClip(clip: EdlClip): Boolean =
+        clip.assetId == null && clip.kind in PRERENDERED_OVERLAY_KINDS
+
     private fun requireAsset(edl: Edl, clip: EdlClip): EdlAsset {
         val label = "clip \"${clip.name}\" (${clip.kind}, ${clip.clipId})"
         val assetId = clip.assetId

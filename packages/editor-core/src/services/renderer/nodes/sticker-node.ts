@@ -47,7 +47,14 @@ export function loadStickerSource({
 			width: image.naturalWidth,
 			height: image.naturalHeight,
 		};
-	})();
+	})().catch((error: unknown) => {
+		// Do not cache a failed load: the asset may appear later (a slow
+		// first paint, a repaired bundle) and a permanently poisoned cache
+		// would keep that sticker blank for the whole session. Callers
+		// degrade to "element not rendered", never to a thrown render.
+		stickerSourceCache.delete(stickerId);
+		throw error;
+	});
 
 	stickerSourceCache.set(stickerId, promise);
 	return promise;

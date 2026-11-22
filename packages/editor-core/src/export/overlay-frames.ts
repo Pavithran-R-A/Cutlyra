@@ -28,12 +28,12 @@
  * new PNG is emitted only when that hash changes, so a static title over
  * a 60s clip costs exactly one image.
  *
- * SCOPE: text and captions — the two overlay kinds the preview draws
- * through a 2D context, and the two the founder reported drifting. PiP
- * (video/image) overlays keep coming from the decoder, placed natively by
- * the same `SourcePlacement` math as the main track; stickers/graphics are
- * GPU-composited image sources with no 2D draw path (and are not exported
- * today at all — a separate, disclosed gap).
+ * SCOPE: text, captions, stickers and graphics. Text/captions are drawn by
+ * their own 2D painters; stickers and graphics are image sources, drawn here
+ * through `visual-overlay.ts`, whose draw plan comes from the preview's own
+ * `computeVisualTransform` (framing, crop, scale, rotation, flip, opacity).
+ * PiP (video/image) overlays keep coming from the decoder, placed natively
+ * by the same `SourcePlacement` math as the main track.
  */
 import type { SceneTracks } from "@/timeline";
 import type { MediaAsset } from "@/media/types";
@@ -48,6 +48,10 @@ import {
 	CaptionNode,
 	renderCaptionToContext,
 } from "@/services/renderer/nodes/caption-node";
+import {
+	buildVisualOverlayDrawPlan,
+	isVisualOverlayNode,
+} from "@/export/visual-overlay";
 
 export interface OverlayFrame {
 	/** Inclusive start / exclusive end on the OUTPUT timeline, in ticks. */
@@ -56,6 +60,22 @@ export interface OverlayFrame {
 	/** Base64 PNG (no data: prefix) at the export resolution, transparent
 	 *  everywhere the overlay does not paint. */
 	pngBase64: string;
+}
+
+/**
+ * Which overlay tracks this pass rasterizes. Text/caption draw their own
+ * content; graphics tracks carry the sticker/graphic elements whose pixels
+ * used to be missing from exports entirely. Video/image overlays stay with
+ * the decoder (PiP), and effect tracks are not a 2D drawing source.
+ */
+export function isOverlayRenderTrack(
+	track: SceneTracks["overlay"][number],
+): boolean {
+	return (
+		track.type === "text" ||
+		track.type === "caption" ||
+		track.type === "graphic"
+	);
 }
 
 type OverlayCanvas = {
@@ -90,7 +110,11 @@ function createCanvas({
 function collectOverlayNodes(root: AnyBaseNode): AnyBaseNode[] {
 	const out: AnyBaseNode[] = [];
 	const walk = (node: AnyBaseNode) => {
-		if (node instanceof TextNode || node instanceof CaptionNode) {
+		if (
+			node instanceof TextNode ||
+			node instanceof CaptionNode ||
+			isVisualOverlayNode(node)
+		) {
 			out.push(node);
 		}
 		for (const child of node.children) walk(child);
@@ -102,9 +126,13 @@ function collectOverlayNodes(root: AnyBaseNode): AnyBaseNode[] {
 function drawOverlayNode({
 	node,
 	ctx,
+	canvasWidth,
+	canvasHeight,
 }: {
 	node: AnyBaseNode;
 	ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+	canvasWidth: number;
+	canvasHeight: number;
 }): void {
 	// `node.resolved` being null means "not visible at this time" — every
 	// resolver returns null outside its element's window.
@@ -119,6 +147,36 @@ function drawOverlayNode({
 	} else if (node instanceof CaptionNode) {
 		// renderCaptionToContext applies its own globalAlpha already.
 		renderCaptionToContext({ node, ctx });
+	} else if (isVisualOverlayNode(node)) {
+		// A missing/sourceless sticker returns null here: it contributes no
+		// pixels and overlapping elements still render.
+		const plan = buildVisualOverlayDrawPlan({
+			node,
+			canvasWidth,
+			canvasHeight,
+		});
+		if (plan) {
+			ctx.globalAlpha = plan.opacity;
+			const x = plan.centerX - plan.width / 2;
+			const y = plan.centerY - plan.height / 2;
+			if (plan.rotationDegrees !== 0 || plan.flipX || plan.flipY) {
+				ctx.translate(plan.centerX, plan.centerY);
+				ctx.rotate((plan.rotationDegrees * Math.PI) / 180);
+				ctx.scale(plan.flipX ? -1 : 1, plan.flipY ? -1 : 1);
+				ctx.translate(-plan.centerX, -plan.centerY);
+			}
+			ctx.drawImage(
+				plan.source,
+				plan.sourceRect.sourceX,
+				plan.sourceRect.sourceY,
+				plan.sourceRect.sourceWidth,
+				plan.sourceRect.sourceHeight,
+				x,
+				y,
+				plan.width,
+				plan.height,
+			);
+		}
 	}
 	ctx.restore();
 }
@@ -147,8 +205,13 @@ async function toPngBase64(canvas: HTMLCanvasElement | OffscreenCanvas): Promise
 		}
 		return btoa(binary);
 	}
-	const dataUrl = (canvas as HTMLCanvasElement).toDataURL("image/png");
-	return dataUrl.slice(dataUrl.indexOf(",") + 1);
+	// `in` narrows the union without an unsafe assertion: OffscreenCanvas has
+	// no toDataURL, and we already returned above when one exists.
+	if ("toDataURL" in canvas) {
+		const dataUrl = canvas.toDataURL("image/png");
+		return dataUrl.slice(dataUrl.indexOf(",") + 1);
+	}
+	throw new Error("No 2D canvas surface available for overlay rasterization");
 }
 
 export interface RenderOverlayFramesParams {
@@ -199,9 +262,7 @@ export async function renderOverlayFrames({
 	// non-text/caption overlay leaves a tree whose resolve is pure math.
 	const overlayOnlyTracks: SceneTracks = {
 		main: { ...tracks.main, elements: [] },
-		overlay: tracks.overlay.filter(
-			(track) => track.type === "text" || track.type === "caption",
-		),
+		overlay: tracks.overlay.filter(isOverlayRenderTrack),
 		audio: [],
 	};
 	const tree = buildScene({
@@ -241,7 +302,14 @@ export async function renderOverlayFrames({
 			let pngBase64 = "";
 			if (hash !== "") {
 				surface.ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
-				for (const node of nodes) drawOverlayNode({ node, ctx: surface.ctx });
+				for (const node of nodes) {
+				drawOverlayNode({
+					node,
+					ctx: surface.ctx,
+					canvasWidth: canvasSize.width,
+					canvasHeight: canvasSize.height,
+				});
+			}
 				pngBase64 = await toPngBase64(surface.canvas);
 			}
 			openFrame = { startTicks: timeTicks, hash, pngBase64 };
