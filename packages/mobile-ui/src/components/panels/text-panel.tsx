@@ -8,8 +8,8 @@ import { ParamRow, ToggleRow } from "../editor/param-row";
 import type { EditorCore } from "@cutlyra/editor-core";
 import type { ElementRef, TextElement } from "@cutlyra/editor-core/timeline";
 import { getLocallyAvailableFonts } from "@cutlyra/editor-core/fonts/local-fonts";
-import { setElementParam } from "../../editor/actions";
-import { DEFAULT_TEXT_BORDER_WIDTH } from "@cutlyra/editor-core/text/typography";
+import { setElementParam, setTextShadowEnabled } from "../../editor/actions";
+import { DEFAULT_TEXT_BORDER_WIDTH, DEFAULT_TEXT_SHADOW } from "@cutlyra/editor-core/text/typography";
 
 const SWATCHES = ["#f5f5f5", "#7c5cff", "#ff5a5f", "#ffd54a", "#4ade80", "#000000"];
 
@@ -46,6 +46,11 @@ export function TextPanel({ editor, elementRef, element, onClose, onAddText }: T
 	// DEFAULT_TEXT_BORDER_WIDTH.
 	const borderWidth =
 		element && typeof element.params.strokeWidth === "number" ? element.params.strokeWidth : 0;
+	const shadowEnabled = element?.params.shadowEnabled === true;
+	const shadowBlur =
+		element && typeof element.params.shadowBlur === "number"
+			? element.params.shadowBlur
+			: DEFAULT_TEXT_SHADOW.blurPercent;
 
 	return (
 		<PanelSheet onScrimClick={onClose} header={<SheetHeader onClose={onClose} />}>
@@ -148,6 +153,25 @@ export function TextPanel({ editor, elementRef, element, onClose, onAddText }: T
 							}
 						}}
 					/>
+					<ToggleRow
+						label="Shadow"
+						active={shadowEnabled}
+						onToggle={() =>
+							setTextShadowEnabled({ editor, ref: elementRef, enabled: !shadowEnabled })
+						}
+					/>
+					{shadowEnabled && (
+						<ParamRow
+							label="Shadow blur"
+							value={shadowBlur}
+							min={0}
+							max={100}
+							step={1}
+							onChange={(value) =>
+								setElementParam({ editor, ref: elementRef, key: "shadowBlur", value })
+							}
+						/>
+					)}
 					<ToggleRow
 						label="Background"
 						active={backgroundEnabled}

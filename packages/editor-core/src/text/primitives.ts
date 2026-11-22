@@ -138,6 +138,61 @@ export function measureTextLayout({
 	};
 }
 
+export interface ResolvedTextShadow {
+	color: string;
+	/** Canvas `shadowBlur` radius, in canvas pixels at this canvas size. */
+	blurPx: number;
+	offsetXPx: number;
+	offsetYPx: number;
+}
+
+/**
+ * Drop shadow pass. Drawn BEFORE the border and fill so it sits behind both,
+ * and as its own pass (rather than `ctx.shadow*` on the fill) so the border
+ * never casts a second, darker shadow of its own. The context is saved and
+ * restored, so no shadow state leaks into the caller's fill/background draw.
+ *
+ * All sizes arrive in PIXELS already scaled from the percent-of-font-size
+ * params by the caller (`renderTextToContext`), matching how stroke width is
+ * converted there — one unit conversion, one place.
+ */
+export function drawTextShadow({
+	ctx,
+	layout,
+	shadow,
+	textBaseline = "middle",
+}: {
+	ctx: TextCanvasContext;
+	layout: MeasuredTextLayout;
+	shadow: ResolvedTextShadow;
+	textBaseline?: CanvasTextBaseline;
+}): void {
+	if (
+		layout.lines.length === 0 ||
+		(shadow.blurPx <= 0 && shadow.offsetXPx === 0 && shadow.offsetYPx === 0)
+	) {
+		return;
+	}
+
+	ctx.save();
+	ctx.font = layout.fontString;
+	ctx.textAlign = layout.textAlign;
+	ctx.textBaseline = textBaseline;
+	setCanvasLetterSpacing({ ctx, letterSpacingPx: layout.letterSpacing });
+	ctx.fillStyle = shadow.color;
+	ctx.shadowColor = shadow.color;
+	ctx.shadowBlur = shadow.blurPx;
+	ctx.shadowOffsetX = shadow.offsetXPx;
+	ctx.shadowOffsetY = shadow.offsetYPx;
+
+	for (let index = 0; index < layout.lines.length; index++) {
+		const lineY = index * layout.lineHeightPx - layout.block.visualCenterOffset;
+		ctx.fillText(layout.lines[index], 0, lineY);
+	}
+
+	ctx.restore();
+}
+
 export function drawMeasuredTextLayout({
 	ctx,
 	layout,

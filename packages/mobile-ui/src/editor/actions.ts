@@ -53,6 +53,7 @@ import {
 import { registerDefaultGraphics } from "@cutlyra/editor-core/graphics";
 import { buildElementFromMedia } from "@cutlyra/editor-core/timeline";
 import { rewriteCaptionWords } from "./caption-text";
+import { DEFAULT_TEXT_SHADOW } from "@cutlyra/editor-core/text/typography";
 import {
 	adjacentClipKeyframeTime,
 	applyClipKeyframeEasing,
@@ -627,6 +628,57 @@ export function setElementParam({
 					trackId: ref.trackId,
 					elementId: ref.elementId,
 					patch: { params: { ...element.params, [key]: value } },
+				},
+			],
+		}),
+	});
+}
+
+/**
+ * Text panel's Shadow toggle. One undoable patch: it flips `shadowEnabled`
+ * and, when switching ON, seeds any missing shadow params with
+ * `DEFAULT_TEXT_SHADOW` in the same history step — so a text element created
+ * before shadows existed gets a visible default instead of a shadow with
+ * zero blur and zero offset. Off leaves the user's numbers intact for the
+ * next ON, matching how the Border toggle keeps its colour.
+ */
+export function setTextShadowEnabled({
+	editor,
+	ref,
+	enabled,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	enabled: boolean;
+}): void {
+	const element = getElement({ editor, ref });
+	if (!element) return;
+	const params: ParamValues = { ...element.params, shadowEnabled: enabled };
+	if (enabled) {
+		params.shadowColor =
+			typeof element.params.shadowColor === "string"
+				? element.params.shadowColor
+				: DEFAULT_TEXT_SHADOW.color;
+		params.shadowBlur =
+			typeof element.params.shadowBlur === "number"
+				? element.params.shadowBlur
+				: DEFAULT_TEXT_SHADOW.blurPercent;
+		params.shadowOffsetX =
+			typeof element.params.shadowOffsetX === "number"
+				? element.params.shadowOffsetX
+				: DEFAULT_TEXT_SHADOW.offsetXPercent;
+		params.shadowOffsetY =
+			typeof element.params.shadowOffsetY === "number"
+				? element.params.shadowOffsetY
+				: DEFAULT_TEXT_SHADOW.offsetYPercent;
+	}
+	editor.command.execute({
+		command: new UpdateElementsCommand({
+			updates: [
+				{
+					trackId: ref.trackId,
+					elementId: ref.elementId,
+					patch: { params },
 				},
 			],
 		}),

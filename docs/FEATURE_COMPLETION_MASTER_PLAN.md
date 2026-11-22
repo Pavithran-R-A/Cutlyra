@@ -57,7 +57,7 @@ Source-truth check performed:
 | Background blur (mobile) | GAP (engine exists) | native Android export support |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
-| Text shadow | GAP | renderer + native parity |
+| Text shadow | IMPLEMENTED for text elements (preview + native export by construction) | captions not covered |
 | Audio fades UI | GAP | DSP + UI |
 | Animated stickers/GIF | GAP | asset + renderer |
 | Templates | IMPLEMENTED (12 offline templates + schema/planner/apply engine, UI wired) | No on-device Android UI-automation or exported-MP4 parity run yet |
@@ -161,6 +161,48 @@ Not yet verified: the panel itself has not been driven on a device or in a
 browser (the import data path is tested, the button wiring is typechecked and
 linted only), and there is still no `.srt`/`.vtt` file picker.
 
+## Phase 4 — Text drop shadow (implemented 2026-11-22)
+
+Text was the one overlay kind where preview and native export already share a
+single rasterizer: `renderTextToContext` draws into the preview's canvas, and
+`export/overlay-frames.ts` calls the SAME function at export resolution and
+hands the PNGs to the native `PrerenderedOverlay`. So the shadow needed one
+draw path, not a Swift/Kotlin twin, and preview/export parity holds by
+construction (the same argument that closed text/caption drift in round 37).
+
+- **Params** (`params/registry.ts`, `timeline/defaults.ts`): `shadowEnabled`,
+  `shadowColor`, `shadowBlur`, `shadowOffsetX`, `shadowOffsetY`. Blur and
+  offsets are PERCENT OF FONT SIZE — the same unit as `strokeWidth` — so the
+  shadow keeps its proportion to the glyphs at any canvas size or export
+  resolution. Off by default; existing projects keep their exact look because
+  the toggle defaults to `false`.
+- **Drawing** (`text/primitives.ts`): `drawTextShadow` is its own pass, drawn
+  BEFORE the border and fill so it sits behind both, and it saves/restores the
+  context so `shadow*` state never leaks into the border, the glyph fill or a
+  text background pill. Zero blur + zero offsets draws nothing.
+- **Resolve/render** (`services/renderer/resolve.ts`, `nodes/text-node.ts`):
+  the resolver reads the params (defaults applied), `renderTextToContext`
+  converts percent -> pixels exactly like the border does, and the existing
+  params-based texture cache key means a shadow change re-rasterizes the text
+  layer.
+- **UI** (`text-panel.tsx`, `editor/actions.ts`): a "Shadow" toggle plus a
+  "Shadow blur" slider, writing through the ordinary undoable
+  `UpdateElementsCommand`. `setTextShadowEnabled` seeds any missing shadow
+  params in the SAME history step, so text created before this feature gets a
+  visible default rather than an invisible zero-blur shadow.
+
+Verified locally: 4 new tests (`text/__tests__/text-shadow.test.ts`) using a
+recording Canvas2D double that honours `save`/`restore` — they assert paint
+order (shadow, then border, then glyphs), the percent -> pixel conversion at a
+known font/canvas size, per-line placement, no shadow-state leak, and the off
+switch. `bun test packages` -> 830 pass / 0 fail; clean `tsc --noEmit` for
+`editor-core`, `mobile-ui`, `apps/mobile`; zero ESLint errors on touched files.
+
+Not verified: no exported frame or screenshot was sampled for the shadow — the
+tests exercise the real render function with a recording context, not real
+pixels. Captions do not get a shadow yet (caption word drawing is a separate
+path in `caption-node.ts`).
+
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.
 2. Confirm versionCode 2 availability in Play Console.
@@ -173,3 +215,4 @@ linted only), and there is still no `.srt`/`.vtt` file picker.
 - PR #96 (crop end-to-end + sticker library + lint debt) merged as `ac73e53` with every required check green on the PR head and on merged main (Bun CI 44925424430, Mobile CI 44925424390).
 - Templates: `bun test packages/editor-core/src/templates` → 17 pass / 0 fail; `bun test packages` → 813 pass / 0 fail.
 - Subtitle import: `bun test packages/editor-core/src/captions` → 59 pass / 0 fail; `bun test packages` → 826 pass / 0 fail.
+- Text shadow: `bun test packages/editor-core/src/text` → 4 new tests pass; `bun test packages` → 830 pass / 0 fail.
