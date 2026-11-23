@@ -193,6 +193,15 @@ function ToolbarLeftSection() {
 				/>
 
 				<ToolbarButton
+					icon={<HugeiconsIcon icon={SnowIcon} />}
+					tooltip="Remove freeze"
+					disabled={selectedElements.length !== 1}
+					onClick={({ event }) =>
+						handleAction({ action: "unfreeze-frame", event })
+					}
+				/>
+
+				<ToolbarButton
 					icon={<HugeiconsIcon icon={Delete02Icon} />}
 					tooltip="Delete element"
 					onClick={({ event }) =>
