@@ -3,6 +3,7 @@ export { DeleteElementsCommand } from "./delete-elements";
 export { DuplicateElementsCommand } from "./duplicate-elements";
 export { SplitElementsCommand } from "./split-elements";
 export { FreezeFrameCommand } from "./freeze-frame";
+export { UnfreezeFrameCommand } from "./unfreeze-frame";
 export { UpdateElementsCommand } from "./update-elements";
 export { ToggleSourceAudioSeparationCommand } from "./toggle-source-audio-separation";
 export { MoveElementCommand } from "./move-elements";

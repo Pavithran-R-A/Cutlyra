@@ -444,6 +444,27 @@ export function useEditorActions() {
 	);
 
 	useActionHandler(
+		"unfreeze-frame",
+		() => {
+			if (selectedElements.length !== 1) return;
+			const target = selectedElements[0];
+			// Only unfreeze if the selected element is a frozen (image) segment.
+			const tracks = editor.scenes.getActiveScene().tracks;
+			const track =
+				tracks.main.id === target.trackId
+					? tracks.main
+					: tracks.overlay.find((t) => t.id === target.trackId);
+			const el = track?.elements.find((e) => e.id === target.elementId);
+			if (!el || el.type !== "image") return;
+			editor.timeline.unfreezeFrame({
+				trackId: target.trackId,
+				frozenElementId: target.elementId,
+			});
+		},
+		undefined,
+	);
+
+	useActionHandler(
 		"toggle-elements-muted-selected",
 		() => {
 			editor.timeline.toggleElementsMuted({ elements: selectedElements });

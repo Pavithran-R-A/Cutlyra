@@ -41,6 +41,7 @@ import {
 	UpdateElementsCommand,
 	SplitElementsCommand,
 	FreezeFrameCommand,
+	UnfreezeFrameCommand,
 	MoveElementCommand,
 	TracksSnapshotCommand,
 	UpsertKeyframeCommand,
@@ -875,6 +876,17 @@ export class TimelineManager {
 		});
 		this.editor.command.execute({ command });
 		return command.getFrozenElementId();
+	}
+
+	unfreezeFrame({
+		trackId,
+		frozenElementId,
+	}: {
+		trackId: string;
+		frozenElementId: string;
+	}): void {
+		const command = new UnfreezeFrameCommand({ trackId, frozenElementId });
+		this.editor.command.execute({ command });
 	}
 
 	toggleElementsVisibility({
