@@ -34,3 +34,9 @@ must be validated in CI or on a physical device.
 - Freeze Frame is reversible and non-destructive to source media
   (`FreezeFrameOps.apply`/`undo`).
 - GIF export validates malformed/zero-delay input via `GifExportPlan.normalized()`.
+## M1 repair status (2026-11-23)
+
+- `apps/web` tsc: 0 errors (was 43).
+- `scripts/invariants.sh`: green (build, typecheck all packages, lint within baseline, unit tests, offline audit, bridge-import, mouse-event).
+- Android: `:app:compileDebugKotlin` BUILD SUCCESSFUL; `testDebugUnitTest` BUILD SUCCESSFUL.
+- Remaining M2/M3 deep work (frame capture surface readback, timeline freeze command in Rust, GIF frame feeding to encoder) is device/Rust-pipeline dependent and tracked here; bridge methods return structured DEVICE_ONLY status rather than crashing.
