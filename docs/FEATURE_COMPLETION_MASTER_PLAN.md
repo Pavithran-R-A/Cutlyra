@@ -53,7 +53,7 @@ Source-truth check performed:
 | --- | --- | --- |
 | Reverse | PARTIAL (param only) | native export + compositor; no UI |
 | Freeze frame | GAP | needs engine + UI + export | (TS timing helpers only so far) |
-| GIF import (media type + timing) | PARTIAL (TS timing helpers + ImageDecoder capability detection + 19 tests) | Native Android picker/custody/export blocked: no adb/emulator/gradle JDK on this host; Kotlin implementation not yet written |
+| GIF import (media type + timing) | PARTIAL (TS timing helpers + ImageDecoder capability detection + 16 tests) | Web lint cleared (apps/web 0 errors) unblocks PR #102; native Android picker/custody/export blocked: host JDK is 17, project requires JDK 21 (gradle `invalid source release: 21`), no adb/emulator; Kotlin implementation not yet written |
 | Per-clip crop | IMPLEMENTED; preview pixels + Android native export verified; iOS mapper implemented (unverified build) | physical-device fingertip check pending; iOS build verification pending (no Xcode) |
 | Background blur (mobile) | GAP (engine exists) | native Android export support |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
