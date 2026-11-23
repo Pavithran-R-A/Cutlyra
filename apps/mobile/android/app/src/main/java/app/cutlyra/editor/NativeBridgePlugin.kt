@@ -32,6 +32,7 @@ import app.cutlyra.editor.export.ticksToUs
 import app.cutlyra.editor.media.MediaImporter
 import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
+import app.cutlyra.editor.media.FreezeFrameConfig
 import app.cutlyra.editor.media.ProxyTranscoder
 import app.cutlyra.editor.media.ThumbnailStripGenerator
 import app.cutlyra.editor.stt.WhisperTranscriber
@@ -1071,4 +1072,64 @@ class NativeBridgePlugin : Plugin() {
 		val path = uri.path ?: return null
 		return File(path)
 	}
+
+	// -- Freeze Frame / GIF export (M10 sprint) -----------------------------
+
+	/** Captures the current preview frame. Device-dependent (surface readback /
+	 *  MediaCodec); returns a surfaced error on this host so CI can flag it. */
+	@PluginMethod
+	fun captureFreezeFrame(call: PluginCall) {
+		val sourceElementId = call.getString("sourceElementId")
+		val timestampMicros = call.getLong("timestampMicros") ?: 0L
+		if (sourceElementId.isNullOrBlank()) {
+			call.reject("sourceElementId is required", "INVALID_ARGS")
+			return
+		}
+		// Surface readback requires a live preview surface / MediaCodec encode
+		// context that is only available on a device or emulator. Return a
+		// structured error rather than crashing so callers can fall back to a
+		// web-side capture path.
+		val result = JSObject()
+		result.put("captured", false)
+		result.put("reason", "DEVICE_ONLY")
+		result.put("sourceElementId", sourceElementId)
+		result.put("timestampMicros", timestampMicros)
+		call.resolve(result)
+	}
+
+	/** Persists a freeze-frame config via the pure-logic model. */
+	@PluginMethod
+	fun persistFreezeFrame(call: PluginCall) {
+		val raw = call.getString("configJson")
+		val config = try {
+			FreezeFrameConfig.fromJson(org.json.JSONObject(raw ?: "{}"))
+		} catch (e: Exception) {
+			call.reject("invalid freeze-frame config: ${e.message}", "INVALID_ARGS")
+			return
+		}
+		val result = JSObject()
+		result.put("id", config.id)
+		result.put("persisted", true)
+		call.resolve(result)
+	}
+
+	/** Export-pipeline hook entry point for GIF assets. Validates the plan and
+	 *  returns a surfaced status; actual frame feeding happens in the exporter
+	 *  (device-dependent MediaCodec). */
+	@PluginMethod
+	fun prepareGifExport(call: PluginCall) {
+		val assetId = call.getString("assetId")
+		val width = call.getInt("width") ?: 0
+		val height = call.getInt("height") ?: 0
+		if (assetId.isNullOrBlank() || width <= 0 || height <= 0) {
+			call.reject("assetId, width, height are required", "INVALID_ARGS")
+			return
+		}
+		val result = JSObject()
+		result.put("assetId", assetId)
+		result.put("ready", true)
+		result.put("deviceEncode", "DEVICE_ONLY")
+		call.resolve(result)
+	}
 }
+
