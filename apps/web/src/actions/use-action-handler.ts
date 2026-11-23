@@ -24,7 +24,7 @@ export function useActionHandler<A extends TAction>(
 	const stableHandler = useCallback(
 		(...parameters: [TArgOfAction<A>, TInvocationTrigger?]) => {
 			(
-				handlerRef.current as (
+				handlerRef.current as unknown as (
 					...handlerParameters: [TArgOfAction<A>, TInvocationTrigger?]
 				) => void
 			)(...parameters);

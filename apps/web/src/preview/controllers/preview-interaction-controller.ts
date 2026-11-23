@@ -354,7 +354,7 @@ export class PreviewInteractionController {
 			kind: "pending",
 			origin: startPos,
 			pointerId,
-			captureTarget: currentTarget as HTMLElement,
+			captureTarget: currentTarget as unknown as HTMLElement,
 			topmostHit: hits[0] ?? null,
 			selectedHit: resolvePreferredHit({
 				hits,

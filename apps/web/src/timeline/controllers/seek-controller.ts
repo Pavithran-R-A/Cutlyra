@@ -159,7 +159,8 @@ export class SeekController {
 		if (!isClickGesture({ event, session: this.session })) return false;
 		if (this.config.isSelecting) return false;
 
-		const target = event.target as HTMLElement;
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return true;
 		if (this.config.getPlayheadEl()?.contains(target)) return false;
 
 		if (this.config.getTrackLabelsEl()?.contains(target)) {

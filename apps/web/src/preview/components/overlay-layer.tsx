@@ -154,7 +154,7 @@ export function PreviewOverlayLayer({
 				}
 			})}
 			{(
-				Object.entries(hudInstancesByAnchor) as Array<
+				Object.entries(hudInstancesByAnchor) as unknown as Array<
 					[PreviewOverlayHudAnchor, PreviewOverlayInstance[]]
 				>
 			).map(([anchor, anchorInstances]) => {

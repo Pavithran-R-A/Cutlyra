@@ -139,7 +139,7 @@ function EditorRuntimeBindings() {
 	);
 
 	useEffect(() => {
-		editor.command.isRippleEnabled = rippleEditingEnabled;
+		editor.command.setRippleEnabled(rippleEditingEnabled);
 	}, [editor, rippleEditingEnabled]);
 
 	useEffect(() => {

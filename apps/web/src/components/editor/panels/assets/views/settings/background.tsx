@@ -222,12 +222,12 @@ export function BackgroundContent() {
 	const isColorBackground = activeProject.settings.background.type === "color";
 
 	const currentBlurIntensity = isBlurBackground
-		? (activeProject.settings.background as { blurIntensity: number })
+		? (activeProject.settings.background as unknown as { blurIntensity: number })
 				.blurIntensity
 		: DEFAULT_BACKGROUND_BLUR_INTENSITY;
 
 	const currentBackgroundColor = isColorBackground
-		? (activeProject.settings.background as { color: string }).color
+		? (activeProject.settings.background as unknown as { color: string }).color
 		: DEFAULT_BACKGROUND_COLOR;
 
 	const hasPresetColorMatch = colors.some(

@@ -373,7 +373,7 @@ function ColorPickerContent({
 					<Select
 						value={colorFormat}
 						onValueChange={(selectedFormat) =>
-							setColorFormat(selectedFormat as ColorFormat)
+							setColorFormat(selectedFormat as unknown as ColorFormat)
 						}
 					>
 						<SelectTrigger variant="outline" className="min-w-18 max-w-18">

@@ -89,7 +89,7 @@ function renderHastNode({
 }
 
 function renderHtmlNodes({ html }: { html: string }): React.ReactNode {
-	const rootNode = unified().use(rehypeParse, { fragment: true }).parse(html) as HastRootNode;
+	const rootNode = unified().use(rehypeParse, { fragment: true }).parse(html) as unknown as HastRootNode;
 	return (rootNode.children ?? []).map((childNode, index) =>
 		renderHastNode({ node: childNode, key: `prose-node-${index}` }),
 	);

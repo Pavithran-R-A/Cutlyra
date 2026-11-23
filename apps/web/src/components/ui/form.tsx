@@ -55,9 +55,8 @@ function Form<
 		try {
 			const stored = store.getItem(persistKeyOnMount.current);
 			if (stored) {
-				resetRef.current(
-					JSON.parse(stored) as DefaultValues<TFieldValues>,
-				);
+				const parsed: unknown = JSON.parse(stored);
+				resetRef.current(parsed as DefaultValues<TFieldValues>);
 			}
 		} catch {
 			// Storage may be unavailable (private browsing, storage blocked)
@@ -110,7 +109,7 @@ type FormFieldContextValue<
 };
 
 const FormFieldContext = React.createContext<FormFieldContextValue>(
-	{} as FormFieldContextValue,
+	{} as unknown as FormFieldContextValue,
 );
 
 const FormField = <
@@ -154,7 +153,7 @@ type FormItemContextValue = {
 };
 
 const FormItemContext = React.createContext<FormItemContextValue>(
-	{} as FormItemContextValue,
+	{} as unknown as FormItemContextValue,
 );
 
 const FormItem = React.forwardRef<

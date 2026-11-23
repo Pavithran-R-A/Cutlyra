@@ -74,7 +74,7 @@ export function StickersView() {
 			<Tabs
 				value={selectedCategory}
 				onValueChange={(value) => {
-					setSelectedCategory({ category: value as StickerCategory });
+					setSelectedCategory({ category: value as unknown as StickerCategory });
 				}}
 				variant="underline"
 				className="mt-2 flex min-h-0 flex-1 flex-col"
@@ -298,7 +298,7 @@ function StickerSection({
 								size="sm"
 								className="h-auto gap-1 p-0 text-xs text-primary"
 								onClick={() => {
-									onSeeAll(section.action?.category as StickerCategory);
+									onSeeAll(section.action?.category as unknown as StickerCategory);
 								}}
 							>
 								See all

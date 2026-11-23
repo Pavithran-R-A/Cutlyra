@@ -156,7 +156,7 @@ function SoundEffectsView() {
 	}: React.UIEvent<HTMLDivElement>) => {
 		const { scrollTop } = currentTarget;
 		setScrollPosition({ position: scrollTop });
-		handleScroll({ currentTarget } as React.UIEvent<HTMLDivElement>);
+		handleScroll({ currentTarget } as unknown as React.UIEvent<HTMLDivElement>);
 	};
 
 	const displayedSounds = searchQuery ? searchResults : topSoundEffects;

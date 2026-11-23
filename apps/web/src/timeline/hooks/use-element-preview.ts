@@ -25,7 +25,7 @@ export function useElementPreview<T extends TimelineElement>({
 		(findTrackInSceneTracks({
 			tracks: previewTracks ?? editor.scenes.getActiveScene().tracks,
 			trackId,
-		})?.elements.find((element) => element.id === elementId) as T | undefined) ??
+		})?.elements.find((element) => element.id === elementId) as unknown as T | undefined) ??
 		fallback;
 
 	const previewUpdates = (updates: Partial<TimelineElement>) =>

@@ -37,7 +37,7 @@ import {
 
 export default function Editor() {
 	const params = useParams();
-	const projectId = params.project_id as string;
+	const projectId = params.project_id as unknown as string;
 
 	return (
 		<MobileGate>

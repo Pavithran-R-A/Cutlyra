@@ -311,7 +311,7 @@ function mapFieldsToRecord<T extends object>({
 		record[fields[index]] = values[index];
 	}
 
-	return record as T;
+	return record as unknown as T;
 }
 
 function parseAssTimestamp({ input }: { input: string | undefined }): number {

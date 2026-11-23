@@ -40,7 +40,7 @@ export function usePasteMedia() {
 
 	useEffect(() => {
 		const handlePaste = async (event: ClipboardEvent) => {
-			const activeElement = document.activeElement as HTMLElement;
+			const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
 			if (activeElement && isTypableDOMElement({ element: activeElement })) {
 				return;

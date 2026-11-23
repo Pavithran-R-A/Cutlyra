@@ -20,9 +20,10 @@ export function useLocalStorage<T>({
 		try {
 			const storedValue = localStorage.getItem(key);
 			if (storedValue !== null) {
-				const parsedValue = JSON.parse(storedValue) as T;
-				valueRef.current = parsedValue;
-				setValue(parsedValue);
+				const parsedValue: unknown = JSON.parse(storedValue);
+				const typedValue = parsedValue as T;
+				valueRef.current = typedValue;
+				setValue(typedValue);
 			}
 		} catch {
 			// localstorage might be unavailable
@@ -45,7 +46,7 @@ export function useLocalStorage<T>({
 		({ value: nextValue }: { value: T | ((previousValue: T) => T) }) => {
 			const resolvedValue =
 				typeof nextValue === "function"
-					? (nextValue as (previousValue: T) => T)(valueRef.current)
+					? (nextValue as unknown as (previousValue: T) => T)(valueRef.current)
 					: nextValue;
 
 			valueRef.current = resolvedValue;

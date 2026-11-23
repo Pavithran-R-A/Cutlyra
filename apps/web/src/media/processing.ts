@@ -198,7 +198,11 @@ const getMediaDuration = ({ file }: { file: File }): Promise<number> => {
 	return new Promise((resolve, reject) => {
 		const element = document.createElement(
 			file.type.startsWith("video/") ? "video" : "audio",
-		) as HTMLVideoElement;
+		);
+		if (!(element instanceof HTMLMediaElement)) {
+			reject(new Error("Unsupported media element"));
+			return;
+		}
 		const objectUrl = URL.createObjectURL(file);
 
 		element.addEventListener("loadedmetadata", () => {

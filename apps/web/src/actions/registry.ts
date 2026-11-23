@@ -17,7 +17,7 @@ export function bindAction<A extends TAction>(
 	handler: TActionFunc<A>,
 ) {
 	const handlers = boundActions[action];
-	const typedHandler = handler as ActionHandler;
+	const typedHandler = handler as unknown as ActionHandler;
 	if (handlers) {
 		handlers.push(typedHandler);
 	} else {
@@ -33,7 +33,7 @@ export function unbindAction<A extends TAction>(
 	const handlers = boundActions[action];
 	if (!handlers) return;
 
-	const typedHandler = handler as ActionHandler;
+	const typedHandler = handler as unknown as ActionHandler;
 	boundActions[action] = handlers.filter((h) => h !== typedHandler);
 
 	if (boundActions[action]?.length === 0) {

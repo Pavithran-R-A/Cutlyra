@@ -148,7 +148,7 @@ export class PlayheadController {
 
 	onRulerMouseDown(event: ReactPointerEvent): void {
 		if (event.button !== 0) return;
-		if (this.config.getPlayheadEl()?.contains(event.target as Node)) return;
+		if (event.target instanceof Node && this.config.getPlayheadEl()?.contains(event.target)) return;
 
 		event.preventDefault();
 		this.beginCapture(event);

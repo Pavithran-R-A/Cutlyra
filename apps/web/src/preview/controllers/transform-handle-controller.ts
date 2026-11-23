@@ -386,7 +386,7 @@ export class TransformHandleController {
 			animationsWithoutScale,
 			pointerId: event.pointerId,
 			captureTarget: this.capturePointer({
-				target: event.currentTarget as HTMLElement,
+				target: event.currentTarget as unknown as HTMLElement,
 				pointerId: event.pointerId,
 			}),
 		};
@@ -421,7 +421,7 @@ export class TransformHandleController {
 			initialBoundsCy: context.bounds.cy,
 			pointerId: event.pointerId,
 			captureTarget: this.capturePointer({
-				target: event.currentTarget as HTMLElement,
+				target: event.currentTarget as unknown as HTMLElement,
 				pointerId: event.pointerId,
 			}),
 		};
@@ -463,7 +463,7 @@ export class TransformHandleController {
 			animationsWithoutScale,
 			pointerId: event.pointerId,
 			captureTarget: this.capturePointer({
-				target: event.currentTarget as HTMLElement,
+				target: event.currentTarget as unknown as HTMLElement,
 				pointerId: event.pointerId,
 			}),
 		};
