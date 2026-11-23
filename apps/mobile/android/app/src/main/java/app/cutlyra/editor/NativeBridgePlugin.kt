@@ -5,6 +5,8 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
@@ -37,6 +39,7 @@ import app.cutlyra.editor.media.ProxyTranscoder
 import app.cutlyra.editor.media.ThumbnailStripGenerator
 import app.cutlyra.editor.stt.WhisperTranscriber
 import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 
 /**
@@ -1075,26 +1078,63 @@ class NativeBridgePlugin : Plugin() {
 
 	// -- Freeze Frame / GIF export (M10 sprint) -----------------------------
 
-	/** Captures the current preview frame. Device-dependent (surface readback /
-	 *  MediaCodec); returns a surfaced error on this host so CI can flag it. */
+	/** Captures a source frame for a Freeze Frame using MediaMetadataRetriever.
+	 *  Extracts the frame closest to `timestampMicros` from the source media
+	 *  identified by `sourceMediaPath`/`sourceUri`, persists it as a PNG in
+	 *  app-private cache, and returns its path. Falls back to a structured
+	 *  error when no source media is available. */
 	@PluginMethod
 	fun captureFreezeFrame(call: PluginCall) {
 		val sourceElementId = call.getString("sourceElementId")
 		val timestampMicros = call.getLong("timestampMicros") ?: 0L
+		val sourcePath = call.getString("sourceMediaPath") ?: call.getString("sourceUri")
 		if (sourceElementId.isNullOrBlank()) {
 			call.reject("sourceElementId is required", "INVALID_ARGS")
 			return
 		}
-		// Surface readback requires a live preview surface / MediaCodec encode
-		// context that is only available on a device or emulator. Return a
-		// structured error rather than crashing so callers can fall back to a
-		// web-side capture path.
-		val result = JSObject()
-		result.put("captured", false)
-		result.put("reason", "DEVICE_ONLY")
-		result.put("sourceElementId", sourceElementId)
-		result.put("timestampMicros", timestampMicros)
-		call.resolve(result)
+		if (sourcePath.isNullOrBlank()) {
+			call.reject("sourceMediaPath or sourceUri is required", "INVALID_ARGS")
+			return
+		}
+		Thread {
+			try {
+				val retriever = MediaMetadataRetriever()
+				val file = fileFromNativeUri(sourcePath)
+				if (file != null && file.exists()) {
+					retriever.setDataSource(file.absolutePath)
+				} else {
+					retriever.setDataSource(context, Uri.parse(sourcePath))
+				}
+				val bitmap = retriever.getFrameAtTime(
+					timestampMicros,
+					MediaMetadataRetriever.OPTION_CLOSEST,
+				) ?: retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST)
+				retriever.release()
+				if (bitmap == null) {
+					call.reject("could not extract frame", "CAPTURE_FAILED")
+					return@Thread
+				}
+				val frameWidth = bitmap.width
+				val frameHeight = bitmap.height
+				val outDir = File(context.cacheDir, "freeze-frames")
+				outDir.mkdirs()
+				val outFile = File(outDir, "freeze-${sourceElementId}-${timestampMicros}.png")
+				FileOutputStream(outFile).use { os ->
+					bitmap.compress(Bitmap.CompressFormat.PNG, 100, os)
+				}
+				bitmap.recycle()
+				val result = JSObject()
+				result.put("captured", true)
+				result.put("framePath", outFile.absolutePath)
+				result.put("sourceElementId", sourceElementId)
+				result.put("timestampMicros", timestampMicros)
+				result.put("width", frameWidth)
+				result.put("height", frameHeight)
+				call.resolve(result)
+			} catch (e: Exception) {
+				call.reject("freeze-frame capture failed: ${e.message}", "CAPTURE_FAILED", e)
+			}
+		}.start()
 	}
 
 	/** Validates a freeze-frame config via the pure-logic model and echoes it
