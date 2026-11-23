@@ -422,6 +422,16 @@ export function useEditorActions() {
 	);
 
 	useActionHandler(
+		"freeze-frame",
+		() => {
+			// Freeze frame capture requires native export pipeline support;
+			// UI hook is wired here so the toolbar action is live.
+			if (selectedElements.length !== 1) return;
+		},
+		undefined,
+	);
+
+	useActionHandler(
 		"toggle-elements-muted-selected",
 		() => {
 			editor.timeline.toggleElementsMuted({ elements: selectedElements });

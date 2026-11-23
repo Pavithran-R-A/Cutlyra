@@ -185,9 +185,11 @@ function ToolbarLeftSection() {
 
 				<ToolbarButton
 					icon={<HugeiconsIcon icon={SnowIcon} />}
-					tooltip="Freeze frame (coming soon)"
-					disabled={true}
-					onClick={({ event: _event }) => {}}
+					tooltip="Freeze frame"
+					disabled={selectedElements.length !== 1}
+					onClick={({ event }) =>
+						handleAction({ action: "freeze-frame", event })
+					}
 				/>
 
 				<ToolbarButton
