@@ -83,7 +83,7 @@ export const usePreviewStore = create<PreviewState>()(
 			name: "preview-settings",
 			version: 6,
 			migrate: (persistedState) => {
-				const state = persistedState as unknown as PersistedPreviewState | undefined;
+				const state = persistedState;
 
 				return {
 					activeGuide: getPersistedActiveGuide(state),

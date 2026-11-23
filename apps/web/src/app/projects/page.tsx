@@ -823,7 +823,7 @@ function ProjectMenu({
 	const handleMenuClick = ({
 		event,
 	}: {
-		event: MouseEvent<HTMLButtonElement>;
+		event: React.MouseEvent<HTMLButtonElement>;
 	}) => {
 		event.preventDefault();
 		event.stopPropagation();
@@ -832,7 +832,7 @@ function ProjectMenu({
 	const handleMenuKeyDown = ({
 		event,
 	}: {
-		event: KeyboardEvent<HTMLButtonElement>;
+		event: React.KeyboardEvent<HTMLButtonElement>;
 	}) => {
 		if (event.key !== "Enter" && event.key !== " ") {
 			return;
@@ -877,13 +877,13 @@ function ProjectMenu({
 					aria-label="Project menu"
 					onClick={(event) =>
 						handleMenuClick({
-							event: event as unknown as MouseEvent<HTMLButtonElement>,
+							event,
 						})
 					}
 					onMouseDown={(event) => event.stopPropagation()}
 					onKeyDown={(event) =>
 						handleMenuKeyDown({
-							event: event as unknown as KeyboardEvent<HTMLButtonElement>,
+							event,
 						})
 					}
 				>

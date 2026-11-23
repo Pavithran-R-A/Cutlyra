@@ -57,7 +57,7 @@ async function handleInit({ modelId }: { modelId: string }) {
 	fileBytes.clear();
 
 	try {
-		const pipelineResult: unknown = await pipeline("automatic-speech-recognition", modelId, {
+		const pipelineResult: AutomaticSpeechRecognitionPipeline = await pipeline("automatic-speech-recognition", modelId, {
 			dtype: "q4",
 			device: "auto",
 			progress_callback: (progressInfo: {
@@ -106,7 +106,7 @@ async function handleInit({ modelId }: { modelId: string }) {
 				}
 			},
 		});
-	transcriber = pipelineResult as AutomaticSpeechRecognitionPipeline;
+	transcriber = pipelineResult;
 
 		self.postMessage({ type: "init-complete" } satisfies WorkerResponse);
 	} catch (error) {

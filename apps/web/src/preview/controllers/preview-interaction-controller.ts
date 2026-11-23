@@ -332,7 +332,7 @@ export class PreviewInteractionController {
 		currentTarget,
 		pointerId,
 		button,
-	}: ReactPointerEvent): void {
+	}: React.PointerEvent<HTMLElement>): void {
 		if (this.editingTextState) return;
 		if (this.deps.preview.isMaskMode()) return;
 		if (button !== PRIMARY_POINTER_BUTTON) return;
@@ -354,7 +354,7 @@ export class PreviewInteractionController {
 			kind: "pending",
 			origin: startPos,
 			pointerId,
-			captureTarget: currentTarget as unknown as HTMLElement,
+			captureTarget: currentTarget,
 			topmostHit: hits[0] ?? null,
 			selectedHit: resolvePreferredHit({
 				hits,

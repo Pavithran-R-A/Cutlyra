@@ -47,7 +47,7 @@ export function GraphicTab({
 		fallback: element,
 	});
 
-	const liveElement = renderElement as GraphicElement;
+	const liveElement = renderElement;
 	const resolvedParams = resolveGraphicElementParamsAtTime({
 		element: liveElement,
 		localTime,
@@ -102,7 +102,7 @@ function StrokeSection({
 		fallback: element,
 	});
 
-	const liveElement = renderElement as GraphicElement;
+	const liveElement = renderElement;
 	const resolvedParams = resolveGraphicElementParamsAtTime({
 		element: liveElement,
 		localTime,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -11,12 +11,10 @@ import type { Release } from "../utils";
 const STORAGE_KEY = "last-seen-version";
 
 export function ChangelogNotification() {
-	const [release, setRelease] = useState<Release | null>(null);
-
-	useEffect(() => {
+	const [release] = useState<Release | null>(() => {
 		const releases = getSortedReleases();
 		const latest = releases[0];
-		if (!latest) return;
+		if (!latest) return null;
 
 		let storedVersion: string | null = null;
 		try {
@@ -34,7 +32,7 @@ export function ChangelogNotification() {
 		// TODO(v0.4): revert to the standard "null = first-time visitor, record silently"
 		// path. The null case intentionally shows the card for this release so existing
 		// users who never had the key get the 0.3.0 announcement.
-		if (!isOutdated) return;
+		if (!isOutdated) return null;
 
 		try {
 			localStorage.setItem(STORAGE_KEY, latest.version);
@@ -42,8 +40,8 @@ export function ChangelogNotification() {
 			// ignore
 		}
 
-		setRelease(latest);
-	}, []);
+		return latest;
+	});
 
 	if (!release) return null;
 

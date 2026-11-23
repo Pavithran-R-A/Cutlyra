@@ -78,7 +78,8 @@ function ColorPickerContent({
 	const displayHue = s === 0 || isSameHueWrapped ? internalHue : h;
 
 	useEffect(() => {
-		setInputValue(formatColorValue({ hex: value, format: colorFormat }));
+		const t = setTimeout(() => setInputValue(formatColorValue({ hex: value, format: colorFormat })), 0);
+		return () => clearTimeout(t);
 	}, [value, colorFormat]);
 
 	useEffect(() => {
@@ -372,9 +373,16 @@ function ColorPickerContent({
 				<div className="flex items-center gap-2">
 					<Select
 						value={colorFormat}
-						onValueChange={(selectedFormat) =>
-							setColorFormat(selectedFormat as unknown as ColorFormat)
-						}
+						onValueChange={(selectedFormat) => {
+							if (
+								selectedFormat === "hex" ||
+								selectedFormat === "rgb" ||
+								selectedFormat === "hsl" ||
+								selectedFormat === "hsv"
+							) {
+								setColorFormat(selectedFormat);
+							}
+						}}
 					>
 						<SelectTrigger variant="outline" className="min-w-18 max-w-18">
 							<SelectValue />
@@ -432,7 +440,8 @@ const ColorPicker = forwardRef<HTMLDivElement, ColorPickerProps>(
 		const [inputValue, setInputValue] = useState(value);
 
 		useEffect(() => {
-			setInputValue(value);
+			const t = setTimeout(() => setInputValue(value), 0);
+			return () => clearTimeout(t);
 		}, [value]);
 
 		const commitInputValue = (raw: string) => {

@@ -305,11 +305,14 @@ function BookmarkPopoverContent({
 	);
 
 	useEffect(() => {
-		setDraftColorHex(
-			(bookmark.color ?? DEFAULT_TIMELINE_BOOKMARK_COLOR)
-				.replace("#", "")
-				.toUpperCase(),
-		);
+		const t = setTimeout(() => {
+			setDraftColorHex(
+				(bookmark.color ?? DEFAULT_TIMELINE_BOOKMARK_COLOR)
+					.replace("#", "")
+					.toUpperCase(),
+			);
+		}, 0);
+		return () => clearTimeout(t);
 	}, [bookmark.color]);
 
 	const handleRemove = () => {

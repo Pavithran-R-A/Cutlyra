@@ -153,11 +153,16 @@ export function PreviewOverlayLayer({
 						return null;
 				}
 			})}
-			{(
-				Object.entries(hudInstancesByAnchor) as unknown as Array<
-					[PreviewOverlayHudAnchor, PreviewOverlayInstance[]]
-				>
-			).map(([anchor, anchorInstances]) => {
+			{Object.keys(hudInstancesByAnchor).map((anchor) => {
+				if (
+					anchor !== "top-left" &&
+					anchor !== "top-right" &&
+					anchor !== "bottom-left" &&
+					anchor !== "bottom-right"
+				) {
+					return null;
+				}
+				const anchorInstances = hudInstancesByAnchor[anchor];
 				if (anchorInstances.length === 0) {
 					return null;
 				}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Button } from "../ui/button";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -15,13 +15,12 @@ interface MobileGateProps {
 
 export function MobileGate({ children }: MobileGateProps) {
 	const router = useRouter();
-	const [show, setShow] = useState<boolean | null>(null);
-
-	useEffect(() => {
+	const [show, setShow] = useState<boolean | null>(() => {
+		if (typeof window === "undefined") return null;
 		const isMobile = window.innerWidth < 1024;
 		const acknowledged = localStorage.getItem(STORAGE_KEY) === "true";
-		setShow(isMobile && !acknowledged);
-	}, []);
+		return isMobile && !acknowledged;
+	});
 
 	if (show === null) return null;
 	if (!show) return <>{children}</>;

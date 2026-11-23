@@ -3,30 +3,17 @@ import rehypeParse from "rehype-parse";
 import { unified } from "unified";
 import { createElement } from "react";
 import type React from "react";
+import type { Root, RootContent, Element, Text } from "hast";
 
 type ProseProps = React.HTMLAttributes<HTMLElement> & {
 	as?: "article";
 	html: string;
 };
 
-type HastTextNode = {
-	type: "text";
-	value: string;
-};
-
-type HastElementNode = {
-	type: "element";
-	tagName: string;
-	properties?: Record<string, unknown>;
-	children?: HastNode[];
-};
-
-type HastRootNode = {
-	type: "root";
-	children?: HastNode[];
-};
-
-type HastNode = HastTextNode | HastElementNode | HastRootNode;
+type HastTextNode = Text;
+type HastElementNode = Element;
+type HastRootNode = Root;
+type HastNode = RootContent | Root;
 
 function toReactProps({
 	properties,
@@ -89,7 +76,7 @@ function renderHastNode({
 }
 
 function renderHtmlNodes({ html }: { html: string }): React.ReactNode {
-	const rootNode = unified().use(rehypeParse, { fragment: true }).parse(html) as unknown as HastRootNode;
+	const rootNode = unified().use(rehypeParse, { fragment: true }).parse(html);
 	return (rootNode.children ?? []).map((childNode, index) =>
 		renderHastNode({ node: childNode, key: `prose-node-${index}` }),
 	);

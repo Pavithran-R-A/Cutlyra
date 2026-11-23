@@ -21,7 +21,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
 	return (
 		<Sonner
-			theme={theme as unknown as ToasterProps["theme"]}
+			theme={
+				theme === "light" || theme === "dark" || theme === "system"
+					? theme
+					: "system"
+			}
 			className="toaster group"
 			position="bottom-right"
 			offset={20}

@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
+type ReactPointerEvent = import("react").PointerEvent<HTMLElement>;
 import type { MediaAsset } from "@/media/types";
 import {
 	getVisibleElementsWithBounds,
@@ -386,7 +386,7 @@ export class TransformHandleController {
 			animationsWithoutScale,
 			pointerId: event.pointerId,
 			captureTarget: this.capturePointer({
-				target: event.currentTarget as unknown as HTMLElement,
+				target: event.currentTarget,
 				pointerId: event.pointerId,
 			}),
 		};
@@ -421,7 +421,7 @@ export class TransformHandleController {
 			initialBoundsCy: context.bounds.cy,
 			pointerId: event.pointerId,
 			captureTarget: this.capturePointer({
-				target: event.currentTarget as unknown as HTMLElement,
+				target: event.currentTarget,
 				pointerId: event.pointerId,
 			}),
 		};
@@ -463,7 +463,7 @@ export class TransformHandleController {
 			animationsWithoutScale,
 			pointerId: event.pointerId,
 			captureTarget: this.capturePointer({
-				target: event.currentTarget as unknown as HTMLElement,
+				target: event.currentTarget,
 				pointerId: event.pointerId,
 			}),
 		};

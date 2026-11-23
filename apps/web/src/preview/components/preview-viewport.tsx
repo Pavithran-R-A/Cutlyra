@@ -464,27 +464,33 @@ export function usePreviewViewportState({
 	);
 
 	useEffect(() => {
-		setZoomState(1);
-		setCenter({
-			x: canvasWidth / 2,
-			y: canvasHeight / 2,
-		});
 		panSessionRef.current = null;
-		setIsPanning(false);
+		const t = setTimeout(() => {
+			setIsPanning(false);
+			setZoomState(1);
+			setCenter({
+				x: canvasWidth / 2,
+				y: canvasHeight / 2,
+			});
+		}, 0);
+		return () => clearTimeout(t);
 	}, [canvasHeight, canvasWidth]);
 
 	useEffect(() => {
-		setCenter((previousCenter) =>
-			clampViewportCenter({
-				canvasHeight,
-				canvasWidth,
-				centerX: previousCenter.x,
-				centerY: previousCenter.y,
-				scale: viewportScale,
-				viewportHeight,
-				viewportWidth,
-			}),
-		);
+		const t = setTimeout(() => {
+			setCenter((previousCenter) =>
+				clampViewportCenter({
+					canvasHeight,
+					canvasWidth,
+					centerX: previousCenter.x,
+					centerY: previousCenter.y,
+					scale: viewportScale,
+					viewportHeight,
+					viewportWidth,
+				}),
+			);
+		}, 0);
+		return () => clearTimeout(t);
 	}, [canvasHeight, canvasWidth, viewportHeight, viewportScale, viewportWidth]);
 
 	const sceneWidth = canvasWidth * viewportScale;

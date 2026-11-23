@@ -21,16 +21,12 @@ export function useActionHandler<A extends TAction>(
 		handlerRef.current = handler;
 	}, [handler]);
 
-	const stableHandler = useCallback(
+	const stableHandler = useCallback<TActionFunc<A>>(
 		(...parameters: [TArgOfAction<A>, TInvocationTrigger?]) => {
-			(
-				handlerRef.current as unknown as (
-					...handlerParameters: [TArgOfAction<A>, TInvocationTrigger?]
-				) => void
-			)(...parameters);
+			handlerRef.current(...parameters);
 		},
 		[],
-	) as TActionFunc<A>;
+	);
 
 	useEffect(() => {
 		const shouldBind =

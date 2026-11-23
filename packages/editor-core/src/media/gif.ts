@@ -101,13 +101,11 @@ export function getGifFrameIndexAtTime({
  * Safe to call in any environment (returns false when unavailable).
  */
 export function supportsImageDecoder(): boolean {
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-	const g = globalThis as unknown as {
-		ImageDecoder?: { isTypeSupported?: (t: string) => boolean };
-	};
+	const g = globalThis;
 	if (typeof g.ImageDecoder === "undefined") return false;
 	try {
-		return g.ImageDecoder.isTypeSupported?.("image/gif") === true;
+		const result: unknown = g.ImageDecoder.isTypeSupported?.("image/gif");
+		return result === true;
 	} catch {
 		return false;
 	}
