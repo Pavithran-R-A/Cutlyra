@@ -211,13 +211,16 @@ export const useStickersStore = create<StickersStore>()(
 					persistedState !== null &&
 					"selectedCategory" in persistedState
 				) {
-					const typedState = persistedState;
+					const typedState = persistedState as {
+						selectedCategory?: string;
+						recentStickers?: string[];
+					};
 					const category = typedState.selectedCategory ?? "all";
 					return {
 						...typedState,
 						selectedCategory:
 							category in STICKER_CATEGORIES
-								? category
+								? (category as StickerCategory)
 								: "all",
 						recentStickers: sanitizeRecentStickers({
 							recentStickers: typedState.recentStickers ?? [],

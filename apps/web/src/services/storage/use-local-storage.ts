@@ -20,17 +20,14 @@ export function useLocalStorage<T>({
 		try {
 			const storedValue = localStorage.getItem(key);
 			if (storedValue !== null) {
-				const parsedValue = JSON.parse(storedValue);
-				const typedValue = parsedValue;
-				valueRef.current = typedValue;
-				const t = setTimeout(() => setValue(typedValue), 0);
-				return () => clearTimeout(t);
+				const parsedValue = JSON.parse(storedValue) as T;
+				valueRef.current = parsedValue;
+				setValue(parsedValue);
 			}
 		} catch {
 			// localstorage might be unavailable
 		}
-		const t = setTimeout(() => setIsReady(true), 0);
-		return () => clearTimeout(t);
+		setIsReady(true);
 	}, [key]);
 
 	// sync to localstorage after hydration
@@ -48,7 +45,7 @@ export function useLocalStorage<T>({
 		({ value: nextValue }: { value: T | ((previousValue: T) => T) }) => {
 			const resolvedValue =
 				typeof nextValue === "function"
-					? nextValue(valueRef.current)
+					? (nextValue as (previousValue: T) => T)(valueRef.current)
 					: nextValue;
 
 			valueRef.current = resolvedValue;

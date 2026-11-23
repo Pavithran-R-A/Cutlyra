@@ -43,7 +43,20 @@ export const usePanelStore = create<PanelState>()(
 			name: "panel-sizes",
 			version: 2,
 			migrate: (persistedState) => {
-				const state = persistedState;
+				const state = persistedState as
+					| {
+							panels?: Partial<PanelSizes> | null;
+							toolsPanel?: number;
+							previewPanel?: number;
+							propertiesPanel?: number;
+							mainContent?: number;
+							timeline?: number;
+							tools?: number;
+							preview?: number;
+							properties?: number;
+					  }
+					| undefined
+					| null;
 
 				if (!state) return { panels: { ...PANEL_CONFIG.panels } };
 

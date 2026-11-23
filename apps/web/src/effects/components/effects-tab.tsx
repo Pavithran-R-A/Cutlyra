@@ -49,7 +49,7 @@ export function StandaloneEffectTab({
 
 	const previewParam = (key: string) => (value: number | string | boolean) => {
 		previewUpdates({
-			params: { ...renderElement.params, [key]: value },
+			params: { ...(renderElement as EffectElement).params, [key]: value },
 		});
 	};
 
@@ -60,7 +60,7 @@ export function StandaloneEffectTab({
 			</div>
 			<EffectSection
 				effect={effect}
-				renderParams={renderElement.params}
+				renderParams={(renderElement as EffectElement).params}
 				previewParam={previewParam}
 				onCommit={commit}
 			/>
@@ -88,7 +88,7 @@ export function ClipEffectsTab({
 
 	const getRenderParams = ({ effectId }: { effectId: string }): ParamValues => {
 		return (
-			renderElement.effects?.find((ef) => ef.id === effectId)
+			(renderElement as VisualElement).effects?.find((ef) => ef.id === effectId)
 				?.params ??
 			effects.find((ef) => ef.id === effectId)?.params ??
 			{}
@@ -100,7 +100,7 @@ export function ClipEffectsTab({
 		(key: string) =>
 		(value: number | string | boolean) => {
 			const updatedEffects = (
-				renderElement.effects ?? []
+				(renderElement as VisualElement).effects ?? []
 			).map((existing) =>
 				existing.id !== effectId
 					? existing

@@ -74,9 +74,7 @@ export function StickersView() {
 			<Tabs
 				value={selectedCategory}
 				onValueChange={(value) => {
-					if (value in STICKER_CATEGORIES) {
-						setSelectedCategory({ category: value });
-					}
+					setSelectedCategory({ category: value as StickerCategory });
 				}}
 				variant="underline"
 				className="mt-2 flex min-h-0 flex-1 flex-col"
@@ -300,10 +298,7 @@ function StickerSection({
 								size="sm"
 								className="h-auto gap-1 p-0 text-xs text-primary"
 								onClick={() => {
-									const category = section.action?.category;
-									if (category && category in STICKER_CATEGORIES) {
-										onSeeAll(category);
-									}
+									onSeeAll(section.action?.category as StickerCategory);
 								}}
 							>
 								See all
@@ -339,9 +334,11 @@ function StickerItem({
 	const [hasImageError, setHasImageError] = useState(false);
 
 	useEffect(() => {
-		if (!item.id) return;
-		const t = setTimeout(() => setHasImageError(false), 0);
-		return () => clearTimeout(t);
+		if (!item.id) {
+			return;
+		}
+
+		setHasImageError(false);
 	}, [item.id]);
 
 	const displayName = item.name;
