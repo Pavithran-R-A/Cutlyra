@@ -40,6 +40,7 @@ import {
 	DuplicateElementsCommand,
 	UpdateElementsCommand,
 	SplitElementsCommand,
+	FreezeFrameCommand,
 	MoveElementCommand,
 	TracksSnapshotCommand,
 	UpsertKeyframeCommand,
@@ -850,6 +851,30 @@ export class TimelineManager {
 		const command = new DuplicateElementsCommand({ elements });
 		this.editor.command.execute({ command });
 		return command.getDuplicatedElements();
+	}
+
+	freezeFrame({
+		trackId,
+		elementId,
+		splitTime,
+		holdDuration,
+		frozenMediaId,
+	}: {
+		trackId: string;
+		elementId: string;
+		splitTime: MediaTime;
+		holdDuration: MediaTime;
+		frozenMediaId: string;
+	}): string {
+		const command = new FreezeFrameCommand({
+			trackId,
+			elementId,
+			splitTime,
+			holdDuration,
+			frozenMediaId,
+		});
+		this.editor.command.execute({ command });
+		return command.getFrozenElementId();
 	}
 
 	toggleElementsVisibility({

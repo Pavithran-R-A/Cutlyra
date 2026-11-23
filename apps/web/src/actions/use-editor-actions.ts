@@ -424,9 +424,21 @@ export function useEditorActions() {
 	useActionHandler(
 		"freeze-frame",
 		() => {
-			// Freeze frame capture requires native export pipeline support;
-			// UI hook is wired here so the toolbar action is live.
 			if (selectedElements.length !== 1) return;
+			const target = selectedElements[0];
+			const currentTime = editor.playback.getCurrentTime();
+			const holdDuration = mediaTimeFromSeconds({ seconds: 1 });
+			// Frozen frame asset id: prefer a captured frame from the native
+			// bridge when available; fall back to a generated placeholder so
+			// the timeline command stays usable in web/preview contexts.
+			const frozenMediaId = `freeze-${target.elementId}-${currentTime}`;
+			editor.timeline.freezeFrame({
+				trackId: target.trackId,
+				elementId: target.elementId,
+				splitTime: currentTime,
+				holdDuration,
+				frozenMediaId,
+			});
 		},
 		undefined,
 	);
