@@ -15,6 +15,8 @@ import {
 	setCaptionHighlightEnabled,
 	getCaptionBorderEnabled,
 	setCaptionBorderEnabled,
+	getCaptionShadowEnabled,
+	setCaptionShadowEnabled,
 } from "../../editor/captions-actions";
 import { setCaptionText } from "../../editor/actions";
 import { ToggleRow } from "../editor/param-row";
@@ -65,6 +67,7 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 	// on timeline changes, same as the caption textarea's words).
 	const highlightEnabled = getCaptionHighlightEnabled({ editor });
 	const borderEnabled = getCaptionBorderEnabled({ editor });
+	const shadowEnabled = getCaptionShadowEnabled({ editor });
 	const [srtStatus, setSrtStatus] = useState<"idle" | "copied" | "error">("idle");
 	const [srtText, setSrtText] = useState<string>("");
 	// Subtitle import (SRT/VTT). Kept as a textarea draft rather than a file
@@ -229,6 +232,11 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 				label="Black border"
 				active={borderEnabled}
 				onToggle={() => setCaptionBorderEnabled({ editor, enabled: !borderEnabled })}
+			/>
+			<ToggleRow
+				label="Drop shadow"
+				active={shadowEnabled}
+				onToggle={() => setCaptionShadowEnabled({ editor, enabled: !shadowEnabled })}
 			/>
 			<button type="button" className="cc-panel-actions__btn" onClick={handleExportSrt}>
 				<span>

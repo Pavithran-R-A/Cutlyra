@@ -91,6 +91,28 @@ export function renderCaptionToContext({
 	ctx.lineJoin = "round";
 	ctx.lineCap = "round";
 
+	// Drop shadow pass — drawn first so it sits behind the background pill,
+	// the active-word pill, the stroke and the glyph fill. Percent-of-font-size
+	// -> canvas pixels, matching the text element's shadow and strokeWidth.
+	if (style.shadowEnabled) {
+		const toPx = (percent: number) => (percent / 100) * line.scaledFontSize;
+		ctx.save();
+		ctx.font = line.fontString;
+		ctx.textAlign = "left";
+		ctx.textBaseline = "middle";
+		ctx.fillStyle = style.shadowColor;
+		ctx.shadowColor = style.shadowColor;
+		ctx.shadowBlur = toPx(style.shadowBlur);
+		ctx.shadowOffsetX = toPx(style.shadowOffsetX);
+		ctx.shadowOffsetY = toPx(style.shadowOffsetY);
+		for (const lineBox of line.lines) {
+			for (const word of lineBox.words) {
+				ctx.fillText(word.text, lineBox.offsetX + word.x, lineBox.centerY);
+			}
+		}
+		ctx.restore();
+	}
+
 	// Block-level background pill spans the whole wrapped block.
 	if (style.backgroundEnabled) {
 		drawBackgroundPill({

@@ -40,7 +40,7 @@ Source-truth check performed:
 - **Preview pixels verified (2026-11-21, supersedes the earlier "not compared" note):** `apps/mobile/src/preview-parity/main.ts` renders real `buildFrameDescriptor` output through the real `wasmCompositor` on a WebGL2 context (the backend Android System WebView uses) and samples the rendered canvas. Same 320x240 four-quadrant fixture and same sample points/classification rules as `ExportCropInstrumentedTest`, so both paths are judged against one ground truth. 19/19 cases pass: uncropped, left/right/top/bottom half, centre-quarter, off-centre, portrait input, landscape input, fit vs fill letterboxing, rotate 90, flip X, two layers (cropped overlay on an uncropped background), a new video frame arriving in the same pooled canvas, and four crop edits applied across successive frames. Build with `apps/mobile/vite.preview-parity.config.ts`; it is deliberately not part of the shipped Capacitor bundle.
 - **Uniform layout bug found by that run and fixed:** `layer.wgsl` declared the crop as `vec4f`, which WGSL aligns to 16 bytes — offset 48 and an 80-byte struct, against a 64-byte `#[repr(C)]` buffer that wrote the rectangle at offset 40. Every preview frame therefore failed pipeline validation ("buffer bound with size 64 ... requires at least 80", invalid command buffer) and the canvas rendered black. The shader now declares four `f32` crop components and documents the byte layout; `compositor.rs` has `layer_uniform_layout_matches_the_shader` pinning size and every offset. `rust/wasm/pkg` was rebuilt from the fix.
 - **Stale video frames:** mediabunny's `CanvasSink` pools canvases, so a later frame can arrive in the *same* canvas object the texture cache had already uploaded. Video resolutions now carry `sourceRevision` (`mediaId`/source time/frame timestamp), external textures emit it as `contentHash`, and the cache compares it before treating a matching source object as a hit. Verified in the browser harness (new pixels in the same canvas are re-uploaded) and unit-tested (`isExternalTextureCacheHit`).
-- iOS export has no crop mapper yet.
+- iOS export crop mapper added (EdlCrop in EdlModel, crop threaded through SourcePlacement and applied in TransitionCompositor.place before orientation/fit). Not yet compiled/verified — no Xcode on this machine; verify-export-pipeline harness is the gate.
 
 ### 1C Other panels
 - Transcript intentionally shows the "not in Cutlyra yet" sheet (per `docs/DECISIONS.md`). Template is now a real library — see Phase 2.
@@ -52,17 +52,18 @@ Source-truth check performed:
 | Feature | State | Blocker / owner |
 | --- | --- | --- |
 | Reverse | PARTIAL (param only) | native export + compositor; no UI |
-| Freeze frame | GAP | needs engine + UI + export |
-| Per-clip crop | IMPLEMENTED; preview pixels + native export verified | iOS mapper not written; physical-device fingertip check pending |
+| Freeze frame | GAP | needs engine + UI + export | (TS timing helpers only so far) |
+| GIF import (media type + timing) | PARTIAL (TS timing helpers + ImageDecoder capability detection) | native import/export + decoder fallback pending |
+| Per-clip crop | IMPLEMENTED; preview pixels + Android native export verified; iOS mapper implemented (unverified build) | physical-device fingertip check pending; iOS build verification pending (no Xcode) |
 | Background blur (mobile) | GAP (engine exists) | native Android export support |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
-| Text shadow | IMPLEMENTED for text elements (preview + native export by construction) | captions not covered |
+| Text shadow | IMPLEMENTED for text elements AND captions (preview + native export by construction) | caption shadow shipped 2026-11-22; no exported frame sampled |
 | Audio fades | IMPLEMENTED (params + EDL envelope + Android ramp + panel; decoded-audio test in CI) | iOS export ignores the envelope; no per-clip fade on library sounds until re-materialised as uploads |
 | Sticker/graphic export | IMPLEMENTED (prerendered overlay + native skip) | no emulator run of the full app journey yet |
-| Animated stickers/GIF | GAP | asset + renderer |
+| Animated stickers (procedural graphics) | IMPLEMENTED + TESTED (6 animated graphic definitions; time-aware GraphicNode; preview+export via existing overlay pipeline; 21 unit tests pin time-dependence, determinism, static invariance and loop boundaries) | GIF import/export still missing; device/native export verification pending | |
 | Templates | IMPLEMENTED (12 offline templates + schema/planner/apply engine, UI wired) | No on-device Android UI-automation or exported-MP4 parity run yet |
-| Emoji / non-shape sticker categories | GAP | no bundled emoji assets; Shapes+Flags are the only offline categories |
+| Emoji / non-shape sticker categories | IMPLEMENTED (procedural data-URL SVG provider, 20 emoji tiles) | device/UI verification pending; no bundled binary assets (offline by construction) |
 | Masks/chroma key | GAP | heavy engine work |
 | New transition types | GAP | native compositor |
 | 4K export verification | BLOCKED | device/encoder |

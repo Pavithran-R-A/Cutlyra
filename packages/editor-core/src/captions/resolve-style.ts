@@ -16,6 +16,12 @@ export interface ResolvedCaptionStyle {
 	highlightColor: string;
 	strokeColor: string;
 	strokeWidth: number;
+	// Drop shadow (percent-of-font-size units, like strokeWidth).
+	shadowEnabled: boolean;
+	shadowColor: string;
+	shadowBlur: number;
+	shadowOffsetX: number;
+	shadowOffsetY: number;
 	backgroundEnabled: boolean;
 	backgroundColor: string;
 	activeWordBackgroundEnabled: boolean;
@@ -82,6 +88,11 @@ export function resolveCaptionStyle({
 		highlightColor: readString({ params, key: "highlightColor", fallback: "#FFDE59" }),
 		strokeColor: readString({ params, key: "strokeColor", fallback: "#000000" }),
 		strokeWidth: readNumber({ params, key: "strokeWidth", fallback: 6 }),
+		shadowEnabled: readBoolean({ params, key: "shadowEnabled", fallback: false }),
+		shadowColor: readString({ params, key: "shadowColor", fallback: "#000000" }),
+		shadowBlur: readNumber({ params, key: "shadowBlur", fallback: 25 }),
+		shadowOffsetX: readNumber({ params, key: "shadowOffsetX", fallback: 4 }),
+		shadowOffsetY: readNumber({ params, key: "shadowOffsetY", fallback: 6 }),
 		backgroundEnabled: readBoolean({ params, key: "background.enabled", fallback: false }),
 		backgroundColor: readString({ params, key: "background.color", fallback: "#000000" }),
 		activeWordBackgroundEnabled: readBoolean({

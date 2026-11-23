@@ -7,6 +7,8 @@ export interface GraphicRenderContext {
 	params: ParamValues;
 	width: number;
 	height: number;
+	/** Local (element-relative) time in seconds. 0 for static previews. */
+	time?: number;
 }
 
 export interface GraphicDefinition {
@@ -14,6 +16,8 @@ export interface GraphicDefinition {
 	name: string;
 	keywords: string[];
 	params: ParamDefinition[];
+	/** When true the graphic is regenerated every frame using `time`. */
+	animated?: boolean;
 	render(context: GraphicRenderContext): void;
 }
 

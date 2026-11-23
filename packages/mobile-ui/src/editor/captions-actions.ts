@@ -55,7 +55,7 @@ import {
 	ApplyCaptionStyleCommand,
 	UpdateElementsCommand,
 } from "@cutlyra/editor-core/commands";
-import { DEFAULT_TEXT_BORDER_WIDTH } from "@cutlyra/editor-core/text/typography";
+import { DEFAULT_TEXT_BORDER_WIDTH, DEFAULT_TEXT_SHADOW } from "@cutlyra/editor-core/text/typography";
 import { windowSegmentsToClip } from "./caption-window";
 import {
 	getNativeBridge,
@@ -486,6 +486,58 @@ export function setCaptionBorderEnabled({
 					},
 				},
 			})),
+		}),
+	});
+}
+
+/** Round 33 (caption shadow): captions are a synced family, so the shadow
+ *  reads from the first one. */
+export function getCaptionShadowEnabled({ editor }: { editor: EditorCore }): boolean {
+	const first = getAllCaptions({ editor })[0];
+	if (!first) return false;
+	return first.element.params.shadowEnabled === true;
+}
+
+/** Flips the drop shadow on EVERY caption in one undoable patch. Seeds
+ *  DEFAULT_TEXT_SHADOW values when switching on, mirroring the text
+ *  element's Shadow toggle. */
+export function setCaptionShadowEnabled({
+	editor,
+	enabled,
+}: {
+	editor: EditorCore;
+	enabled: boolean;
+}): void {
+	const captions = getAllCaptions({ editor });
+	if (captions.length === 0) return;
+	editor.command.execute({
+		command: new UpdateElementsCommand({
+			updates: captions.map(({ trackId, element }) => {
+				const params: ParamValues = { ...element.params, shadowEnabled: enabled };
+				if (enabled) {
+					params.shadowColor =
+						typeof element.params.shadowColor === "string"
+							? element.params.shadowColor
+							: DEFAULT_TEXT_SHADOW.color;
+					params.shadowBlur =
+						typeof element.params.shadowBlur === "number"
+							? element.params.shadowBlur
+							: DEFAULT_TEXT_SHADOW.blurPercent;
+					params.shadowOffsetX =
+						typeof element.params.shadowOffsetX === "number"
+							? element.params.shadowOffsetX
+							: DEFAULT_TEXT_SHADOW.offsetXPercent;
+					params.shadowOffsetY =
+						typeof element.params.shadowOffsetY === "number"
+							? element.params.shadowOffsetY
+							: DEFAULT_TEXT_SHADOW.offsetYPercent;
+				}
+				return {
+					trackId,
+					elementId: element.id,
+					patch: { params },
+				};
+			}),
 		}),
 	});
 }

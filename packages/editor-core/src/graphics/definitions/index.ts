@@ -1,5 +1,13 @@
 import { graphicsRegistry } from "../registry";
 import { arrowGraphicDefinition } from "./arrow";
+import {
+	pulsingHeartGraphicDefinition,
+	spinningStarGraphicDefinition,
+	bouncingArrowGraphicDefinition,
+	confettiGraphicDefinition,
+	rotatingRingGraphicDefinition,
+	checkmarkPopGraphicDefinition,
+} from "./animated";
 import { ellipseGraphicDefinition } from "./ellipse";
 import { heartGraphicDefinition } from "./heart";
 import { polygonGraphicDefinition } from "./polygon";
@@ -13,6 +21,12 @@ const defaultGraphicDefinitions = [
 	starGraphicDefinition,
 	heartGraphicDefinition,
 	arrowGraphicDefinition,
+	pulsingHeartGraphicDefinition,
+	spinningStarGraphicDefinition,
+	bouncingArrowGraphicDefinition,
+	confettiGraphicDefinition,
+	rotatingRingGraphicDefinition,
+	checkmarkPopGraphicDefinition,
 ];
 
 export function registerDefaultGraphics(): void {
@@ -29,10 +43,16 @@ export function registerDefaultGraphics(): void {
 
 export {
 	arrowGraphicDefinition,
+	bouncingArrowGraphicDefinition,
+	checkmarkPopGraphicDefinition,
+	confettiGraphicDefinition,
 	ellipseGraphicDefinition,
 	heartGraphicDefinition,
 	polygonGraphicDefinition,
+	pulsingHeartGraphicDefinition,
 	rectangleGraphicDefinition,
+	rotatingRingGraphicDefinition,
+	spinningStarGraphicDefinition,
 	starGraphicDefinition,
 };
 export { STROKE_ALIGN_PARAM } from "./shared";
