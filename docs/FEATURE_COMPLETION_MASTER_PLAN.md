@@ -53,7 +53,7 @@ Source-truth check performed:
 | --- | --- | --- |
 | Reverse | PARTIAL (param only) | native export + compositor; no UI |
 | Freeze frame | GAP | needs engine + UI + export | (TS timing helpers only so far) |
-| GIF import (media type + timing) | PARTIAL (TS timing helpers + ImageDecoder capability detection) | native import/export + decoder fallback pending |
+| GIF import (media type + timing) | PARTIAL (TS timing helpers + ImageDecoder capability detection + 19 tests) | Native Android picker/custody/export blocked: no adb/emulator/gradle JDK on this host; Kotlin implementation not yet written |
 | Per-clip crop | IMPLEMENTED; preview pixels + Android native export verified; iOS mapper implemented (unverified build) | physical-device fingertip check pending; iOS build verification pending (no Xcode) |
 | Background blur (mobile) | GAP (engine exists) | native Android export support |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
