@@ -1097,7 +1097,11 @@ class NativeBridgePlugin : Plugin() {
 		call.resolve(result)
 	}
 
-	/** Persists a freeze-frame config via the pure-logic model. */
+	/** Validates a freeze-frame config via the pure-logic model and echoes it
+	 *  back for the caller to persist through the project save pipeline.
+	 *  Actual persistence of scene tracks happens in the editor core command
+	 *  (FreezeFrameCommand) + project save; this method does not claim to
+	 *  persist on its own. */
 	@PluginMethod
 	fun persistFreezeFrame(call: PluginCall) {
 		val raw = call.getString("configJson")
@@ -1109,7 +1113,8 @@ class NativeBridgePlugin : Plugin() {
 		}
 		val result = JSObject()
 		result.put("id", config.id)
-		result.put("persisted", true)
+		result.put("validated", true)
+		result.put("configJson", config.toJson().toString())
 		call.resolve(result)
 	}
 
