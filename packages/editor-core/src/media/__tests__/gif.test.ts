@@ -56,23 +56,23 @@ describe("buildGifFrameTimeline", () => {
 
 describe("getGifFrameIndexAtTime", () => {
 	it("empty -> 0", () => {
-		expect(getGifFrameIndexAtTime(0, [])).toBe(0);
+		expect(getGifFrameIndexAtTime({ timeMs: 0, frameDurationsMs: [] })).toBe(0);
 	});
 	it("selects correct frame", () => {
 		const d = [100, 100, 100];
-		expect(getGifFrameIndexAtTime(0, d)).toBe(0);
-		expect(getGifFrameIndexAtTime(50, d)).toBe(0);
-		expect(getGifFrameIndexAtTime(100, d)).toBe(1);
-		expect(getGifFrameIndexAtTime(250, d)).toBe(2);
+		expect(getGifFrameIndexAtTime({ timeMs: 0, frameDurationsMs: d })).toBe(0);
+		expect(getGifFrameIndexAtTime({ timeMs: 50, frameDurationsMs: d })).toBe(0);
+		expect(getGifFrameIndexAtTime({ timeMs: 100, frameDurationsMs: d })).toBe(1);
+		expect(getGifFrameIndexAtTime({ timeMs: 250, frameDurationsMs: d })).toBe(2);
 	});
 	it("loops", () => {
 		const d = [100, 100];
-		expect(getGifFrameIndexAtTime(250, d)).toBe(0); // 250%200=50 -> frame0
+		expect(getGifFrameIndexAtTime({ timeMs: 250, frameDurationsMs: d })).toBe(0); // 250%200=50 -> frame0
 	});
 	it("handles zero/invalid delays", () => {
 		const d = [0, 100];
-		expect(getGifFrameIndexAtTime(0, d)).toBe(0);
-		expect(getGifFrameIndexAtTime(150, d)).toBe(1);
+		expect(getGifFrameIndexAtTime({ timeMs: 0, frameDurationsMs: d })).toBe(0);
+		expect(getGifFrameIndexAtTime({ timeMs: 150, frameDurationsMs: d })).toBe(1);
 	});
 });
 

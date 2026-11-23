@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 // Global path-call record used by the Path2D stub so geometry built on
 // Path2D objects (heart, arrow, rectangle, ...) is observable in tests.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const G = globalThis as unknown as { __pathCalls?: string[] };
 G.__pathCalls = [];
 if (typeof (globalThis as { Path2D?: unknown }).Path2D === "undefined") {
@@ -67,6 +68,7 @@ function makeRecordingContext(): {
 	calls: string[];
 } {
 	const calls: string[] = [];
+	// eslint-disable-next-line opencut/prefer-object-params
 	const record = (name: string, ...args: unknown[]) => {
 		calls.push(`${name}(${args.map((a) => JSON.stringify(a)).join(",")})`);
 	};

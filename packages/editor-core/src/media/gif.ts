@@ -77,10 +77,13 @@ export function buildGifFrameTimeline(
  * Resolve which frame index is active at `timeMs` within a single loop.
  * `timeMs` is clamped into [0, totalDuration). Returns 0 for empty input.
  */
-export function getGifFrameIndexAtTime(
-	timeMs: number,
-	frameDurationsMs: number[],
-): number {
+export function getGifFrameIndexAtTime({
+	timeMs,
+	frameDurationsMs,
+}: {
+	timeMs: number;
+	frameDurationsMs: number[];
+}): number {
 	if (frameDurationsMs.length === 0) return 0;
 	const total = frameDurationsMs.reduce((a, b) => a + normalizeGifFrameDelay(b), 0);
 	if (total <= 0) return 0;
@@ -98,6 +101,7 @@ export function getGifFrameIndexAtTime(
  * Safe to call in any environment (returns false when unavailable).
  */
 export function supportsImageDecoder(): boolean {
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 	const g = globalThis as unknown as {
 		ImageDecoder?: { isTypeSupported?: (t: string) => boolean };
 	};
