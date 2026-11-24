@@ -1158,9 +1158,9 @@ class NativeBridgePlugin : Plugin() {
 		call.resolve(result)
 	}
 
-	/** Export-pipeline hook entry point for GIF assets. Validates the plan and
-	 *  returns a surfaced status; actual frame feeding happens in the exporter
-	 *  (device-dependent MediaCodec). */
+	/** Export-pipeline hook entry point for GIF assets. The native exporter has
+	 *  no GIF frame feeder yet (an animated GIF reaches the EDL as a still
+	 *  image), so this reports not-ready instead of claiming readiness. */
 	@PluginMethod
 	fun prepareGifExport(call: PluginCall) {
 		val assetId = call.getString("assetId")
@@ -1172,8 +1172,11 @@ class NativeBridgePlugin : Plugin() {
 		}
 		val result = JSObject()
 		result.put("assetId", assetId)
-		result.put("ready", true)
-		result.put("deviceEncode", "DEVICE_ONLY")
+		result.put("ready", false)
+		result.put(
+			"reason",
+			"Native GIF frame feeding is not implemented; animated GIFs export as a still frame."
+		)
 		call.resolve(result)
 	}
 }
