@@ -79,25 +79,32 @@ class ExportFreezeFrameInstrumentedTest {
         outputFile.delete()
     }
 
-    private fun buildFixtureEdl(holdTicks: Long = ticksPerSecond): Edl {
-        val halfTicks = ticksPerSecond // 1s each half of the 2s source
+    private fun buildFixtureEdl(
+        holdTicks: Long = ticksPerSecond,
+        sourceFile: File = sourceClip,
+        sourceDurationTicks: Long = 2 * ticksPerSecond,
+        leftTicks: Long = ticksPerSecond,
+        frozenFrameFile: File = frozenFrame,
+        hasAudio: Boolean = true,
+    ): Edl {
+        val halfTicks = leftTicks
         val asset = EdlAsset(
             assetId = "asset-src",
             kind = EdlAssetKind.VIDEO,
-            name = sourceClip.name,
-            sourceUri = sourceClip.toURI().toString(),
+            name = sourceFile.name,
+            sourceUri = sourceFile.toURI().toString(),
             codec = null,
             width = 320,
             height = 240,
-            durationTicks = 2 * ticksPerSecond,
+            durationTicks = sourceDurationTicks,
             rotationDegrees = 0,
-            hasAudio = true,
+            hasAudio = hasAudio,
         )
         val imageAsset = EdlAsset(
             assetId = "asset-freeze",
             kind = EdlAssetKind.IMAGE,
-            name = frozenFrame.name,
-            sourceUri = frozenFrame.toURI().toString(),
+            name = frozenFrameFile.name,
+            sourceUri = frozenFrameFile.toURI().toString(),
             codec = null,
             width = 320,
             height = 240,
@@ -156,9 +163,9 @@ class ExportFreezeFrameInstrumentedTest {
             assetId = asset.assetId,
             name = "right",
             startTicks = halfTicks + holdTicks,
-            durationTicks = halfTicks,
+            durationTicks = sourceDurationTicks - halfTicks,
             sourceStartTicks = halfTicks,
-            sourceEndTicks = 2 * halfTicks,
+            sourceEndTicks = sourceDurationTicks,
             speed = EdlRational(1, 1),
             maintainPitch = false,
             volumeDb = 0.0,
@@ -183,7 +190,7 @@ class ExportFreezeFrameInstrumentedTest {
             clips = listOf(clipLeft, clipFreeze, clipRight),
         )
 
-        val totalTicks = halfTicks + holdTicks + halfTicks
+        val totalTicks = halfTicks + holdTicks + (sourceDurationTicks - halfTicks)
         return Edl(
             meta = EdlMeta(
                 edlVersion = 1,
@@ -281,6 +288,95 @@ class ExportFreezeFrameInstrumentedTest {
             "duration ${durationMs2}ms should be ~${totalSec * 1000}ms",
             durationMs2 in (totalSec * 1000 - 500)..(totalSec * 1000 + 500),
         )
+    }
+
+    /**
+     * Deterministic frame-identity verification (mission M2 exit criterion).
+     *
+     * The source is a generated 3s video with solid RED 0-1s, GREEN 1-2s and
+     * BLUE 2-3s segment. Freezing at 0.5s must capture the RED frame, hold it
+     * for 1s, and then resume the source at 0.5s — so the 4s export must read
+     * RED at 0.25s and at 1.0s (hold), GREEN at 2.0s and BLUE at 3.0s. A
+     * placeholder/wrong-frame capture (e.g. the first keyframe, a black
+     * image, or the frame at trim start) fails these assertions.
+     */
+    @Test
+    fun export_preserves_the_selected_source_frame_and_source_continuity() {
+        val colorSource = File(context.cacheDir, "freeze_color_source_${System.nanoTime()}.mp4")
+        val colorFrame = File(context.cacheDir, "freeze_color_frame_${System.nanoTime()}.png")
+        val colorOutput = File(context.cacheDir, "freeze_color_export_${System.nanoTime()}.mp4")
+        try {
+            SolidColorVideoFactory.create(
+                output = colorSource,
+                segments = listOf(
+                    SolidColorVideoFactory.RED,
+                    SolidColorVideoFactory.GREEN,
+                    SolidColorVideoFactory.BLUE,
+                ),
+                width = 320,
+                height = 240,
+                segmentDurationUs = 1_000_000L,
+                fps = 30,
+            )
+
+            // Capture the real frame at 0.5s (RED) exactly the way the app does.
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(colorSource.absolutePath)
+            val bitmap = retriever.getFrameAtTime(500_000L, MediaMetadataRetriever.OPTION_CLOSEST)
+            assertNotNull("must extract the frame at 500ms", bitmap)
+            colorFrame.outputStream().use { out ->
+                bitmap!!.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+            }
+            bitmap!!.recycle()
+            retriever.release()
+
+            // Freeze at 0.5s (red), hold 1s, resume source at 0.5s.
+            val edl = buildFixtureEdl(
+                holdTicks = ticksPerSecond,
+                sourceFile = colorSource,
+                sourceDurationTicks = 3 * ticksPerSecond,
+                leftTicks = ticksPerSecond / 2,
+                frozenFrameFile = colorFrame,
+                hasAudio = false,
+            )
+
+            val latch = CountDownLatch(1)
+            val events = mutableListOf<Media3Exporter.Event>()
+            Media3Exporter.start(context, edl, colorOutput) { event ->
+                events.add(event)
+                if (event is Media3Exporter.Event.Done || event is Media3Exporter.Event.Error) {
+                    latch.countDown()
+                }
+            }
+            assertTrue(
+                "colored freeze export did not terminate within 60s",
+                latch.await(60, TimeUnit.SECONDS),
+            )
+            val terminal = events.lastOrNull()
+            assertTrue("expected colored freeze export to succeed, got: $terminal", terminal is Media3Exporter.Event.Done)
+            val done = terminal as Media3Exporter.Event.Done
+
+            val probe = MediaProbe.probe(done.outputFile, mimeTypeHint = "video/mp4")
+            val durationMs = probe.durationMicros / 1000
+            assertTrue(
+                "export duration ${durationMs}ms should be ~4000ms (0.5s + 1s hold + 2.5s)",
+                durationMs in 3500..4500,
+            )
+
+            // Before the freeze: the source's RED segment.
+            SolidColorVideoFactory.assertSolidColor(done.outputFile, atUs = 250_000L, expected = "red")
+            // Mid-hold: the captured RED frame, not the frame at the hold's end.
+            SolidColorVideoFactory.assertSolidColor(done.outputFile, atUs = 1_000_000L, expected = "red")
+            // Late hold: still RED — the still interval is really held.
+            SolidColorVideoFactory.assertSolidColor(done.outputFile, atUs = 1_400_000L, expected = "red")
+            // After resume: the source continuation (GREEN then BLUE).
+            SolidColorVideoFactory.assertSolidColor(done.outputFile, atUs = 2_000_000L, expected = "green")
+            SolidColorVideoFactory.assertSolidColor(done.outputFile, atUs = 3_000_000L, expected = "blue")
+        } finally {
+            colorSource.delete()
+            colorFrame.delete()
+            colorOutput.delete()
+        }
     }
 
     private fun assertFrameDecodesNonBlack(file: File, atUs: Long) {
