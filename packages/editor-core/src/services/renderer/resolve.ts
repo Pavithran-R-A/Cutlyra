@@ -38,6 +38,8 @@ import {
 	type ResolvedGraphicNodeState,
 } from "./nodes/graphic-node";
 import { ImageNode, loadImageSource } from "./nodes/image-node";
+import { selectGifFrameIndex } from "@/media/gif-asset";
+import { loadGifSource } from "@/media/gif-frames";
 import { StickerNode, loadStickerSource } from "./nodes/sticker-node";
 import { TextNode, type ResolvedTextNodeState } from "./nodes/text-node";
 import {
@@ -272,6 +274,10 @@ async function resolveImageNode({
 	node: ImageNode;
 	context: ResolveContext;
 }): Promise<ResolvedVisualSourceNodeState | null> {
+	if (node.params.gif) {
+		return resolveGifImageNode({ node, context });
+	}
+
 	const source = await loadImageSource({
 		url: node.params.url,
 		maxSourceSize: node.params.maxSourceSize,
@@ -291,6 +297,67 @@ async function resolveImageNode({
 		source: source.source,
 		sourceWidth: source.width,
 		sourceHeight: source.height,
+	};
+}
+
+/**
+ * Animated GIF: the clip-local time (plus its source trim) selects the frame,
+ * so playback animates and trimming/seeking land on the exact frame. Frames
+ * come from `gif-frames.ts`; a decode/load failure hides the clip instead of
+ * rejecting the whole render tree (same policy as stickers).
+ */
+async function resolveGifImageNode({
+	node,
+	context,
+}: {
+	node: ImageNode;
+	context: ResolveContext;
+}): Promise<ResolvedVisualSourceNodeState | null> {
+	const gif = node.params.gif;
+	if (!gif) return null;
+
+	const clipTime = context.time - node.params.timeOffset;
+	if (clipTime < 0 || clipTime >= node.params.duration) {
+		return null;
+	}
+
+	const visualState = resolveVisualState({
+		params: node.params,
+		context,
+		sourceWidth: gif.width,
+		sourceHeight: gif.height,
+	});
+	if (!visualState) {
+		return null;
+	}
+
+	let source: Awaited<ReturnType<typeof loadGifSource>>;
+	try {
+		source = await loadGifSource({ url: node.params.url });
+	} catch {
+		return null;
+	}
+
+	const frameIndex = selectGifFrameIndex({
+		metadata: source.metadata,
+		localTimeSec: visualState.localTime,
+		trimStartSec: mediaTimeToSeconds({
+			time: roundMediaTime({ time: node.params.trimStart }),
+		}),
+	});
+	const frameCanvas = source.getFrameCanvas(frameIndex);
+	if (!frameCanvas) {
+		return null;
+	}
+
+	return {
+		...visualState,
+		source: frameCanvas,
+		sourceWidth: source.metadata.width,
+		sourceHeight: source.metadata.height,
+		// Each frame is stable content in its own canvas, but report the index
+		// so the compositor's texture cache uploads when the frame changes.
+		sourceRevision: `gif:${frameIndex}`,
 	};
 }
 

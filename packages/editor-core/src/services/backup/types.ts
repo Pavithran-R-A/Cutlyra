@@ -1,3 +1,5 @@
+import type { GifAssetMetadata } from "@/media/gif-asset";
+
 /**
  * GitHub #35 / Linear PAV-51 — project backup archives.
  *
@@ -67,6 +69,8 @@ export interface ArchivedAsset {
 	sourceRotationDegrees?: 0 | 90 | 180 | 270;
 	sourceWidth?: number;
 	sourceHeight?: number;
+	/** Animated-GIF metadata, so a restored GIF keeps playing. */
+	gif?: GifAssetMetadata;
 	files: ArchivedFileEntry[];
 }
 

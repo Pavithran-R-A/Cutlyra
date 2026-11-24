@@ -94,6 +94,7 @@ function buildTrackNodes({
 					nodes.push(
 						new ImageNode({
 							url: mediaAsset.url,
+							...(mediaAsset.gif && { gif: mediaAsset.gif }),
 							duration: element.duration,
 							timeOffset: element.startTime,
 							trimStart: element.trimStart,

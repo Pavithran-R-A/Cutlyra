@@ -273,6 +273,7 @@ export async function exportProjectArchive({
 			sourceRotationDegrees: asset.sourceRotationDegrees,
 			sourceWidth: asset.sourceWidth,
 			sourceHeight: asset.sourceHeight,
+			gif: asset.gif,
 			files,
 		});
 	}
@@ -448,6 +449,7 @@ export async function restoreProjectArchive({
 				sourceRotationDegrees: first.sourceRotationDegrees,
 				sourceWidth: first.sourceWidth,
 				sourceHeight: first.sourceHeight,
+				gif: first.gif,
 			};
 
 			if (primary) {
@@ -905,6 +907,7 @@ export async function applyNativeImport({
 					sourceRotationDegrees: archived?.sourceRotationDegrees,
 					sourceWidth: archived?.sourceWidth,
 					sourceHeight: archived?.sourceHeight,
+					gif: archived?.gif,
 					nativeRelativePath: proxy?.newPath,
 					sourceNativeRelativePath: source?.newPath,
 					thumbnailNativeRelativePath: thumb?.newPath,

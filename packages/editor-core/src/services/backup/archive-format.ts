@@ -29,6 +29,7 @@
  * unit tests, and mirrored by the native Kotlin reader/writer.
  */
 
+import type { GifAssetMetadata } from "@/media/gif-asset";
 import {
 	ARCHIVE_FORMAT,
 	ARCHIVE_FORMAT_VERSION,
@@ -502,6 +503,41 @@ function optionalNumber({
 	return value;
 }
 
+/** Validates optional animated-GIF metadata on an archived asset. */
+function toArchivedGif(value: unknown): GifAssetMetadata | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) manifestFail("asset gif must be an object");
+	const width = optionalNumber({ value: value.width, field: "gif.width" });
+	const height = optionalNumber({ value: value.height, field: "gif.height" });
+	const loopCount = optionalNumber({
+		value: value.loopCount,
+		field: "gif.loopCount",
+	});
+	if (width === undefined || !Number.isInteger(width) || width <= 0) {
+		manifestFail("gif.width must be a positive integer");
+	}
+	if (height === undefined || !Number.isInteger(height) || height <= 0) {
+		manifestFail("gif.height must be a positive integer");
+	}
+	if (loopCount === undefined || !Number.isInteger(loopCount) || loopCount < 0) {
+		manifestFail("gif.loopCount must be a non-negative integer");
+	}
+	if (!Array.isArray(value.frameDelaysMs) || value.frameDelaysMs.length === 0) {
+		manifestFail("gif.frameDelaysMs must be a non-empty array");
+	}
+	const frameDelaysMs = value.frameDelaysMs.map((delay: unknown, index: number) => {
+		const parsed = optionalNumber({
+			value: delay,
+			field: `gif.frameDelaysMs[${index}]`,
+		});
+		if (parsed === undefined || parsed <= 0) {
+			manifestFail("gif.frameDelaysMs entries must be positive numbers");
+		}
+		return parsed;
+	});
+	return { width, height, loopCount, frameDelaysMs };
+}
+
 /** Validates ONE archived asset, returning it fully typed. */
 function toArchivedAsset(value: unknown): ArchivedAsset {
 	if (!isRecord(value)) manifestFail("bad asset");
@@ -539,6 +575,7 @@ function toArchivedAsset(value: unknown): ArchivedAsset {
 		sourceRotationDegrees: rotationDegrees,
 		sourceWidth: optionalNumber({ value: value.sourceWidth, field: "sourceWidth" }),
 		sourceHeight: optionalNumber({ value: value.sourceHeight, field: "sourceHeight" }),
+		gif: toArchivedGif(value.gif),
 		files: value.files.map((file: unknown) => toArchivedFileEntry(file)),
 	};
 }

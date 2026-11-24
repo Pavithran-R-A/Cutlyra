@@ -1,3 +1,4 @@
+import type { GifAssetMetadata } from "@/media/gif-asset";
 import type { MediaType } from "@/media/types";
 import type {
 	TProject,
@@ -79,6 +80,10 @@ export interface MediaAssetData {
 	 *  restored proxy. Never carries absolute paths/URLs: they die with the
 	 *  container. */
 	thumbnailStrip?: MediaThumbnailStripFrame[];
+	/** Animated-GIF metadata (width/height/loop count/frame delays). Present
+	 *  only for animated GIF imports; the frames are re-decoded from `file` on
+	 *  demand by the renderer, so no pixel data is persisted. */
+	gif?: GifAssetMetadata;
 	/** Deterministic identity for a bundled-library sound asset (GitHub #63):
 	 *  the content-derived id from `media/library-audio.ts`
 	 *  (`libraryAudioAssetId`). Present only for assets materialized from a
