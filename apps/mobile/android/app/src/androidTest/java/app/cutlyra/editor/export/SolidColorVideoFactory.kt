@@ -191,13 +191,24 @@ object SolidColorVideoFactory {
     }
 
     /** Decodes the center pixel at [atUs] as RGB (for assertions/messages). */
-    fun centerPixelAt(file: File, atUs: Long): Triple<Int, Int, Int> {
+    fun centerPixelAt(file: File, atUs: Long): Triple<Int, Int, Int> =
+        pixelAt(file, atUs, xFraction = 0.5, yFraction = 0.5)
+
+    /** Decodes the pixel at a fractional position in the frame at [atUs]. */
+    fun pixelAt(
+        file: File,
+        atUs: Long,
+        xFraction: Double,
+        yFraction: Double,
+    ): Triple<Int, Int, Int> {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(file.absolutePath)
             val frame = retriever.getFrameAtTime(atUs, MediaMetadataRetriever.OPTION_CLOSEST)
             assertNotNull("expected a decodable frame at ${atUs}us", frame)
-            val pixel = frame!!.getPixel(frame.width / 2, frame.height / 2)
+            val x = (frame!!.width * xFraction).toInt().coerceIn(0, frame.width - 1)
+            val y = (frame.height * yFraction).toInt().coerceIn(0, frame.height - 1)
+            val pixel = frame.getPixel(x, y)
             frame.recycle()
             return Triple((pixel shr 16) and 0xFF, (pixel shr 8) and 0xFF, pixel and 0xFF)
         } finally {

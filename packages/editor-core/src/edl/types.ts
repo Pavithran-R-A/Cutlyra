@@ -72,6 +72,23 @@ export interface EdlMeta {
 export type EdlAssetKind = "video" | "image" | "audio";
 
 /**
+ * One pre-decoded animated-GIF frame (additive to v1). `uri` is a native file
+ * handle to a PNG the importer wrote into media custody; `durationTicks` is
+ * that frame's own delay. A native mapper that does not understand `gif`
+ * still sees a valid ordinary image asset.
+ */
+export interface EdlGifFrame {
+	uri: string;
+	durationTicks: number;
+}
+
+export interface EdlGifAsset {
+	/** 0 = loop forever. */
+	loopCount: number;
+	frames: EdlGifFrame[];
+}
+
+/**
  * A piece of source media. Assets are referenced by clips and never inlined.
  *
  * `sourceUri` / `proxyUri` are NATIVE HANDLES supplied by the host through
@@ -98,6 +115,8 @@ export interface EdlAsset {
 	/** Display rotation baked into the container metadata. */
 	rotationDegrees: 0 | 90 | 180 | 270;
 	hasAudio: boolean;
+	/** Present only for animated GIFs whose frames the host decoded to files. */
+	gif?: EdlGifAsset;
 }
 
 export type EdlTrackKind = "main" | "overlay" | "audio";

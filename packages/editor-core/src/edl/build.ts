@@ -38,6 +38,7 @@ import {
 	type EdlCaptionWord,
 	type EdlClip,
 	type EdlClipKind,
+	type EdlGifAsset,
 	type EdlKeyframe,
 	type EdlKeyframeInterpolation,
 	type EdlOutput,
@@ -66,6 +67,10 @@ export interface EdlAssetResolution {
 	proxyUri?: string | null;
 	codec?: string | null;
 	rotationDegrees?: 0 | 90 | 180 | 270;
+	/** Resolved native file handles for an animated GIF's pre-decoded
+	 *  frames. Hosts fill this from the asset's persisted frame paths; absent
+	 *  means the asset exports as an ordinary still. */
+	gif?: EdlGifAsset;
 }
 
 export type EdlAssetResolver = (args: {
@@ -419,6 +424,7 @@ function buildAssets({
 						: null,
 				rotationDegrees: resolved?.rotationDegrees ?? 0,
 				hasAudio: asset.hasAudio === true,
+				...(resolved?.gif ? { gif: resolved.gif } : {}),
 			};
 		});
 }

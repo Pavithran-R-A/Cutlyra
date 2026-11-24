@@ -124,12 +124,40 @@ export function buildNativeEdlAssetResolver(): EdlAssetResolver {
 			: null;
 		const sourceUri = source ?? proxy;
 		if (!sourceUri) return null;
+
+		// Animated GIF: hand the exporter every decoded frame with its own
+		// delay, so Media3 plays the animation rather than one still. A
+		// missing frame is a hard error — silently exporting a still would
+		// misrepresent the project.
+		const gifFrames = asset.gif?.frames;
+		const gif =
+			gifFrames && gifFrames.length > 0
+				? {
+						loopCount: asset.gif?.loopCount ?? 0,
+						frames: gifFrames.map((frame) => {
+							const uri = resolveNativeMediaRawPath(frame.relativePath);
+							if (!uri) {
+								throw new Error(
+									`GIF frame is missing from media custody: ${frame.relativePath}`,
+								);
+							}
+							return {
+								uri,
+								durationTicks: mediaTimeFromSeconds({
+									seconds: frame.delayMs / 1000,
+								}),
+							};
+						}),
+				  }
+				: undefined;
+
 		return {
 			sourceUri,
 			proxyUri: proxy,
 			// The proxy is baked upright; only the original needs its
 			// display rotation applied at export time.
 			rotationDegrees: source ? (asset.sourceRotationDegrees ?? 0) : 0,
+			...(gif ? { gif } : {}),
 		};
 	};
 }
@@ -1347,6 +1375,14 @@ interface EdlMediaAssetInput {
 	hasAudio?: boolean;
 	ephemeral?: boolean;
 	thumbnailUrl?: string;
+	/** Animated-GIF metadata (see editor-core `media/gif-asset.ts`). */
+	gif?: {
+		width: number;
+		height: number;
+		loopCount: number;
+		frameDelaysMs: number[];
+		frames?: { relativePath: string; delayMs: number }[];
+	};
 }
 
 /**
@@ -1375,6 +1411,7 @@ export function toEdlMediaAssets({ assets }: { assets: MediaAsset[] }): EdlMedia
 		hasAudio: asset.hasAudio,
 		ephemeral: asset.ephemeral,
 		thumbnailUrl: asset.thumbnailUrl,
+		gif: asset.gif,
 		// Custody identities — the EDL asset resolver
 		// (buildNativeEdlAssetResolver) reads these; dropping them here
 		// starved the resolver and re-broke export (caught 2026-08-20).

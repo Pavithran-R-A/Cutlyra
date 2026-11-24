@@ -101,6 +101,7 @@ import type {
 	PickProgress,
 	Platform,
 	ProxyProgress,
+	GifAssetDecodeResult,
 	ProxySpec,
 	RestoredMediaFile,
 	ThumbnailStrip,
@@ -195,6 +196,10 @@ interface NativeTranscribeResult {
 interface NativeBridgePluginSpec {
 	getDeviceInfo(): Promise<NativeDeviceInfo>;
 	getMediaRoot(): Promise<{ root: string }>;
+	decodeGifAsset(params: {
+		uri: string;
+		assetId: string;
+	}): Promise<GifAssetDecodeResult>;
 	saveGeneratedAudio(params: { assetId: string; base64: string }): Promise<{
 		relativePath: string;
 	}>;
@@ -486,6 +491,23 @@ export function createCapacitorBridge({
 				// A native build predating the method rejects with Capacitor's
 				// "not implemented" — degrade to absolute-path persistence
 				// rather than failing the import flow.
+				return null;
+			}
+		},
+
+		async decodeGifAsset({
+			uri,
+			assetId,
+		}: {
+			uri: string;
+			assetId: string;
+		}): Promise<GifAssetDecodeResult | null> {
+			try {
+				return await plugin.decodeGifAsset({ uri, assetId });
+			} catch {
+				// A build predating the method rejects with Capacitor's "not
+				// implemented"; callers surface that as an explicit unsupported
+				// import rather than silently importing the first frame.
 				return null;
 			}
 		},

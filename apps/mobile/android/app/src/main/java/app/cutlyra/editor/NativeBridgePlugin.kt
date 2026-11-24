@@ -35,6 +35,7 @@ import app.cutlyra.editor.media.MediaImporter
 import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
 import app.cutlyra.editor.media.FreezeFrameConfig
+import app.cutlyra.editor.media.gif.GifAssetPreparer
 import app.cutlyra.editor.media.ProxyTranscoder
 import app.cutlyra.editor.media.ThumbnailStripGenerator
 import app.cutlyra.editor.stt.WhisperTranscriber
@@ -1158,26 +1159,99 @@ class NativeBridgePlugin : Plugin() {
 		call.resolve(result)
 	}
 
-	/** Export-pipeline hook entry point for GIF assets. The native exporter has
-	 *  no GIF frame feeder yet (an animated GIF reaches the EDL as a still
-	 *  image), so this reports not-ready instead of claiming readiness. */
+	/**
+	 * Decodes an imported GIF into per-frame PNGs inside media custody and
+	 * returns its timing metadata. Called during native import so the project
+	 * carries the same dimensions, per-frame delays and loop count the shared
+	 * renderer uses — native-custody assets have a zero-byte JS stub, so the
+	 * JS decoder can never see the bytes.
+	 */
+	@PluginMethod
+	fun decodeGifAsset(call: PluginCall) {
+		val uri = call.getString("uri")
+		val assetId = call.getString("assetId")
+		if (uri.isNullOrBlank() || assetId.isNullOrBlank()) {
+			call.reject("assetId and uri are required", "INVALID_ARGS")
+			return
+		}
+		try {
+			val file = fileFromNativeUri(uri)
+			if (file == null || !file.isFile) {
+				call.reject("GIF file not found: $uri", "IO_ERROR")
+				return
+			}
+			if (!GifAssetPreparer.isGifFile(file)) {
+				call.reject("Not a GIF: ${file.name}", "NOT_A_GIF")
+				return
+			}
+			val prepared = GifAssetPreparer.prepareFromFile(
+				gifFile = file,
+				outputRoot = context.noBackupFilesDir,
+				assetId = assetId,
+			)
+			val frames = JSArray()
+			for (frame in prepared.frames) {
+				frames.put(
+					JSObject().apply {
+						put("relativePath", frame.relativePath)
+						put("delayMs", frame.delayMs)
+					}
+				)
+			}
+			call.resolve(
+				JSObject().apply {
+					put("assetId", assetId)
+					put("width", prepared.width)
+					put("height", prepared.height)
+					put("loopCount", prepared.loopCount)
+					put("totalDurationMs", prepared.totalDurationMs)
+					put("frames", frames)
+				}
+			)
+		} catch (e: Exception) {
+			call.reject("Could not decode GIF: ${e.message}", "GIF_DECODE_FAILED")
+		}
+	}
+
+	/**
+	 * Export-pipeline readiness check for GIF assets. Ready ONLY when every
+	 * frame file the caller lists actually exists in media custody — the
+	 * exporter feeds those exact frames into the EDL, so this never claims
+	 * readiness for a plan it cannot deliver.
+	 */
 	@PluginMethod
 	fun prepareGifExport(call: PluginCall) {
 		val assetId = call.getString("assetId")
-		val width = call.getInt("width") ?: 0
-		val height = call.getInt("height") ?: 0
-		if (assetId.isNullOrBlank() || width <= 0 || height <= 0) {
-			call.reject("assetId, width, height are required", "INVALID_ARGS")
+		val frames = call.getArray("frames")
+		if (assetId.isNullOrBlank() || frames == null) {
+			call.reject("assetId and frames[{relativePath}] are required", "INVALID_ARGS")
 			return
 		}
-		val result = JSObject()
-		result.put("assetId", assetId)
-		result.put("ready", false)
-		result.put(
-			"reason",
-			"Native GIF frame feeding is not implemented; animated GIFs export as a still frame."
+		val root = context.noBackupFilesDir
+		val missing = mutableListOf<String>()
+		var verified = 0
+		for (index in 0 until frames.length()) {
+			val relativePath = frames.optJSONObject(index)?.optString("relativePath").orEmpty()
+			if (relativePath.isBlank() || !File(root, relativePath).isFile) {
+				missing.add(if (relativePath.isBlank()) "frame[$index]" else relativePath)
+			} else {
+				verified++
+			}
+		}
+		call.resolve(
+			JSObject().apply {
+				put("assetId", assetId)
+				put("ready", missing.isEmpty() && verified > 0)
+				put("frameCount", verified)
+				when {
+					missing.isNotEmpty() ->
+						put("reason", "Missing decoded GIF frame(s): ${missing.joinToString()}")
+					verified == 0 ->
+						put("reason", "No decoded GIF frames were provided for $assetId")
+				}
+			}
 		)
-		call.resolve(result)
 	}
+
 }
 

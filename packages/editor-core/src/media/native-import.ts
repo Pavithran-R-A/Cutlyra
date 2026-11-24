@@ -7,6 +7,21 @@ import {
 } from "@/media/native-paths";
 import type { MediaAsset, MediaType } from "@/media/types";
 import type { MediaThumbnailStripFrame } from "@/services/storage/types";
+import {
+	gifPlaybackDurationSeconds,
+	type GifAssetMetadata,
+} from "@/media/gif-asset";
+import { isGifFileName } from "@/media/gif";
+
+/** Native GIF decode result (structurally `GifAssetDecodeResult` in
+ *  `@cutlyra/native-bridge`, which depends on this package — not the reverse). */
+export interface NativeGifDecodeResult {
+	width: number;
+	height: number;
+	loopCount: number;
+	totalDurationMs: number;
+	frames: { relativePath: string; delayMs: number }[];
+}
 import { generateUUID } from "@/utils/id";
 
 /**
@@ -96,6 +111,13 @@ export interface NativeMediaSource {
 		assetId: string;
 		base64: string;
 	}) => Promise<{ relativePath: string } | null>;
+	/** See `@cutlyra/native-bridge` `NativeBridge.decodeGifAsset`. OPTIONAL:
+	 *  a shell predating the method cannot decode a native-custody GIF, and a
+	 *  GIF import must then fail loudly instead of degrading to a still. */
+	decodeGifAsset?: (params: {
+		uri: string;
+		assetId: string;
+	}) => Promise<NativeGifDecodeResult | null>;
 }
 
 const MIME_BY_KIND: Record<MediaType, string> = {
@@ -144,10 +166,15 @@ export function buildMediaAssetFromNativeImport({
 	proxy,
 	toPlaybackUri,
 	mediaRoot = null,
+	gif = undefined,
 }: {
 	handle: NativeMediaHandle;
 	proxy: NativeProxyProgress;
 	toPlaybackUri: (nativeUri: string) => string;
+	/** Animated-GIF metadata decoded natively (see `importMediaFromNative`'s
+	 *  GIF branch). Overrides the probe's zero still duration and fills the
+	 *  metadata the renderer/EDL need. */
+	gif?: GifAssetMetadata;
 	/** Custody root from `NativeMediaSource.getMediaRoot()`; enables
 	 *  container-relative persistence (media/native-paths.ts). */
 	mediaRoot?: string | null;
@@ -209,9 +236,13 @@ export function buildMediaAssetFromNativeImport({
 		// what the webview will actually be compositing against — falling
 		// back to the source probe for kinds/cases with no proxy resize
 		// (e.g. an image import, which has no video proxy at all).
-		width: proxy.proxyWidth ?? handle.width,
-		height: proxy.proxyHeight ?? handle.height,
-		duration: handle.durationMicros / 1_000_000,
+		width: gif?.width ?? proxy.proxyWidth ?? handle.width,
+		height: gif?.height ?? proxy.proxyHeight ?? handle.height,
+		// A still has no duration of its own; an animated GIF plays one loop
+		// (or every loop for a finite GIF), matching the shared-renderer path.
+		duration: gif
+			? gifPlaybackDurationSeconds(gif)
+			: handle.durationMicros / 1_000_000,
 		fps,
 		hasAudio: handle.hasAudio,
 		// Only the strip's first frame — `MediaAssetData` has one
@@ -243,6 +274,7 @@ export function buildMediaAssetFromNativeImport({
 			path: handle.uri,
 			root: mediaRoot,
 		}),
+		...(gif ? { gif } : {}),
 		sourceRotationDegrees: readHandleRotation(handle),
 		// The ORIGINAL's pixel dimensions — `width`/`height` above are the
 		// proxy's. Output-quality sizing (canvas adoption → export
@@ -450,11 +482,56 @@ export async function importMediaFromNative({
 			continue;
 		}
 
+		// Animated GIFs need a native decode: the custody asset's JS `file` is a
+		// zero-byte stub, so the shared decoder never sees the bytes. A missing
+		// decoder or a failed decode FAILS the import explicitly — importing an
+		// animated GIF as a silently still first frame is the defect this
+		// branch exists to prevent.
+		let gif: GifAssetMetadata | undefined;
+		if (handle.kind === "image" && isGifFileName(handle.fileName)) {
+			const decode = source.decodeGifAsset;
+			if (!decode) {
+				const message =
+					"This build cannot decode animated GIFs (native GIF decoder missing)";
+				failed.push({ handle, error: message });
+				toast.error({
+					message: `Couldn't import "${handle.fileName}"`,
+					description: message,
+				});
+				continue;
+			}
+			try {
+				const decoded = await decode({ uri: handle.uri, assetId: handle.id });
+				if (!decoded || decoded.frames.length === 0) {
+					throw new Error("the GIF decoder returned no frames");
+				}
+				gif = {
+					width: decoded.width,
+					height: decoded.height,
+					loopCount: decoded.loopCount,
+					frameDelaysMs: decoded.frames.map((frame) => frame.delayMs),
+					frames: decoded.frames.map((frame) => ({
+						relativePath: frame.relativePath,
+						delayMs: frame.delayMs,
+					})),
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				failed.push({ handle, error: message });
+				toast.error({
+					message: `Couldn't import "${handle.fileName}"`,
+					description: message,
+				});
+				continue;
+			}
+		}
+
 		const assetInput = buildMediaAssetFromNativeImport({
 			handle,
 			proxy: finalProxy,
 			toPlaybackUri: source.toPlaybackUri,
 			mediaRoot,
+			gif,
 		});
 
 		if (!commitAsset) {

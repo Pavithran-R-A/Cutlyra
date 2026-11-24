@@ -14,6 +14,14 @@ import {
 } from "./gif";
 import type { GifDecodeResult } from "./gif-decoder";
 
+/** One GIF frame the NATIVE importer decoded to a PNG in media custody. */
+export interface GifAssetFrameFile {
+	/** Custody-root-relative PNG path. */
+	relativePath: string;
+	/** This frame's delay in milliseconds (already normalized). */
+	delayMs: number;
+}
+
 export interface GifAssetMetadata {
 	/** Logical-screen width from the GIF header. */
 	width: number;
@@ -23,6 +31,13 @@ export interface GifAssetMetadata {
 	loopCount: number;
 	/** Per-frame delays in milliseconds, already normalized. */
 	frameDelaysMs: number[];
+	/**
+	 * Present when the NATIVE importer pre-decoded the frames into media
+	 * custody (Android native-custody assets have no JS-readable bytes). The
+	 * shared renderer ignores this and decodes from the URL; the native EDL
+	 * exporter feeds these files into Media3 frame by frame.
+	 */
+	frames?: GifAssetFrameFile[];
 }
 
 /** Builds the persisted metadata from a decoded GIF. */

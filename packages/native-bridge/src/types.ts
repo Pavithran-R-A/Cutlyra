@@ -313,6 +313,29 @@ export class NativeBridgeError extends Error {
  * EDL v1 is, so multi-param methods here are reshaped to match. Behavior is
  * unchanged.
  */
+/** One decoded GIF frame, written into media custody by the native importer. */
+export interface GifAssetFrame {
+	/** Custody-root-relative PNG path. */
+	relativePath: string;
+	/** This frame's delay in milliseconds (already normalized). */
+	delayMs: number;
+}
+
+/**
+ * Result of decoding an animated GIF natively. Mirrors the shared JS decoder's
+ * output (`GifAssetMetadata` + frame files) so the native and web import paths
+ * produce the same project model: dimensions, normalized per-frame delays and
+ * the Netscape loop count.
+ */
+export interface GifAssetDecodeResult {
+	width: number;
+	height: number;
+	/** 0 = loop forever. */
+	loopCount: number;
+	totalDurationMs: number;
+	frames: GifAssetFrame[];
+}
+
 export interface NativeBridge {
 	readonly platform: Platform;
 	/** Subscribe to Android hardware Back; returning false delegates to native exit. */
@@ -346,6 +369,17 @@ export interface NativeBridge {
 	 * playback broke after an Xcode reinstall).
 	 */
 	getMediaRoot(): Promise<string | null>;
+	/**
+	 * Decode an imported animated GIF into per-frame PNGs in media custody and
+	 * return its timing metadata. Native-custody assets have no JS-readable
+	 * bytes, so the shared decoder cannot run for them; absent on platforms/
+	 * builds without the method (callers must treat that as unsupported rather
+	 * than importing an animated GIF as a still).
+	 */
+	decodeGifAsset?(params: {
+		uri: string;
+		assetId: string;
+	}): Promise<GifAssetDecodeResult | null>;
 	/**
 	 * Persist a JS-generated audio clip (a bundled library sound) into the
 	 * media custody root so it becomes a real, durable asset the native
