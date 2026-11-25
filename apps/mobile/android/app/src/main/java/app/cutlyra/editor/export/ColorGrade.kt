@@ -28,12 +28,13 @@ import app.cutlyra.editor.edl.EdlEffect
  *     runs in CI) exports a graded clip and asserts the DECODED MP4 frame
  *     matches the grade computed from the ungraded export's own pixels.
  *
- * Deliberately NOT mapped (and therefore refused, never silently dropped):
- * `sharpen` (neighbour sampling) and `vignette` (position-varying) — neither
- * is expressible as one 4x4 matrix. Refusing keeps the "do not ship
- * preview-only effects" rule intact: a project that uses them fails export
- * with a message naming the exact params instead of exporting as if they
- * were never applied.
+ * `sharpen` (neighbour sampling) and `vignette` (position-varying) cannot be
+ * one matrix, so they are NOT folded into it: [sharpenPassesFor] and
+ * [vignettePassesFor] expose the very shader units `colorGradeUniforms()`
+ * produces, and `EdlToComposition` renders them with
+ * [ColorGradeSpatialEffect] — read before the matrix pass (the WGSL shader
+ * sharpens the sampled frame first) and after it (vignette is applied last),
+ * exactly the order `color_adjust.wgsl` uses.
  */
 data class ColorGrade(
     val brightness: Float = 0f,
@@ -53,11 +54,11 @@ data class ColorGrade(
             sharpen == 0f &&
             vignette == 0f
 
-    /** Params this grade cannot express as one matrix — always reported. */
-    fun unsupportedParams(): List<String> = buildList {
-        if (sharpen != 0f) add("sharpen")
-        if (vignette != 0f) add("vignette")
-    }
+    /** Shader-unit sharpen (panel 0..100 -> 0..1), as `colorGradeUniforms()`. */
+    fun sharpenUniform(): Float = (sharpen / 100f).coerceIn(0f, 1f)
+
+    /** Shader-unit vignette (panel 0..100 -> 0..1), as `colorGradeUniforms()`. */
+    fun vignetteUniform(): Float = (vignette / 100f).coerceIn(0f, 1f)
 
     /**
      * The grade as a 4x4 RGB matrix, column-major `FloatArray(16)`
@@ -186,10 +187,9 @@ data class ColorGrade(
          * effects skipped, matching how the preview renderer drops them).
          *
          * @throws ExportUnsupportedException for an effect type native export
-         *   does not implement, for a param it does not read, or for a grade
-         *   carrying `sharpen`/`vignette`. Refusing — rather than skipping —
-         *   is the whole point: a dropped visual edit is a silent data-loss
-         *   bug.
+         *   does not implement or for a param it does not read. Refusing —
+         *   rather than skipping — is the whole point: a dropped visual edit
+         *   is a silent data-loss bug.
          */
         fun gradesFor(clip: EdlClip): List<ColorGrade> = clip.effects
             .filter { it.enabled }
@@ -211,20 +211,28 @@ data class ColorGrade(
                         "refuses them rather than silently dropping a visual edit",
                 )
             }
-            val grade = when (effect.type) {
+            return when (effect.type) {
                 ADJUST_TYPE -> fromAdjust(effect.params)
                 else -> fromFilter(effect.params)
             }
-            val unsupported = grade.unsupportedParams()
-            if (unsupported.isNotEmpty()) {
-                throw ExportUnsupportedException(
-                    "clip ${clip.clipId} uses ${unsupported.joinToString()} on an adjust/filter " +
-                        "effect; those params need a spatial shader pass that native export does " +
-                        "not implement yet (GitHub #48) and are not silently dropped",
-                )
-            }
-            return grade
         }
+
+        /**
+         * Shader-unit sharpen for every grade in EDL order — one GL pass each,
+         * in the same order as the matrix product. Empty when nothing sharpens.
+         */
+        fun sharpenPassesFor(clip: EdlClip): List<Float> = gradesFor(clip)
+            .map { it.sharpenUniform() }
+            .filter { it > 0f }
+
+        /**
+         * Shader-unit vignette for every grade in EDL order. Preview applies
+         * vignette AFTER the colour ops (`color_adjust.wgsl`), so export adds
+         * these passes after the matrix pass.
+         */
+        fun vignettePassesFor(clip: EdlClip): List<Float> = gradesFor(clip)
+            .map { it.vignetteUniform() }
+            .filter { it > 0f }
 
         /**
          * One combined matrix applying every grade in EDL order (first grade
@@ -238,7 +246,19 @@ data class ColorGrade(
             for (grade in grades) {
                 combined = multiply(grade.rgbMatrix(), combined)
             }
+            // A grade carrying ONLY spatial params (sharpen/vignette, no affine
+            // slider) has the identity as its matrix. Returning it would add a
+            // pointless colour pass — the spatial passes already do the work.
+            if (isIdentity(combined)) return null
             return combined
+        }
+
+        private fun isIdentity(matrix: FloatArray): Boolean {
+            for (i in 0 until 16) {
+                val expected = if (i % 5 == 0) 1f else 0f
+                if (kotlin.math.abs(matrix[i] - expected) > 1e-6f) return false
+            }
+            return true
         }
 
         private val IDENTITY = floatArrayOf(

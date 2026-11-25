@@ -95,6 +95,31 @@ must be validated in CI or on a physical device.
    `org.json:json:20250517` and `mockito-core:5.20.0`, which are not cached
    in offline mode. Run with network access: `./gradlew testDebugUnitTest`.
 
+## Colour grade: sharpen & vignette (RESOLVED 2026-11-25)
+
+Before this, a project using either Adjust slider could not be exported at all:
+`ColorGrade.unsupportedParams()` named them and `EdlToComposition` threw
+`ExportUnsupportedException` for the whole export, even though the preview
+rendered them in `color_adjust.wgsl`.
+
+`ColorGradeSpatialEffect` now renders both as a real one-input GL pass with the
+WGSL shader's own formulas and constants — unsharp mask (4 neighbours, 1px,
+`* 1.5`) added before `ColorGradeMatrixEffect`, radial `smoothstep(0.35, 0.9,
+length(uv - 0.5) * 1.6)` vignette added after it. Panel units reach the shader
+through the same `/100` mapping as `colorGradeUniforms()`, pinned by the shared
+fixtures (`generate-color-grade-fixtures.ts` -> `spatial` per case).
+
+Verified on the emulator by `ExportSharpenVignetteInstrumentedTest`: the
+striped source is exported with and without each slider, the MP4 is decoded,
+and sharpen raises edge contrast >10% without moving mean luma by 25 levels,
+while vignette drops the corner band below 60% of the ungraded value and keeps
+the centre within 10 levels. `ColorGradeMatrixTest` covers the JVM mapping.
+
+Remaining limits: stacked Adjust + Filter grades render each sharpen pass
+before all colour matrices and each vignette after them (preview interleaves
+per effect); this only differs when two grades on one clip both use spatial
+params.
+
 ## Invariants preserved
 
 - Static graphics unchanged; transformation/crop/opacity/layer order covered

@@ -56,6 +56,7 @@ Source-truth check performed:
 | GIF import (media type + timing) | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | real per-frame decode with per-frame delays + loop count, EDL frame feed, decode-based export preflight; see Phase 7 |
 | Per-clip crop | IMPLEMENTED; preview pixels + Android native export verified; iOS mapper implemented (unverified build) | physical-device fingertip check pending; iOS build verification pending (no Xcode) |
 | Background blur (mobile) | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | single-input `BackgroundBlurEffect` (custom `GlShaderProgram`: blurred fill-cropped backdrop + sharp fit foreground, 9 taps) driven by `BackgroundBlurMath`, the same `intensity/5 × resolution/reference` formula the preview uses (both pinned by tests sharing fixtures). `meta.background` is parsed by `EdlMeta`; geometry is computed from the post-crop/transform frame, so rotation, crop and Fit/Fill are honoured. UI: Background sheet toggle + 0–500 intensity slider through `UpdateProjectSettingsCommand` (undo/redo + save/reopen/archive come from project settings). `ExportBackgroundBlurInstrumentedTest` decodes exports: sharp fitted foreground, non-black blurred same-source backdrop, stronger intensity blurs more, portrait-on-landscape and landscape-on-portrait. |
+| Adjust: Sharpen & Vignette | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | native `ColorGradeSpatialEffect` (unsharp mask before the affine matrix, radial vignette after it — the WGSL shader's order and constants); no longer refused at export; see Phase 9 |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
 | Text shadow | IMPLEMENTED for text elements AND captions (preview + native export by construction) | caption shadow shipped 2026-11-22; no exported frame sampled |
@@ -402,6 +403,39 @@ row behind until the next reverse prune removes the file, because `undo`
 restores the element rather than deleting an asset row; variable-frame-rate
 sources are sampled by timestamp (each output frame is the closest displayed
 source frame), so frame counts follow the output fps, not the source's.
+
+## Phase 9 — Adjust Sharpen & Vignette fully exported (implemented 2026-11-25)
+
+**Gap this closes.** The Adjust panel's `sharpen` and `vignette` sliders are
+real preview edits (`color_adjust.wgsl` renders all seven sliders in one pass),
+but Android export refused them: `ColorGrade.unsupportedParams()` listed both
+and `EdlToComposition` threw `ExportUnsupportedException` for the WHOLE export,
+so touching either slider made a project unexportable.
+
+**Implementation.** `ColorGradeSpatialEffect` is a real one-input GL pass with
+five taps, transcribed from the WGSL shader with its constants unchanged:
+
+- sharpen: unsharp mask against the 4-neighbour average at a 1px radius,
+  `c += (c - n/4) * sharpen * 1.5`;
+- vignette: `falloff = smoothstep(0.35, 0.9, length(uv - 0.5) * 1.6)`,
+  `c *= 1 - falloff * vignette`.
+
+Order matches preview exactly: sharpen passes are added BEFORE
+`ColorGradeMatrixEffect`, vignette passes AFTER it. Panel units become shader
+units through the same `/100` mapping as `colorGradeUniforms()`, pinned by the
+shared fixture file (`scripts/generate-color-grade-fixtures.ts` now emits
+`spatial` units per case and `ColorGradeMatrixTest` asserts them). The output
+frame keeps the input size, so crop, rotation, Fit/Fill and the overlay stage
+are untouched; undo/redo, save/reopen and archive/restore come from the
+existing effect list in project state.
+
+**Verification.** `ExportSharpenVignetteInstrumentedTest` exports the
+deterministic striped source with and without each slider, decodes the MP4 and
+measures: sharpen raises decoded edge contrast by >10% without shifting mean
+luma by 25 levels; vignette drops the corner band below 60% of the ungraded
+value while the centre band stays within 10 levels. `ColorGradeMatrixTest`
+(JVM) pins the spatial units and matrix behaviour against the TypeScript
+fixtures, and `bun test` covers the TypeScript side.
 
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.

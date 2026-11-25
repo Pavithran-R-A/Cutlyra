@@ -18,12 +18,21 @@ object PatternVideoFactory {
     /** Stripe width in source pixels (alternating black / white). */
     const val STRIPE_WIDTH = 20
 
+    /**
+     * Stripe luminances. `235/16` (studio-range extremes) are the defaults the
+     * blur/GIF tests rely on. A sharpen test needs HEADROOM instead: a step
+     * between 235 and 16 is already clipped to 254/0 in an encoded file, so an
+     * unsharp mask has nowhere to overshoot. Mid-grey stripes (`180/70`) leave
+     * room for the overshoot and make the effect measurable.
+     */
     fun create(
         output: File,
         width: Int = 320,
         height: Int = 240,
         durationUs: Long = 2_000_000L,
         fps: Int = 30,
+        brightLuma: Int = 235,
+        darkLuma: Int = 16,
     ): File {
         require(width % 2 == 0 && height % 2 == 0)
         val mime = MediaFormat.MIMETYPE_VIDEO_AVC
@@ -74,7 +83,7 @@ object PatternVideoFactory {
             while (frame < frameCount) {
                 val inputIndex = codec.dequeueInputBuffer(10_000L)
                 if (inputIndex >= 0) {
-                    fill(codec, inputIndex, width, height)
+                    fill(codec, inputIndex, width, height, brightLuma, darkLuma)
                     codec.queueInputBuffer(
                         inputIndex,
                         0,
@@ -106,8 +115,15 @@ object PatternVideoFactory {
         return output
     }
 
-    private fun fill(codec: MediaCodec, inputIndex: Int, width: Int, height: Int) {
-        fun luma(x: Int): Int = if ((x / STRIPE_WIDTH) % 2 == 0) 235 else 16
+    private fun fill(
+        codec: MediaCodec,
+        inputIndex: Int,
+        width: Int,
+        height: Int,
+        brightLuma: Int,
+        darkLuma: Int,
+    ) {
+        fun luma(x: Int): Int = if ((x / STRIPE_WIDTH) % 2 == 0) brightLuma else darkLuma
 
         val image = codec.getInputImage(inputIndex)
         if (image != null) {

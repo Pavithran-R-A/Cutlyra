@@ -121,15 +121,22 @@ class ColorGradeMatrixTest {
     }
 
     @Test
-    fun unsupported_params_match_the_typescript_side() {
+    fun spatial_shader_units_match_the_typescript_side() {
         val cases = fixture().getJSONArray("cases")
         for (caseIndex in 0 until cases.length()) {
             val json = cases.getJSONObject(caseIndex)
             val grade = gradeOf(json.getJSONObject("grade"))
-            val expected = json.getJSONArray("unsupported").let { arr ->
-                (0 until arr.length()).map { arr.getString(it) }
-            }
-            assertEquals(json.getString("name"), expected, grade.unsupportedParams())
+            val spatial = json.getJSONObject("spatial")
+            assertClose(
+                spatial.getDouble("sharpen").toFloat(),
+                grade.sharpenUniform(),
+                "${json.getString("name")} sharpen uniform",
+            )
+            assertClose(
+                spatial.getDouble("vignette").toFloat(),
+                grade.vignetteUniform(),
+                "${json.getString("name")} vignette uniform",
+            )
         }
     }
 
@@ -235,19 +242,40 @@ class ColorGradeMatrixTest {
     }
 
     @Test
-    fun unsupported_params_and_unknown_effect_types_refuse_instead_of_dropping() {
-        val sharpenClip = clip(listOf(effect(ColorGrade.ADJUST_TYPE, mapOf("sharpen" to 40))))
-        try {
-            ColorGrade.combinedMatrixFor(sharpenClip)
-            fail("sharpen must be refused, not silently dropped")
-        } catch (e: ExportUnsupportedException) {
-            assertTrue(e.message!!.contains("sharpen"))
-        }
+    fun sharpen_and_vignette_become_spatial_passes_not_matrix_entries() {
+        val spatial = clip(
+            listOf(effect(ColorGrade.ADJUST_TYPE, mapOf("sharpen" to 40, "vignette" to 70))),
+        )
+        // Neither slider has a matrix representation, so a spatial-only grade
+        // contributes NO matrix pass — exactly like the WGSL shader, where both
+        // are separate blocks around the affine colour ops.
+        assertNull(ColorGrade.combinedMatrixFor(spatial))
+        assertEquals(listOf(0.4f), ColorGrade.sharpenPassesFor(spatial))
+        assertEquals(listOf(0.7f), ColorGrade.vignettePassesFor(spatial))
 
-        val vignetteClip = clip(listOf(effect(ColorGrade.FILTER_TYPE, mapOf("preset" to "vivid", "intensity" to 100, "vignette" to 10))))
+        val mixed = clip(
+            listOf(effect(ColorGrade.ADJUST_TYPE, mapOf("contrast" to 50, "sharpen" to 25))),
+        )
+        assertNotNull("contrast must still map to a matrix alongside sharpen", ColorGrade.combinedMatrixFor(mixed))
+        assertEquals(listOf(0.25f), ColorGrade.sharpenPassesFor(mixed))
+        assertEquals(emptyList<Float>(), ColorGrade.vignettePassesFor(mixed))
+
+        val neutral = clip(listOf(effect(ColorGrade.ADJUST_TYPE, emptyMap())))
+        assertEquals(emptyList<Float>(), ColorGrade.sharpenPassesFor(neutral))
+        assertEquals(emptyList<Float>(), ColorGrade.vignettePassesFor(neutral))
+    }
+
+    @Test
+    fun unread_params_and_unknown_effect_types_refuse_instead_of_dropping() {
+        // `filter` only reads preset+intensity; a vignette key on it is a param
+        // the exporter never looks at, so it must fail loudly rather than
+        // exporting as if the edit were absent.
+        val foreignParam = clip(
+            listOf(effect(ColorGrade.FILTER_TYPE, mapOf("preset" to "vivid", "intensity" to 100, "vignette" to 10))),
+        )
         try {
-            ColorGrade.combinedMatrixFor(vignetteClip)
-            fail("vignette must be refused, not silently dropped")
+            ColorGrade.combinedMatrixFor(foreignParam)
+            fail("an unread param must be refused, not silently dropped")
         } catch (e: ExportUnsupportedException) {
             assertTrue(e.message!!.contains("vignette"))
         }

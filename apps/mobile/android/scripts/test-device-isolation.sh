@@ -53,6 +53,14 @@ run_case() {
         out="$(cd "$ANDROID_DIR" && "$GRADLEW" :app:connectedDebugAndroidTest --dry-run --console=plain "$@" 2>&1)"
     fi
     rc=$?
+    # A failed wrapper download never reaches the guard. Report it as such, so a
+    # red job points at the runner instead of at device isolation.
+    if [ $rc -ne 0 ] && printf '%s\n' "$out" | grep -qE "Could not (install|download) Gradle distribution|org\.gradle\.wrapper\.Install"; then
+        echo "FAIL  $label (gradle wrapper unavailable - not a guard verdict)"
+        echo "$out" | tail -5 | sed 's/^/      /'
+        FAILURES=$((FAILURES + 1))
+        return
+    fi
     if [ "$expect" = "allow" ]; then
         actual=refuse
         [ $rc -eq 0 ] && echo "$out" | grep -q "Device isolation OK" && actual=allow
@@ -87,6 +95,30 @@ MOCK_EMPTY="$(make_mock empty $'echo "List of devices attached"')"
 MOCK_FAIL="$(make_mock adb-fails $'echo "adb: server-side failure" >&2\nexit 1')"
 MOCK_GARBAGE="$(make_mock garbage $'echo "List of devices attached"\necho "????"')"
 MOCK_NONEXISTENT="$MOCK_DIR/definitely-not-an-adb-binary"
+
+# Prime the Gradle distribution BEFORE the first assertion. S1 is the job's
+# first `gradlew` call, so on a cold runner it also pays the wrapper download;
+# when that download hiccups the guard has not even been reached and S1 was
+# misreported as "expected allow, got refuse" (seen on main, 2026-11-25).
+# Retry here so a network blip is never confused with a guard regression.
+prime_gradle() {
+    local attempt
+    for attempt in 1 2 3; do
+        if (cd "$ANDROID_DIR" && "$GRADLEW" --version >/dev/null 2>&1); then
+            return 0
+        fi
+        echo "      gradle wrapper not ready (attempt $attempt/3); retrying in 5s..."
+        sleep 5
+    done
+    return 1
+}
+
+if ! prime_gradle; then
+    # Not a guard verdict: nothing below could run. Say so explicitly instead
+    # of emitting thirteen misleading refusal mismatches.
+    echo "INFRA  gradle wrapper distribution unavailable; guard self-test could not run"
+    exit 1
+fi
 
 echo "== device-isolation.gradle self-test (dry-run only) =="
 run_case "S1  single emulator -> allow"               allow  "-"                 "$MOCK_EMULATOR"      "${SELFTEST[@]}"
