@@ -29,8 +29,15 @@ export const ARCHIVE_FORMAT_VERSION = 1 as const;
 /** The manifest file's name inside the container. */
 export const MANIFEST_ENTRY_NAME = "manifest.json" as const;
 
-/** A media file role inside the archive. */
-export type ArchivedFileRole = "proxy" | "source" | "thumbnail";
+/**
+ * A media file role inside the archive.
+ *
+ * `gif` is one decoded GIF frame PNG. An animated GIF is archived as its
+ * timing metadata plus one `gif` entry per frame, so a restore can rewrite
+ * every frame path onto the restored device's custody locations instead of
+ * pointing a project at files that only exist on the exporting device.
+ */
+export type ArchivedFileRole = "proxy" | "source" | "thumbnail" | "gif";
 
 /**
  * One archived media file. `path` is a CONTAINER-INTERNAL path (always
@@ -45,6 +52,10 @@ export interface ArchivedFileEntry {
 	sha256: string;
 	/** Extension (with dot) used to rebuild the restored file's name. */
 	extension: string;
+	/** `gif` entries only: 0-based index into the asset's frame order, so a
+	 *  restore can pair each frame file with its delay and re-sort it after a
+	 *  fresh-name extraction. */
+	frameIndex?: number;
 }
 
 /**

@@ -36,6 +36,7 @@ import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
 import app.cutlyra.editor.media.FreezeFrameConfig
 import app.cutlyra.editor.media.gif.GifAssetPreparer
+import app.cutlyra.editor.media.gif.GifFrameCleanup
 import app.cutlyra.editor.media.ProxyTranscoder
 import app.cutlyra.editor.media.ThumbnailStripGenerator
 import app.cutlyra.editor.stt.WhisperTranscriber
@@ -1013,6 +1014,7 @@ class NativeBridgePlugin : Plugin() {
 					one.put("role", f.role)
 					one.put("newPath", f.newPath)
 					one.put("sha256", f.sha256)
+					f.frameIndex?.let { index -> one.put("frameIndex", index) }
 					files.put(one)
 				}
 				ret.put("restoredFiles", files)
@@ -1047,6 +1049,21 @@ class NativeBridgePlugin : Plugin() {
 					sourceRotationDegrees = if (o.has("sourceRotationDegrees")) o.optInt("sourceRotationDegrees") else null,
 					sourceWidth = if (o.has("sourceWidth")) o.optInt("sourceWidth") else null,
 					sourceHeight = if (o.has("sourceHeight")) o.optInt("sourceHeight") else null,
+					gif = o.optJSONObject("gif")?.let { gif ->
+						BackupArchive.MediaDescriptor.GifMetadata(
+							width = gif.optInt("width"),
+							height = gif.optInt("height"),
+							loopCount = gif.optInt("loopCount"),
+							frameDelaysMs = gif.optJSONArray("frameDelaysMs")?.let { delays ->
+								(0 until delays.length()).map { delays.optDouble(it) }
+							}.orEmpty(),
+						)
+					},
+					gifFrames = o.optJSONArray("gifFrames")?.let { frames ->
+						(0 until frames.length())
+							.map { frames.optString(it) }
+							.filter { it.isNotBlank() }
+					}.orEmpty(),
 				),
 			)
 		}
@@ -1188,6 +1205,14 @@ class NativeBridgePlugin : Plugin() {
 				gifFile = file,
 				outputRoot = context.noBackupFilesDir,
 				assetId = assetId,
+			)
+			// A re-import of the same asset can decode a different frame count;
+			// stale PNGs from the previous decode would otherwise linger in
+			// custody forever. The frames just written are the referenced set.
+			GifFrameCleanup.pruneAssetFrames(
+				custodyRoot = context.noBackupFilesDir,
+				assetId = assetId,
+				referencedPaths = prepared.frames.map { it.relativePath },
 			)
 			val frames = JSArray()
 			for (frame in prepared.frames) {

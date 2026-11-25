@@ -259,14 +259,26 @@ export interface BackupMediaDescriptor {
 	sourceRotationDegrees?: 0 | 90 | 180 | 270;
 	sourceWidth?: number;
 	sourceHeight?: number;
+	/** Animated-GIF timing. Frame FILES travel separately in `gifFrames`, so
+	 *  the manifest never records the exporting device's custody paths. */
+	gif?: {
+		width: number;
+		height: number;
+		loopCount: number;
+		frameDelaysMs: number[];
+	};
+	/** Custody-relative PNG paths of every decoded GIF frame, in frame order. */
+	gifFrames?: string[];
 }
 
 /** One media file as native restored it into custody under a FRESH path. */
 export interface RestoredMediaFile {
 	assetId: string;
-	role: "proxy" | "source" | "thumbnail";
+	role: "proxy" | "source" | "thumbnail" | "gif";
 	newPath: string;
 	sha256: string;
+	/** `gif` role only: the frame's index in the archived frame order. */
+	frameIndex?: number;
 }
 
 export const NATIVE_BRIDGE_ERROR_CODES = [

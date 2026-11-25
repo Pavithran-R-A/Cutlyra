@@ -473,19 +473,39 @@ function toArchivedFileEntry(value: unknown): ArchivedFileEntry {
 	if (typeof value.sizeBytes !== "number" || value.sizeBytes < 0) {
 		manifestFail(`file ${JSON.stringify(value.path)} has bad sizeBytes`);
 	}
-	if (value.role !== "proxy" && value.role !== "source" && value.role !== "thumbnail") {
+	if (
+		value.role !== "proxy" &&
+		value.role !== "source" &&
+		value.role !== "thumbnail" &&
+		value.role !== "gif"
+	) {
 		manifestFail(`file ${JSON.stringify(value.path)} has an unknown role`);
 	}
 	if (typeof value.extension !== "string") {
 		manifestFail(`file ${JSON.stringify(value.path)} is missing extension`);
 	}
-	return {
-		role: value.role,
+	const role = value.role;
+	const frameIndex = optionalNumber({
+		value: value.frameIndex,
+		field: `file ${JSON.stringify(value.path)} frameIndex`,
+	});
+	if (frameIndex !== undefined && (!Number.isInteger(frameIndex) || frameIndex < 0)) {
+		manifestFail(`file ${JSON.stringify(value.path)} has a bad frameIndex`);
+	}
+	if (role === "gif" && frameIndex === undefined) {
+		manifestFail(`GIF frame ${JSON.stringify(value.path)} is missing frameIndex`);
+	}
+	const entry: ArchivedFileEntry = {
+		role,
 		path: value.path,
 		sizeBytes: value.sizeBytes,
 		sha256: value.sha256,
 		extension: value.extension,
 	};
+	// A GIF frame is meaningless without its index: the restored metadata is
+	// built by pairing entries with `gif.frameDelaysMs` in index order.
+	if (role === "gif" && frameIndex !== undefined) entry.frameIndex = frameIndex;
+	return entry;
 }
 
 /** Reads an optional finite number field, or undefined. */
@@ -638,20 +658,37 @@ export function projectEntryPath(projectId: string): string {
 	return `data/${safe}/project.json`;
 }
 
-/** The canonical archive-internal prefix for a project's media entries. */
+/** The canonical archive-internal prefix for a project's media entries.
+ *
+ * GIF frames live one level deeper than the proxy/source/thumbnail roles,
+ * matching the native importer's own `<root>/gif/<assetId>/frame-NNN.png`
+ * layout so a frame remains identifiable by index after extraction.
+ */
 export function mediaEntryPath({
 	projectId,
 	assetId,
 	role,
 	extension,
+	frameIndex,
 }: {
 	projectId: string;
 	assetId: string;
 	role: string;
 	extension: string;
+	frameIndex?: number;
 }): string {
+	const base = `data/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}`;
+	if (role === "gif") {
+		if (frameIndex === undefined) {
+			throw new BackupError({
+				code: "IO_ERROR",
+				message: "A GIF frame archive entry needs its frame index",
+			});
+		}
+		return `${base}/gif/frame-${String(frameIndex).padStart(3, "0")}.png`;
+	}
 	const ext = extension.startsWith(".") ? extension : `.${extension}`;
-	return `data/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/${role}${ext}`;
+	return `${base}/${role}${ext}`;
 }
 
 /** Every data entry name the writer must have produced for a manifest. */

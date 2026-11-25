@@ -82,7 +82,18 @@ object BackupArchive {
 		val sourceRotationDegrees: Int?,
 		val sourceWidth: Int?,
 		val sourceHeight: Int?,
-	)
+		/** Animated-GIF timing; frame FILES travel separately in [gifFrames]. */
+		val gif: GifMetadata? = null,
+		/** Custody-relative PNG paths of the decoded GIF frames, in order. */
+		val gifFrames: List<String> = emptyList(),
+	) {
+		data class GifMetadata(
+			val width: Int,
+			val height: Int,
+			val loopCount: Int,
+			val frameDelaysMs: List<Double>,
+		)
+	}
 
 	/**
 	 * Assembles a complete archive and writes it to [destinationUri]. Returns
@@ -146,6 +157,31 @@ object BackupArchive {
 						fileObj.put("sha256", sha)
 						fileObj.put("extension", ext)
 						filesArr.put(fileObj)
+					}
+					// Decoded GIF frames: one entry per frame, all-or-nothing. A
+					// partially present frame set would restore into metadata whose
+					// frame count no longer matches its delays, so an incomplete set
+					// is archived as timing only — the same shape an archive written
+					// before frames were archived has.
+					if (
+						desc.gif != null &&
+						desc.gifFrames.isNotEmpty() &&
+						desc.gifFrames.all { File(custodyRoot, it).isFile }
+					) {
+						val gifPrefix =
+							"data/${UriComponent.encode(projectId)}/media/${UriComponent.encode(desc.assetId)}/gif"
+						desc.gifFrames.forEachIndexed { index, relPath ->
+							val entryPath = "$gifPrefix/frame-%03d.png".format(index)
+							val (sha, size) = writeEntry(zip, entryPath, File(custodyRoot, relPath))
+							val fileObj = JSONObject()
+							fileObj.put("role", "gif")
+							fileObj.put("path", entryPath)
+							fileObj.put("sizeBytes", size)
+							fileObj.put("sha256", sha)
+							fileObj.put("extension", ".png")
+							fileObj.put("frameIndex", index)
+							filesArr.put(fileObj)
+						}
 					}
 					assetJson.put(assetToJson(desc, filesArr))
 				}
@@ -212,7 +248,14 @@ object BackupArchive {
 	// Import
 	// ---------------------------------------------------------------------
 
-	data class RestoredFile(val assetId: String, val role: String, val newPath: String, val sha256: String)
+	data class RestoredFile(
+		val assetId: String,
+		val role: String,
+		val newPath: String,
+		val sha256: String,
+		/** `gif` role only: the frame's index in the archived frame order. */
+		val frameIndex: Int? = null,
+	)
 
 	data class ImportResult(
 		val manifest: JSONObject,
@@ -267,6 +310,12 @@ object BackupArchive {
 			if (!mediaDir.exists()) mediaDir.mkdirs()
 			val restored = mutableListOf<RestoredFile>()
 			val pendingMoves = mutableListOf<Pair<File, File>>()
+			// GIF frames land in their own directory per asset under FRESH names
+			// (`gif/<uuid>/frame-NNN.png`), so a restore overwrites nothing and
+			// the restored metadata can point at the extracted files.
+			val gifDirs = HashMap<String, String>()
+			val gifTargetDirs = LinkedHashSet<String>()
+			val seenGifFrames = HashSet<String>()
 			val assets = project.getJSONArray("assets")
 			for (i in 0 until assets.length()) {
 				val asset = assets.getJSONObject(i)
@@ -278,17 +327,49 @@ object BackupArchive {
 					val path = f.getString("path")
 					verifyEntry(entries, path, f.getString("sha256"), f.getLong("sizeBytes"))
 					val bytes = entries[path]!!
-					val ext = f.optString("extension", ".bin")
-					val newFileName = "${UUID.randomUUID()}$ext"
-					val staged = File(staging, newFileName)
-					staged.writeBytes(bytes)
-					pendingMoves.add(staged to File(mediaDir, newFileName))
-					val relPath = "media/$newFileName"
-					restored.add(RestoredFile(assetId, role, relPath, f.getString("sha256")))
+					val sha = f.getString("sha256")
+					if (role == "gif") {
+						val frameIndex = if (f.has("frameIndex")) f.optInt("frameIndex", -1) else -1
+						if (frameIndex < 0) {
+							throw ArchiveException(
+								"CORRUPT_ARCHIVE",
+								"GIF frame entry $path is missing its frame index",
+							)
+						}
+						if (!seenGifFrames.add("$assetId#$frameIndex")) {
+							throw ArchiveException(
+								"CORRUPT_ARCHIVE",
+								"Archive declares GIF frame $frameIndex of $assetId twice",
+							)
+						}
+						val dir = gifDirs.getOrPut(assetId) { "gif/${UUID.randomUUID()}" }
+						gifTargetDirs.add(dir)
+						val gifFileName = "frame-%03d.png".format(frameIndex)
+						val staged = File(staging, UUID.randomUUID().toString())
+						staged.writeBytes(bytes)
+						pendingMoves.add(staged to File(custodyRoot, "$dir/$gifFileName"))
+						restored.add(
+							RestoredFile(assetId, role, "$dir/$gifFileName", sha, frameIndex),
+						)
+					} else {
+						val ext = f.optString("extension", ".bin")
+						val newFileName = "${UUID.randomUUID()}$ext"
+						val staged = File(staging, newFileName)
+						staged.writeBytes(bytes)
+						pendingMoves.add(staged to File(mediaDir, newFileName))
+						restored.add(RestoredFile(assetId, role, "media/$newFileName", sha))
+					}
 				}
 			}
 
-			// Every hash verified: commit the extracted media into custody.
+			// Every hash verified: create the GIF frame directories, then commit
+			// the extracted media into custody.
+			for (dir in gifTargetDirs) {
+				val target = File(custodyRoot, dir)
+				if (!target.exists() && !target.mkdirs()) {
+					throw ArchiveException("IO_ERROR", "Could not create the GIF frame directory $dir")
+				}
+			}
 			for ((staged, dest) in pendingMoves) {
 				if (!staged.renameTo(dest)) {
 					staged.copyTo(dest, overwrite = true)
@@ -366,6 +447,18 @@ object BackupArchive {
 		desc.sourceRotationDegrees?.let { o.put("sourceRotationDegrees", it) }
 		desc.sourceWidth?.let { o.put("sourceWidth", it) }
 		desc.sourceHeight?.let { o.put("sourceHeight", it) }
+		// Timing only: the frame FILES are separate entries, so a restored
+		// project never inherits this device's custody paths.
+		desc.gif?.let { gif ->
+			val gifObj = JSONObject()
+			gifObj.put("width", gif.width)
+			gifObj.put("height", gif.height)
+			gifObj.put("loopCount", gif.loopCount)
+			val delays = JSONArray()
+			for (delay in gif.frameDelaysMs) delays.put(delay)
+			gifObj.put("frameDelaysMs", delays)
+			o.put("gif", gifObj)
+		}
 		o.put("files", files)
 		return o
 	}
