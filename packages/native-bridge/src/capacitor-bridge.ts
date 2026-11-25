@@ -254,6 +254,33 @@ interface NativeBridgePluginSpec {
 	saveGeneratedAudio(params: { assetId: string; base64: string }): Promise<{
 		relativePath: string;
 	}>;
+	requestMicrophonePermission(): Promise<{
+		granted: boolean;
+		canAskAgain: boolean;
+	}>;
+	startVoiceoverRecording(params: { takeId: string; maxDurationMs: number }): Promise<{
+		started: boolean;
+		takeId: string;
+		sampleRate: number;
+	}>;
+	voiceoverRecordingState(): Promise<{
+		recording: boolean;
+		elapsedMs: number;
+		awaitingTake: boolean;
+		takeId: string | null;
+		error?: string | null;
+		errorCode?: string | null;
+	}>;
+	stopVoiceoverRecording(): Promise<{
+		relativePath: string;
+		durationMs: number;
+		sizeBytes: number;
+		sampleRate: number;
+	}>;
+	cancelVoiceoverRecording(): Promise<{ cancelled: boolean }>;
+	pruneVoiceoverTakes(params: { referencedPaths: string[] }): Promise<{
+		removed: string[];
+	}>;
 	playTestTone(): Promise<{ ok: boolean }>;
 	audioStart(params: { clips: unknown[]; atSec: number }): Promise<{ ok: boolean }>;
 	audioStop(): Promise<{ ok: boolean }>;
@@ -741,6 +768,69 @@ export function createCapacitorBridge({
 				// A shell predating the method (or one without media custody)
 				// rejects with "not implemented" — degrade to null so the caller
 				// keeps the preview-only library element instead of failing.
+				return null;
+			}
+		},
+
+		async requestMicrophonePermission() {
+			try {
+				const result = await plugin.requestMicrophonePermission();
+				return { granted: result.granted === true, canAskAgain: result.canAskAgain !== false };
+			} catch {
+				// A shell predating the method has no microphone recorder at all;
+				// report "not granted" so the UI disables Record instead of
+				// pretending to record.
+				return { granted: false, canAskAgain: false };
+			}
+		},
+
+		async startVoiceoverRecording({
+			takeId,
+			maxDurationMs,
+		}: {
+			takeId: string;
+			maxDurationMs: number;
+		}) {
+			try {
+				return await plugin.startVoiceoverRecording({ takeId, maxDurationMs });
+			} catch (err) {
+				throw toNativeBridgeError({ err, method: "startVoiceoverRecording" });
+			}
+		},
+
+		async voiceoverRecordingState() {
+			try {
+				return await plugin.voiceoverRecordingState();
+			} catch {
+				return {
+					recording: false,
+					elapsedMs: 0,
+					awaitingTake: false,
+					takeId: null,
+				};
+			}
+		},
+
+		async stopVoiceoverRecording() {
+			try {
+				return await plugin.stopVoiceoverRecording();
+			} catch (err) {
+				throw toNativeBridgeError({ err, method: "stopVoiceoverRecording" });
+			}
+		},
+
+		async cancelVoiceoverRecording() {
+			try {
+				return await plugin.cancelVoiceoverRecording();
+			} catch {
+				return { cancelled: false };
+			}
+		},
+
+		async pruneVoiceoverTakes({ referencedPaths }: { referencedPaths: string[] }) {
+			try {
+				return await plugin.pruneVoiceoverTakes({ referencedPaths });
+			} catch {
 				return null;
 			}
 		},

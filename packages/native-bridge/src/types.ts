@@ -66,6 +66,37 @@ export interface NativeAudioClip {
 	rate: number;
 }
 
+export interface MicrophonePermission {
+	granted: boolean;
+	/** False when the OS will no longer show the permission dialog. */
+	canAskAgain: boolean;
+}
+
+export interface VoiceoverRecordingStart {
+	started: boolean;
+	takeId: string;
+	sampleRate: number;
+}
+
+export interface VoiceoverRecordingState {
+	recording: boolean;
+	elapsedMs: number;
+	/** True when the take hit its duration limit and only `stop` remains. */
+	awaitingTake: boolean;
+	takeId: string | null;
+	/** Set when the capture thread died without publishing a take. */
+	error?: string | null;
+	errorCode?: string | null;
+}
+
+export interface VoiceoverTakeResult {
+	/** Custody-root-relative path of the finalized WAV. */
+	relativePath: string;
+	durationMs: number;
+	sizeBytes: number;
+	sampleRate: number;
+}
+
 export interface PickMediaOptions {
 	kinds: MediaKind[];
 	allowMultiple: boolean;
@@ -486,6 +517,35 @@ export interface NativeBridge {
 		assetId: string;
 		base64: string;
 	}): Promise<{ relativePath: string } | null>;
+	/**
+	 * Asks for the microphone permission AT THE POINT OF USE (the Audio
+	 * panel's Record button). Never requested at launch. `granted: false` with
+	 * `canAskAgain: false` means the OS will not show the dialog again — the
+	 * UI must send the user to settings instead of retrying.
+	 */
+	requestMicrophonePermission(): Promise<MicrophonePermission>;
+	/**
+	 * Starts a voiceover take. The native side streams 44.1 kHz mono PCM into
+	 * `generated/<takeId>.wav` in media custody and rejects `PERMISSION_DENIED`,
+	 * `ALREADY_RECORDING`, `LOW_STORAGE` or `MIC_UNAVAILABLE`. The take is
+	 * capped at `maxDurationMs` by the recorder itself.
+	 */
+	startVoiceoverRecording(params: {
+		takeId: string;
+		maxDurationMs: number;
+	}): Promise<VoiceoverRecordingStart>;
+	/** Poll for the elapsed-time display and for an auto-stop/failure. */
+	voiceoverRecordingState(): Promise<VoiceoverRecordingState>;
+	/** Finalizes the take and resolves its custody path; rejects `TOO_SHORT`,
+	 *  `NO_TAKE`, `MIC_ERROR` or `TIMEOUT` (never returns an empty file). */
+	stopVoiceoverRecording(): Promise<VoiceoverTakeResult>;
+	/** Aborts the take and deletes the partial file. */
+	cancelVoiceoverRecording(): Promise<{ cancelled: boolean }>;
+	/** Deletes unreferenced `generated/voiceover-*` takes. Null when the
+	 *  platform has no custody (web). */
+	pruneVoiceoverTakes(params: {
+		referencedPaths: string[];
+	}): Promise<{ removed: string[] } | null>;
 	/** Dogfood audio bisector: a native-rendered 440Hz tone, NO webview
 	 *  involved (2026-08-19 device-silence campaign). Resolves false when
 	 *  the platform can't play one (web fallback / old native build). */

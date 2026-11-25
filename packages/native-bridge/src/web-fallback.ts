@@ -172,6 +172,24 @@ export function createWebFallbackBridge(): NativeBridge {
 		// library element as the durable state.
 		saveGeneratedAudio: async () => null,
 
+		// No microphone recorder on the web shell: the Audio panel shows the
+		// honest "recording needs the app" state rather than a dead button.
+		requestMicrophonePermission: async () => ({ granted: false, canAskAgain: false }),
+		startVoiceoverRecording: async () => {
+			throw new Error("voiceover recording is not available on web");
+		},
+		voiceoverRecordingState: async () => ({
+			recording: false,
+			elapsedMs: 0,
+			awaitingTake: false,
+			takeId: null,
+		}),
+		stopVoiceoverRecording: async () => {
+			throw new Error("voiceover recording is not available on web");
+		},
+		cancelVoiceoverRecording: async () => ({ cancelled: false }),
+		pruneVoiceoverTakes: async () => null,
+
 		// No native audio stack on the web — the WebAudio side of the
 		// bisector already covers this platform.
 		playTestTone: async () => false,

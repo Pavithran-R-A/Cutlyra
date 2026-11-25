@@ -57,7 +57,7 @@ Source-truth check performed:
 | Per-clip crop | IMPLEMENTED; preview pixels + Android native export verified; iOS mapper implemented (unverified build) | physical-device fingertip check pending; iOS build verification pending (no Xcode) |
 | Background blur (mobile) | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | single-input `BackgroundBlurEffect` (custom `GlShaderProgram`: blurred fill-cropped backdrop + sharp fit foreground, 9 taps) driven by `BackgroundBlurMath`, the same `intensity/5 × resolution/reference` formula the preview uses (both pinned by tests sharing fixtures). `meta.background` is parsed by `EdlMeta`; geometry is computed from the post-crop/transform frame, so rotation, crop and Fit/Fill are honoured. UI: Background sheet toggle + 0–500 intensity slider through `UpdateProjectSettingsCommand` (undo/redo + save/reopen/archive come from project settings). `ExportBackgroundBlurInstrumentedTest` decodes exports: sharp fitted foreground, non-black blurred same-source backdrop, stronger intensity blurs more, portrait-on-landscape and landscape-on-portrait. |
 | Adjust: Sharpen & Vignette | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | native `ColorGradeSpatialEffect` (unsharp mask before the affine matrix, radial vignette after it — the WGSL shader's order and constants); no longer refused at export; see Phase 9 |
-| Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
+| Voiceover recording | IMPLEMENTED + DECODED-AUDIO VERIFIED (2026-11-25) | native `VoiceoverRecorder` → custody → audio element → Media3 mix, unity gain with no ducking; live mic capture is the only unverified step (device-only); see Phase 10 |
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
 | Text shadow | IMPLEMENTED for text elements AND captions (preview + native export by construction) | caption shadow shipped 2026-11-22; no exported frame sampled |
 | Audio fades | IMPLEMENTED (params + EDL envelope + Android ramp + panel; decoded-audio test in CI) | iOS export ignores the envelope; no per-clip fade on library sounds until re-materialised as uploads |
@@ -436,6 +436,47 @@ luma by 25 levels; vignette drops the corner band below 60% of the ungraded
 value while the centre band stays within 10 levels. `ColorGradeMatrixTest`
 (JVM) pins the spatial units and matrix behaviour against the TypeScript
 fixtures, and `bun test` covers the TypeScript side.
+
+## Phase 10 — Voiceover recording (implemented 2026-11-25)
+
+**Gap this closes.** The plan's last user-facing audio gap: Cutlyra had no
+`RECORD_AUDIO`, no recorder, and no way to put a voice over a clip. The Audio
+panel could only insert bundled sounds and import files.
+
+**Implementation.** One recorder, one custody rule, one mix policy:
+
+- `VoiceoverRecorder` (pure Kotlin) streams 44.1 kHz mono 16-bit WAV from a
+  `PcmSource` to `<custody>/generated/voiceover-<takeId>.wav` via
+  `.wav.tmp` + rename, reusing one 4096-sample buffer; `AudioRecordPcmSource`
+  is the device source, and the seam is what makes the production recorder
+  testable with a deterministic tone.
+- `NativeBridgePlugin` requests `RECORD_AUDIO` at the point of use and exposes
+  start/state/stop/cancel plus the take sweep.
+- `media/voiceover.ts` turns a take into one audio asset row and one
+  audio-track element at the record position in a single `BatchCommand`, so
+  undo/redo is one step; `voiceoverTakeId` persists as provenance and the
+  sweep identifies takes by `generated/voiceover-*` path, surviving
+  archive/restore.
+- Take limit = min(remaining timeline, 300 s); a playhead at the end refuses
+  to start. Recording survives backgrounding (native thread) and stops itself
+  at the limit; closing the sheet cancels and deletes.
+- **Mix policy (documented, implemented):** unity gain (0 dB, volume 1.0)
+  summed with clip audio, `LimitingAudioMixer` capping at full scale, **no
+  automatic ducking**. The voiceover is an ordinary audio element, so export
+  needs no voiceover-specific path and nothing throws
+  `ExportUnsupportedException` for it.
+
+**Verification.** `ExportVoiceoverInstrumentedTest` decodes the exported MP4's
+audio: onset 0.380 s vs 0.400 s expected, gain 0.01 dB from the clip bed
+(unity), bed level change 0.42 dB during the voiceover (no ducking); trimmed
+take 0.180 s → 0.600 s then silence; archive → restore → export still carries
+the tone (amplitude 7994). JVM: `VoiceoverRecorderTest` (5, incl. sweep). Bun:
+`voiceover.test.ts` (limit, commit, one-step undo/redo, persistence field,
+sweep boundaries).
+
+**Open limitation.** Live microphone capture has not been exercised (CI and the
+emulator have no real mic input); the tests drive the production recorder with
+a deterministic source, so everything after capture is measured.
 
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.

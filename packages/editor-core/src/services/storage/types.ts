@@ -98,6 +98,11 @@ export interface MediaAssetData {
 	 *  The asset's own `id` remains a random `generateUUID()` row id; this
 	 *  marker, not the row id, is what identifies a library sound. */
 	librarySoundId?: string;
+	/** Voiceover provenance: present only on takes recorded through the Audio
+	 *  panel's recorder (`media/voiceover.ts`). Holds the take id, which is also
+	 *  the custody file's stem — the media row is what keeps the take alive
+	 *  across undo, reopen and restore, and what the custody sweep consults. */
+	voiceoverTakeId?: string;
 }
 
 /** One persisted filmstrip frame — see `MediaAssetData.thumbnailStrip`. */

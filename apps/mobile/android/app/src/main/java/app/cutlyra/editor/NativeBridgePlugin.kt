@@ -36,6 +36,10 @@ import app.cutlyra.editor.media.MediaImporter
 import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
 import app.cutlyra.editor.media.FreezeFrameCapture
+import app.cutlyra.editor.media.voiceover.AudioRecordPcmSource
+import app.cutlyra.editor.media.voiceover.VoiceoverRecorder
+import app.cutlyra.editor.media.voiceover.VoiceoverRecordingException
+import app.cutlyra.editor.media.voiceover.VoiceoverTakeCleanup
 import app.cutlyra.editor.media.gif.GifAssetPreparer
 import app.cutlyra.editor.media.gif.GifExportPreflight
 import app.cutlyra.editor.media.gif.GifFrameCleanup
@@ -78,9 +82,22 @@ import java.util.UUID
  */
 @CapacitorPlugin(
 	name = "NativeBridge",
-	permissions = [Permission(strings = [Manifest.permission.CAMERA], alias = "camera")],
+	permissions = [
+		Permission(strings = [Manifest.permission.CAMERA], alias = "camera"),
+		Permission(strings = [Manifest.permission.RECORD_AUDIO], alias = "microphone"),
+	],
 )
 class NativeBridgePlugin : Plugin() {
+
+	/** The one in-flight voiceover take. Recording streams from AudioRecord
+	 * into custody on its own thread; `stop`/`cancel` are the only ways out,
+	 * so a take cannot be left half-written behind the JS layer's back. */
+	@Volatile
+	private var voiceoverRecorder: VoiceoverRecorder? = null
+
+	/** Take id of the recording in flight, for the elapsed-time poll. */
+	@Volatile
+	private var voiceoverTakeId: String? = null
 
 	/** Set by `cancelReverseVideo`; checked by `ReverseMediaGenerator` between
 	 * frames. A cancelled run deletes its partial file and rejects `CANCELLED`. */
@@ -207,6 +224,169 @@ class NativeBridgePlugin : Plugin() {
 		val result = JSObject()
 		result.put("relativePath", "generated/$assetId.wav")
 		result.put("sizeBytes", bytes.size)
+		call.resolve(result)
+	}
+
+	// -- Voiceover recording ---------------------------------------------------
+	//
+	// The microphone is requested AT THE POINT OF USE (not at launch), a take
+	// streams to `generated/voiceover-<takeId>.wav` on its own thread, and the
+	// file is only published once `stop` finalizes it — so a denied permission,
+	// a cancel or a killed app can never leave an empty take behind the
+	// project's back. `Stop`/`cancel` run off the main thread because the
+	// recorder joins its capture thread.
+
+	@PluginMethod
+	fun requestMicrophonePermission(call: PluginCall) {
+		if (getPermissionState("microphone") == PermissionState.GRANTED) {
+			resolveMicrophonePermission(call)
+			return
+		}
+		requestPermissionForAlias("microphone", call, "microphonePermissionCallback")
+	}
+
+	@PermissionCallback
+	private fun microphonePermissionCallback(call: PluginCall) {
+		resolveMicrophonePermission(call)
+	}
+
+	private fun resolveMicrophonePermission(call: PluginCall) {
+		val state = getPermissionState("microphone")
+		val result = JSObject()
+		result.put("granted", state == PermissionState.GRANTED)
+		// DENIED is the permanent state on Android (the user ticked "don't
+		// ask again" or dismissed twice); PROMPT means a later retry can
+		// still show the system dialog.
+		result.put("canAskAgain", state != PermissionState.DENIED)
+		call.resolve(result)
+	}
+
+	@PluginMethod
+	fun startVoiceoverRecording(call: PluginCall) {
+		val takeId = call.getString("takeId")
+		val maxDurationMs = call.getLong("maxDurationMs") ?: 0L
+		if (takeId.isNullOrBlank()) {
+			call.reject("startVoiceoverRecording requires {takeId, maxDurationMs}", "INVALID_ARGUMENT")
+			return
+		}
+		if (maxDurationMs <= 0L) {
+			call.reject("startVoiceoverRecording requires a positive maxDurationMs", "INVALID_ARGUMENT")
+			return
+		}
+		if (getPermissionState("microphone") != PermissionState.GRANTED) {
+			call.reject("microphone permission is not granted", "PERMISSION_DENIED")
+			return
+		}
+		if (voiceoverRecorder != null) {
+			call.reject("a voiceover take is already in progress", "ALREADY_RECORDING")
+			return
+		}
+		val generated = File(context.noBackupFilesDir, "generated")
+		if (generated.exists() && generated.usableSpace < MIN_FREE_BYTES_FOR_TAKE) {
+			call.reject("not enough free storage to record a voiceover", "LOW_STORAGE")
+			return
+		}
+		Thread {
+			val recorder = try {
+				VoiceoverRecorder(context.noBackupFilesDir, AudioRecordPcmSource())
+			} catch (error: VoiceoverRecordingException) {
+				call.reject(error.message ?: "microphone unavailable", error.code)
+				return@Thread
+			} catch (error: Exception) {
+				call.reject("could not start voiceover recording: ${error.message}", "MIC_UNAVAILABLE")
+				return@Thread
+			}
+			try {
+				recorder.start(takeId, maxDurationMs)
+			} catch (error: VoiceoverRecordingException) {
+				call.reject(error.message ?: "could not start recording", error.code)
+				return@Thread
+			}
+			voiceoverRecorder = recorder
+			voiceoverTakeId = takeId
+			val result = JSObject()
+			result.put("started", true)
+			result.put("takeId", takeId)
+			result.put("sampleRate", VoiceoverRecorder.SAMPLE_RATE)
+			call.resolve(result)
+		}.start()
+	}
+
+	@PluginMethod
+	fun voiceoverRecordingState(call: PluginCall) {
+		val recorder = voiceoverRecorder
+		val result = JSObject()
+		result.put("recording", recorder?.isRecording == true)
+		result.put("elapsedMs", recorder?.elapsedMs() ?: 0L)
+		result.put("takeId", voiceoverTakeId)
+		// The take hit its duration limit and is waiting for `stop` to collect
+		// it — the UI keeps the recorder visible until it resolves.
+		result.put("awaitingTake", recorder?.awaitingTake == true)
+		result.put("error", recorder?.failureMessage)
+		result.put("errorCode", recorder?.failureCode)
+		call.resolve(result)
+	}
+
+	@PluginMethod
+	fun stopVoiceoverRecording(call: PluginCall) {
+		val recorder = voiceoverRecorder
+		if (recorder == null) {
+			call.reject("no voiceover take is in progress", "NO_TAKE")
+			return
+		}
+		voiceoverRecorder = null
+		voiceoverTakeId = null
+		Thread {
+			try {
+				val take = recorder.stop()
+				val result = JSObject()
+				result.put("relativePath", take.relativePath)
+				result.put("durationMs", take.durationMs)
+				result.put("sizeBytes", take.sizeBytes)
+				result.put("sampleRate", take.sampleRate)
+				call.resolve(result)
+			} catch (error: VoiceoverRecordingException) {
+				call.reject(error.message ?: "voiceover recording failed", error.code)
+			} catch (error: Exception) {
+				call.reject("voiceover recording failed: ${error.message}", "IO_ERROR")
+			}
+		}.start()
+	}
+
+	@PluginMethod
+	fun cancelVoiceoverRecording(call: PluginCall) {
+		val recorder = voiceoverRecorder
+		voiceoverRecorder = null
+		voiceoverTakeId = null
+		if (recorder == null) {
+			val result = JSObject()
+			result.put("cancelled", false)
+			call.resolve(result)
+			return
+		}
+		Thread {
+			recorder.cancel()
+			val result = JSObject()
+			result.put("cancelled", true)
+			call.resolve(result)
+		}.start()
+	}
+
+	/** Deletes voiceover takes the project no longer references. Only this
+	 *  feature's namespace is touched (see `VoiceoverTakeCleanup`). */
+	@PluginMethod
+	fun pruneVoiceoverTakes(call: PluginCall) {
+		if (voiceoverRecorder != null) {
+			call.reject("cannot prune voiceover takes while a take exists", "BUSY")
+			return
+		}
+		val array = call.getArray("referencedPaths")
+		val referenced = (0 until (array?.length() ?: 0)).mapNotNull { array?.getString(it) }
+		val removed = VoiceoverTakeCleanup.pruneTakes(context.noBackupFilesDir, referenced)
+		val result = JSObject()
+		val list = JSArray()
+		removed.forEach { list.put(it) }
+		result.put("removed", list)
 		call.resolve(result)
 	}
 
@@ -1403,5 +1583,11 @@ class NativeBridgePlugin : Plugin() {
 		call.resolve(JSObject().apply { put("cancelled", true) })
 	}
 
+	private companion object {
+		/** Refuse to start a take when custody has less than this free: a
+		 *  5-minute 44.1kHz mono take is ~26 MB, so 8 MB is a floor that
+		 *  still fails fast instead of filling the disk mid-recording. */
+		const val MIN_FREE_BYTES_FOR_TAKE = 8L * 1024L * 1024L
+	}
 }
 
