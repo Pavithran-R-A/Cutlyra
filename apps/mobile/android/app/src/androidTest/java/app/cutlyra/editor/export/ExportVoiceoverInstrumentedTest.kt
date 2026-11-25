@@ -128,6 +128,10 @@ class ExportVoiceoverInstrumentedTest {
             emitted += n
             return n
         }
+
+        override fun release() {
+            // Nothing to free: the tone is generated on demand.
+        }
     }
 
     /**

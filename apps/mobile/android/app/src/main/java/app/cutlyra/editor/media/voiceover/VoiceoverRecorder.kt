@@ -17,7 +17,15 @@ import java.nio.ByteOrder
  */
 interface VoiceoverPcmSource {
     fun read(buffer: ShortArray, offset: Int, count: Int): Int
-    fun release() {}
+
+    /**
+     * Releases the underlying capture resource. Deliberately abstract: a
+     * default body compiles into `VoiceoverPcmSource$DefaultImpls`, which lives
+     * only for external implementors, so the minified app build shrinks it and
+     * any implementor outside the module (the instrumented tone source) crashes
+     * with `NoClassDefFoundError` at `release()`. Implement it instead.
+     */
+    fun release()
 }
 
 /** Thrown for a take the recorder refused to publish. */
