@@ -1,10 +1,8 @@
 import { mediaTimeToSeconds, roundMediaTime } from "@/wasm";
 import { getElementLocalTime } from "@/animation";
 import { resolveEffectParamsAtTime } from "@/animation/effect-param-channel";
-import {
-	buildGaussianBlurPasses,
-	intensityToSigma,
-} from "@/effects/definitions/blur";
+import { buildGaussianBlurPasses } from "@/effects/definitions/blur";
+import { backgroundBlurSigma } from "@/background/blur";
 import { effectsRegistry, resolveEffectPasses } from "@/effects";
 import type { Effect, EffectPass } from "@/effects/types";
 import { getSourceTimeAtClipTime } from "@/retime";
@@ -615,19 +613,18 @@ async function resolveBlurBackgroundNode({
 		return null;
 	}
 
+	// Same formula the Android exporter's `BackgroundBlurMath` uses, kept in
+	// ONE function (`background/blur.ts`) so preview and export cannot drift.
+	const sigma = backgroundBlurSigma({
+		intensity: node.params.blurIntensity,
+		width: context.renderer.width,
+		height: context.renderer.height,
+	});
 	return {
 		backdropSource,
 		passes: buildGaussianBlurPasses({
-			sigmaX: intensityToSigma({
-				intensity: node.params.blurIntensity,
-				resolution: context.renderer.width,
-				reference: 1920,
-			}),
-			sigmaY: intensityToSigma({
-				intensity: node.params.blurIntensity,
-				resolution: context.renderer.height,
-				reference: 1080,
-			}),
+			sigmaX: sigma.sigmaX,
+			sigmaY: sigma.sigmaY,
 		}),
 	};
 }

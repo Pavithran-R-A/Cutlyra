@@ -45,7 +45,7 @@ Source-truth check performed:
 ### 1C Other panels
 - Transcript intentionally shows the "not in Cutlyra yet" sheet (per `docs/DECISIONS.md`). Template is now a real library — see Phase 2.
 - Filters/Adjust exposed and export-safe (#48 scoped slice).
-- Background panel offers color swatches; blur background exists in engine/web but native Android export does not honor it, so not exposed on mobile (consistent with "no preview-only tools").
+- Background panel offers color swatches and a real blur background toggle with its exact intensity range (0–500) and slider; blur is now honoured by the Android native exporter (see Phase 2 / the open-gaps row).
 
 ## Open gaps (NOT PLANNED unless noted)
 
@@ -55,7 +55,7 @@ Source-truth check performed:
 | Freeze frame | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | source-frame capture at the trim/retime-mapped instant, persisted provenance, ripple insert, hold/remove UI; see Phase 7 |
 | GIF import (media type + timing) | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | real per-frame decode with per-frame delays + loop count, EDL frame feed, decode-based export preflight; see Phase 7 |
 | Per-clip crop | IMPLEMENTED; preview pixels + Android native export verified; iOS mapper implemented (unverified build) | physical-device fingertip check pending; iOS build verification pending (no Xcode) |
-| Background blur (mobile) | GAP (engine exists; NOT exposed on mobile) | Phase 2 investigated 2026-11-25: Media3 1.11.0 does ship `GaussianBlurWithFrameOverlaid`, but its contract blurs the SAME cropped input it overlays sharp, so it cannot produce a fit-foreground over a fill-blurred background when aspect ratios differ (the portrait-to-landscape case this feature exists for). Correct export needs either a custom single-input GlShaderProgram (sample fill UV for the blurred backdrop, fit UV for the foreground) or a second composited sequence; neither is implemented. Export currently ignores `meta.background`, so a blur project exports on the default base — not exposed in mobile UI, and not claimed as done. |
+| Background blur (mobile) | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | single-input `BackgroundBlurEffect` (custom `GlShaderProgram`: blurred fill-cropped backdrop + sharp fit foreground, 9 taps) driven by `BackgroundBlurMath`, the same `intensity/5 × resolution/reference` formula the preview uses (both pinned by tests sharing fixtures). `meta.background` is parsed by `EdlMeta`; geometry is computed from the post-crop/transform frame, so rotation, crop and Fit/Fill are honoured. UI: Background sheet toggle + 0–500 intensity slider through `UpdateProjectSettingsCommand` (undo/redo + save/reopen/archive come from project settings). `ExportBackgroundBlurInstrumentedTest` decodes exports: sharp fitted foreground, non-black blurred same-source backdrop, stronger intensity blurs more, portrait-on-landscape and landscape-on-portrait. |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
 | Text shadow | IMPLEMENTED for text elements AND captions (preview + native export by construction) | caption shadow shipped 2026-11-22; no exported frame sampled |

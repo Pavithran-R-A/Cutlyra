@@ -470,6 +470,12 @@
 	font-weight: var(--cc-font-weight-active);
 	margin: 0 0 var(--cc-space-3);
 }
+.cc-background-blur {
+	display: flex;
+	flex-direction: column;
+	gap: var(--cc-space-3);
+	margin: 0 0 var(--cc-space-4);
+}
 .cc-ratio-grid {
 	display: flex;
 	flex-wrap: wrap;

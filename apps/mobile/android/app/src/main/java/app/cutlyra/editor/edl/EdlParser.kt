@@ -54,6 +54,17 @@ object EdlParser {
             sceneId = o.getString("sceneId"),
             sceneName = o.getString("sceneName"),
             durationTicks = o.getLong("durationTicks"),
+            background = parseBackground(o.optJSONObject("background")),
+        )
+    }
+
+    private fun parseBackground(o: JSONObject?): EdlBackground {
+        if (o == null) return EdlBackground()
+        val type = o.optString("type", "color")
+        return EdlBackground(
+            type = type,
+            color = o.optString("color", "#000000"),
+            blurIntensity = if (o.has("blurIntensity")) o.optDouble("blurIntensity", 0.0) else 0.0,
         )
     }
 

@@ -32,6 +32,22 @@ data class EdlRational(val numerator: Long, val denominator: Long) {
     fun toDouble(): Double = numerator.toDouble() / denominator.toDouble()
 }
 
+/**
+ * `meta.background` (TS `EdlBackground`). Additive to v1: an EDL without a
+ * `background` object decodes to the historical black colour background.
+ * `blurIntensity` is the unitless value from `background/blur.ts` (0..500);
+ * the exporter converts it with `BackgroundBlurMath`, the same formula the
+ * preview uses.
+ */
+data class EdlBackground(
+    /** "color" | "blur". */
+    val type: String = "color",
+    val color: String = "#000000",
+    val blurIntensity: Double = 0.0,
+) {
+    val isBlur: Boolean get() = type == "blur"
+}
+
 data class EdlMeta(
     val edlVersion: Int,
     val generator: String,
@@ -44,6 +60,8 @@ data class EdlMeta(
     val sceneId: String,
     val sceneName: String,
     val durationTicks: Long,
+    /** Additive v1 field; defaults preserve every older document. */
+    val background: EdlBackground = EdlBackground(),
 )
 
 enum class EdlAssetKind { VIDEO, IMAGE, AUDIO }
