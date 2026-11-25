@@ -51,17 +51,17 @@ Source-truth check performed:
 
 | Feature | State | Blocker / owner |
 | --- | --- | --- |
-| Reverse | PARTIAL (param only) | native export + compositor; no UI |
-| Freeze frame | GAP | needs engine + UI + export | (TS timing helpers only so far) |
-| GIF import (media type + timing) | PARTIAL (TS timing helpers + ImageDecoder capability detection + bundled offline decoder fallback with 9 tests; JDK 21 installed, compileDebugKotlin exits 0) | Native Android picker/custody/export still not written (Kotlin); Freeze Frame UI enabled (button + action), full frame-capture pending native export pipeline |
+| Reverse | PARTIAL (param only) | native reverse-media generation + UI — Phase 1 of the 2026-11-25 qualification program |
+| Freeze frame | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | source-frame capture at the trim/retime-mapped instant, persisted provenance, ripple insert, hold/remove UI; see Phase 7 |
+| GIF import (media type + timing) | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | real per-frame decode with per-frame delays + loop count, EDL frame feed, decode-based export preflight; see Phase 7 |
 | Per-clip crop | IMPLEMENTED; preview pixels + Android native export verified; iOS mapper implemented (unverified build) | physical-device fingertip check pending; iOS build verification pending (no Xcode) |
-| Background blur (mobile) | GAP (engine exists) | native Android export support |
+| Background blur (mobile) | GAP (engine exists) | native Android export support — Phase 2 of the 2026-11-25 qualification program |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
 | Text shadow | IMPLEMENTED for text elements AND captions (preview + native export by construction) | caption shadow shipped 2026-11-22; no exported frame sampled |
 | Audio fades | IMPLEMENTED (params + EDL envelope + Android ramp + panel; decoded-audio test in CI) | iOS export ignores the envelope; no per-clip fade on library sounds until re-materialised as uploads |
 | Sticker/graphic export | IMPLEMENTED (prerendered overlay + native skip) | no emulator run of the full app journey yet |
-| Animated stickers (procedural graphics) | IMPLEMENTED + TESTED (6 animated graphic definitions; time-aware GraphicNode; preview+export via existing overlay pipeline; 21 unit tests pin time-dependence, determinism, static invariance and loop boundaries) | GIF import/export still missing; device/native export verification pending | |
+| Animated stickers (procedural graphics) | IMPLEMENTED + TESTED (6 animated graphic definitions; time-aware GraphicNode; preview+export via existing overlay pipeline; 21 unit tests pin time-dependence, determinism, static invariance and loop boundaries) | device/native export verification pending | |
 | Templates | IMPLEMENTED (12 offline templates + schema/planner/apply engine, UI wired) | No on-device Android UI-automation or exported-MP4 parity run yet |
 | Emoji / non-shape sticker categories | IMPLEMENTED (procedural data-URL SVG provider, 20 emoji tiles) | device/UI verification pending; no bundled binary assets (offline by construction) |
 | Masks/chroma key | GAP | heavy engine work |
@@ -309,6 +309,56 @@ repository has no CI-driven job that drives the app's WebView to export a
 project with stickers). The geometry and the native skip are unit-verified;
 the end-to-end app journey (insert → move → save → reopen → export → decode)
 and the template journeys remain device-unverified.
+
+## Phase 7 — GIF and Freeze Frame completed (2026-11-25)
+
+Both features now run from the UI through decoded exported pixels; the earlier
+metadata-only bridge methods are gone.
+
+**Freeze Frame**
+- Capture decodes the clip's SOURCE frame at the instant the timeline maps to
+  (`freezeSourceTimestampMicros`, trim + retime rate), using
+  `MediaMetadataRetriever.getFrameAtTime(ts, OPTION_CLOSEST)` — deliberately
+  not `OPTION_CLOSEST_SYNC`, so the frame is never substituted with an
+  unrelated keyframe. An instant outside the source range is refused with
+  `CAPTURE_OUT_OF_RANGE`; there is no clamp and no fallback still.
+- Persistence is real: `persistFreezeFrame` does a read-modify-write through
+  `storageService` and resolves only after the write, and provenance is part
+  of `MediaAssetData.freezeFrame` through save, reopen, backup and restore.
+- The insert is a non-destructive main-track split + still interval with
+  ripple, adjustable hold, undo/redo, and pruning of captures the project no
+  longer references. Audio: silent hold; audio before keeps its pre-split
+  portion; audio after starts at the new trim start.
+
+**GIF**
+- Import decodes every frame with its own delay and the file's own loop count
+  (Netscape count; 0 = endless). Transparency is honoured per frame via the
+  graphic-control transparent index with disposal 0/1/2/3 applied between
+  frames, so a transparent GIF keeps its transparent pixels rather than
+  flattening to black. The Kotlin decoder and the TypeScript fallback apply
+  the same disposal/delay rules.
+- Memory is bounded by an explicit budget (1500 frames / 512 MB of decoded
+  RGBA, identical constants on both decoders). Above it the import refuses
+  with a typed error naming the limit instead of risking an OOM; the
+  per-frame PNGs are written one at a time, so the writer itself is streaming.
+- Export feeds the decoded frame URIs and per-frame delays through
+  `EdlGifAsset`/`EdlGifFrame` + `GifFrameTimeline` + `EdlToComposition`, and
+  `prepareGifExport` decodes every referenced frame as a preflight before the
+  export starts (`GIF_FRAMES_MISSING`, `GIF_FRAME_UNREADABLE`).
+- Loop rule: endless GIF → one loop of content inside the clip's authored
+  duration (it wraps, then the file ends); finite GIF → `loopCount × loop
+duration`, holding the last frame after the final loop.
+
+**Evidence:** instrumented exports decode the MP4 and sample pixels — freeze
+holds red at 0.25 s and 1.0–1.4 s, green at 2.0 s, blue at 3.0 s (~4 s total),
+and the GIF pipeline test asserts the exported frame order and timings for a
+non-uniform-delay GIF. `FreezeFrameCaptureTest` (5), `GifExportPreflightTest`
+(4), `GifDecoderBudgetTest` (2) and the TypeScript suite cover the pure logic;
+Bun CI and Mobile CI are green on the merge head.
+
+**Remaining limitations:** exotic/malformed GIF variants refuse with
+`GIF_DECODE_FAILED` and the reason rather than partially rendering; the picker
+interaction itself was not driven by hand on a physical device.
 
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.

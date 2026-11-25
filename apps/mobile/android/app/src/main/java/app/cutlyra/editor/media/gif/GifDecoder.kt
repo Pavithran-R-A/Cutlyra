@@ -36,6 +36,16 @@ class GifDecodeException(message: String) : Exception(message)
 object GifDecoder {
     private const val DEFAULT_DELAY_MS = 100
 
+    /**
+     * Decoder budget. Every frame's full logical screen is held in memory
+     * before the caller writes the PNGs, so a tiny file can describe a huge
+     * allocation. Refusing above these ceilings keeps a malformed or
+     * pathological GIF a typed error instead of an OOM kill. Mirrors
+     * `MAX_GIF_FRAMES` / `MAX_GIF_DECODED_BYTES` in gif-decoder.ts.
+     */
+    const val MAX_FRAMES = 1500
+    const val MAX_DECODED_BYTES = 512L * 1024L * 1024L
+
     fun decode(bytes: ByteArray): DecodedGif {
         if (bytes.size < 13) throw GifDecodeException("GIF is too short")
         val signature = String(bytes, 0, 3, Charsets.US_ASCII)
@@ -163,6 +173,19 @@ object GifDecoder {
         }
 
         if (rawFrames.isEmpty()) throw GifDecodeException("GIF has no frames")
+        if (rawFrames.size > MAX_FRAMES) {
+            throw GifDecodeException(
+                "GIF has ${rawFrames.size} frames, above the $MAX_FRAMES-frame decoder limit",
+            )
+        }
+        val decodedBytes = rawFrames.size.toLong() * width.toLong() * height.toLong() * 4L
+        if (decodedBytes > MAX_DECODED_BYTES) {
+            throw GifDecodeException(
+                "GIF needs ${decodedBytes / (1024L * 1024L)} MB of decoded frames, above the " +
+                    "${MAX_DECODED_BYTES / (1024L * 1024L)} MB decoder limit " +
+                    "(${width}x$height, ${rawFrames.size} frames)",
+            )
+        }
 
         var bgColor = 0xFF000000.toInt()
         if (gct != null && bgIndex < gct.size) bgColor = gct[bgIndex]

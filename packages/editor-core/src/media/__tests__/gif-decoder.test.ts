@@ -73,6 +73,21 @@ describe("gif-decoder", () => {
 		expect(() => decodeGif(new ArrayBuffer(10))).toThrow();
 	});
 
+	test("refuses a GIF above the decoded-frame memory budget", () => {
+		// Same valid file, but with a 65535x65535 logical screen: ~17 GB of
+		// decoded RGBA. The budget must refuse it instead of allocating.
+		const bytes = new Uint8Array(load("anim.gif"));
+		bytes[6] = 0xff;
+		bytes[7] = 0xff;
+		bytes[8] = 0xff;
+		bytes[9] = 0xff;
+		const patched = bytes.buffer.slice(
+			bytes.byteOffset,
+			bytes.byteOffset + bytes.byteLength,
+		);
+		expect(() => decodeGif(patched)).toThrow(/decoder limit/);
+	});
+
 	test("empty frame list handling", () => {
 		expect(getGifDecoderFrameIndexAtTime(5, [])).toBe(0);
 	});

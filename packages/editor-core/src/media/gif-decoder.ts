@@ -36,6 +36,38 @@ export interface GifDecodeResult {
 
 const DEFAULT_DELAY_MS = 100;
 
+/**
+ * Decoder budget. The decoder materialises the whole logical screen for every
+ * frame before returning, so a small file can still describe an enormous
+ * allocation (a 2000x2000 GIF with 500 frames is ~8 GB). These ceilings turn
+ * that into a clear refusal instead of an out-of-memory crash, matching the
+ * Kotlin decoder's `MAX_FRAMES` / `MAX_DECODED_BYTES`.
+ */
+export const MAX_GIF_FRAMES = 1500;
+export const MAX_GIF_DECODED_BYTES = 512 * 1024 * 1024;
+
+function assertDecodeBudget({
+	width,
+	height,
+	frameCount,
+}: {
+	width: number;
+	height: number;
+	frameCount: number;
+}): void {
+	if (frameCount > MAX_GIF_FRAMES) {
+		throw new Error(
+			`GIF has ${frameCount} frames, above the ${MAX_GIF_FRAMES}-frame decoder limit`,
+		);
+	}
+	const decodedBytes = frameCount * width * height * 4;
+	if (decodedBytes > MAX_GIF_DECODED_BYTES) {
+		throw new Error(
+			`GIF needs ${Math.round(decodedBytes / (1024 * 1024))} MB of decoded frames, above the ${MAX_GIF_DECODED_BYTES / (1024 * 1024)} MB decoder limit (${width}x${height}, ${frameCount} frames)`,
+		);
+	}
+}
+
 function readU16(buf: Uint8Array, off: number): number {
 	return buf[off] | (buf[off + 1] << 8);
 }
@@ -275,6 +307,7 @@ export function decodeGif(buffer: ArrayBuffer): GifDecodeResult {
 	}
 
 	if (!loopSpecified) loopCount = 0;
+	assertDecodeBudget({ width, height, frameCount: rawFrames.length });
 
 	// Decode each frame into RGBA logical screen, applying disposal.
 	const screen = new Uint8ClampedArray(width * height * 4);
