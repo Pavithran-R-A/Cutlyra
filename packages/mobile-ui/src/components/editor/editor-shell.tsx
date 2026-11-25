@@ -13,6 +13,11 @@ import { SubToolbar, type ToolbarItemDef } from "../sub-toolbar";
 import { PRIMARY_TOOLBAR_ITEMS, type PrimaryToolId } from "./toolbar-defs";
 import { TimelineView } from "../timeline/timeline-view";
 import { EditPanel } from "../panels/edit-panel";
+import { ParamRow, ToggleRow } from "../editor/param-row";
+import {
+	BACKGROUND_BLUR_INTENSITY_MAX,
+	BACKGROUND_BLUR_INTENSITY_MIN,
+} from "@cutlyra/editor-core/background/blur";
 import { AudioPanel } from "../panels/audio-panel";
 import { TextPanel } from "../panels/text-panel";
 import { StickersPanel } from "../panels/stickers-panel";
@@ -1019,6 +1024,42 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 			{activeSheet === "background" && (
 				<PanelSheet onScrimClick={closeSheet} header={<SheetHeader onClose={closeSheet} />}>
 					<p className="cc-sheet-title">Background</p>
+					{/* Real blurred video behind the clip, rendered by the same engine
+					    path in preview and native export. Intensity is the engine's
+					    unitless 0–500, shown with its exact range. */}
+					<div className="cc-background-blur">
+						<ToggleRow
+							label="Blur video background"
+							active={background.type === "blur"}
+							onToggle={() =>
+								setProjectBackground({
+									editor,
+									background:
+										background.type === "blur"
+											? { type: "color", color: "#000000" }
+											: { type: "blur", blurIntensity: 200 },
+								})
+							}
+						/>
+						{background.type === "blur" && (
+							<ParamRow
+								label="Blur intensity"
+								value={background.blurIntensity}
+								min={BACKGROUND_BLUR_INTENSITY_MIN}
+								max={BACKGROUND_BLUR_INTENSITY_MAX}
+								step={5}
+								formatValue={(value) =>
+									`${value} (${BACKGROUND_BLUR_INTENSITY_MIN}–${BACKGROUND_BLUR_INTENSITY_MAX})`
+								}
+								onChange={(value) =>
+									setProjectBackground({
+										editor,
+										background: { type: "blur", blurIntensity: value },
+									})
+								}
+							/>
+						)}
+					</div>
 					<div className="cc-ratio-grid">
 						{BACKGROUND_PRESETS.map((color) => (
 							<button
@@ -1026,10 +1067,14 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 								type="button"
 								className={cn(
 									"cc-swatch",
-									backgroundColor.toLowerCase() === color.toLowerCase() && "cc-swatch--active",
+									background.type === "color" &&
+										background.color.toLowerCase() === color.toLowerCase() &&
+										"cc-swatch--active",
 								)}
 								style={{ background: color }}
-								onClick={() => setProjectBackground({ editor, color })}
+								onClick={() =>
+									setProjectBackground({ editor, background: { type: "color", color } })
+								}
 								aria-label={`Background ${color}`}
 							/>
 						))}

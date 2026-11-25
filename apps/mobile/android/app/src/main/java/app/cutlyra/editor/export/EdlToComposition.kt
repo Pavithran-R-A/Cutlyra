@@ -163,6 +163,17 @@ object EdlToComposition {
         // the declared-but-absent track instead of failing. Leaving it to be
         // inferred is what produced, in order on the emulator: the gap
         // exception, then a released-audio-input crash at 54%.
+        // Project background blur (unitless 0..500). The base sequence — and a
+        // cross-fade's incoming head, which is also full-frame — renders it as
+        // a real blurred backdrop behind the sharp fitted foreground. PiP /
+        // sticker overlay sequences must NOT, or their opaque backdrop would
+        // hide the video underneath.
+        val backgroundBlurIntensity: Float =
+            if (edl.meta.background.isBlur) {
+                edl.meta.background.blurIntensity.toFloat().coerceAtLeast(0f)
+            } else {
+                0f
+            }
         var baseSeqBuilder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
         for (placed in placements.placedClips) {
             // An animated GIF expands into one image item per displayed frame;
@@ -183,6 +194,7 @@ object EdlToComposition {
                 // Video only — the main track's audio rides its own
                 // sequence (see "audio sequences" below).
                 removeAudio = true,
+                backgroundBlurIntensity = backgroundBlurIntensity,
             )) {
                 baseSeqBuilder = baseSeqBuilder.addItem(item)
             }
@@ -246,6 +258,9 @@ object EdlToComposition {
                 // audio starting exactly at `windowEndUs`, so including audio
                 // here too would double it up during the transition window.
                 removeAudio = true,
+                // The head is a full-frame main-track item, so it gets the
+                // same blurred backdrop as the base sequence.
+                backgroundBlurIntensity = backgroundBlurIntensity,
             )
             // Known media3 1.11.0 artifact (Stage 5 defect #20 investigation,
             // characterized by ExportCrossfadeLuminanceInstrumentedTest): with
@@ -614,6 +629,8 @@ object EdlToComposition {
         itemStartTicks: Long = clip.startTicks,
         removeAudio: Boolean,
         applyOpacity: Boolean = true,
+        /** Unitless 0..500 project background blur; 0 = no blur backdrop. */
+        backgroundBlurIntensity: Float = 0f,
     ): List<EditedMediaItem> {
         val gif = asset.gif
         val isImageClip = clip.kind == "image" || asset.kind == EdlAssetKind.IMAGE
@@ -658,6 +675,7 @@ object EdlToComposition {
                     itemStartTicks = itemStartTicks + elapsedTicks,
                     removeAudio = removeAudio,
                     applyOpacity = applyOpacity,
+                    backgroundBlurIntensity = backgroundBlurIntensity,
                 )
                 elapsedTicks += span.timelineTicks
                 item
@@ -678,6 +696,7 @@ object EdlToComposition {
                 itemStartTicks = itemStartTicks,
                 removeAudio = removeAudio,
                 applyOpacity = applyOpacity,
+                backgroundBlurIntensity = backgroundBlurIntensity,
             ),
         )
     }
@@ -702,6 +721,10 @@ object EdlToComposition {
         itemStartTicks: Long = clip.startTicks,
         /** False when the compositor owns this item's opacity (animated PiP). */
         applyOpacity: Boolean = true,
+        /** Unitless 0..500; > 0 replaces the framing Presentation with the
+         *  background-blur composite (blurred fill backdrop + sharp fit
+         *  foreground). Overlay sequences pass 0. */
+        backgroundBlurIntensity: Float = 0f,
     ): EditedMediaItem {
         if (clip.hasMasks) {
             throw ExportUnsupportedException(
@@ -792,18 +815,32 @@ object EdlToComposition {
         // frames reaching the overlay stage are already at output size and the
         // overlay is a true 1:1 blit.
         if (!removeVideo && outputWidth > 0 && outputHeight > 0) {
-            val layout = if (clip.framing == "fill") {
-                Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP
+            if (backgroundBlurIntensity > 0f) {
+                // A background-blurred canvas already covers every pixel, so
+                // the fit/fill layout is expressed inside the effect: the
+                // backdrop is fill-cropped and blurred, the foreground is
+                // fit-preserved and sharp (`BackgroundBlurEffect`).
+                videoEffects.add(
+                    BackgroundBlurEffect(
+                        outputWidth = outputWidth,
+                        outputHeight = outputHeight,
+                        intensity = backgroundBlurIntensity,
+                    ),
+                )
             } else {
-                Presentation.LAYOUT_SCALE_TO_FIT
+                val layout = if (clip.framing == "fill") {
+                    Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP
+                } else {
+                    Presentation.LAYOUT_SCALE_TO_FIT
+                }
+                videoEffects.add(
+                    Presentation.createForWidthAndHeight(
+                        outputWidth,
+                        outputHeight,
+                        layout,
+                    ),
+                )
             }
-            videoEffects.add(
-                Presentation.createForWidthAndHeight(
-                    outputWidth,
-                    outputHeight,
-                    layout,
-                ),
-            )
         }
 
         val effectiveRemoveAudio = removeAudio || !asset.hasAudio

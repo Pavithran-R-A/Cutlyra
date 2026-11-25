@@ -1548,12 +1548,21 @@ export function setProjectFps({ editor, fps }: { editor: EditorCore; fps: FrameR
 	editor.command.execute({ command: new UpdateProjectSettingsCommand({ fps }) });
 }
 
-/** Background panel (capture-verified toolbar item, 2026-08-18): a solid
- *  canvas background color through the same settings command the export
- *  sheet's resolution control uses. */
-export function setProjectBackground({ editor, color }: { editor: EditorCore; color: string }): void {
+/** Background panel: one settings command for both backgrounds the engine
+ *  renders — a solid canvas colour and real blurred video. `TBackground` is
+ *  the single persisted shape, so undo/redo and save/reopen need nothing
+ *  extra. */
+export function setProjectBackground({
+	editor,
+	background,
+}: {
+	editor: EditorCore;
+	background:
+		| { type: "color"; color: string }
+		| { type: "blur"; blurIntensity: number };
+}): void {
 	editor.command.execute({
-		command: new UpdateProjectSettingsCommand({ background: { type: "color", color } }),
+		command: new UpdateProjectSettingsCommand({ background }),
 	});
 }
 

@@ -31,6 +31,7 @@
     "./stickers": "./src/stickers/index.ts",
     "./stickers/categories": "./src/stickers/categories.ts",
     "./retime": "./src/retime/index.ts",
+    "./background/blur": "./src/background/blur.ts",
     "./fonts/local-fonts": "./src/fonts/local-fonts.ts",
     "./graphics": "./src/graphics/index.ts",
     "./sounds/local-sounds": "./src/sounds/local-sounds.ts",

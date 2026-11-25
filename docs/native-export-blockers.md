@@ -46,14 +46,20 @@ must be validated in CI or on a physical device.
    320x240 and 240x320 preserved, zero audio tracks, cancellation leaves no
    file, and a range past the source end is refused with
    `RANGE_OUT_OF_BOUNDS`.
-4. **Background blur → native export (NOT IMPLEMENTED)** — Media3 1.11.0 does
-   contain `GaussianBlurWithFrameOverlaid`, but it blurs and overlays the SAME
-   cropped input, so it cannot produce a fitted sharp foreground over a
-   fill-cropped blurred background when the aspect ratios differ. A correct
-   implementation needs a custom single-input shader (fill UV for the blurred
-   backdrop, fit UV for the foreground) or a second composited sequence. Until
-   then the feature is not exposed in the mobile UI and `meta.background` is
-   not honoured by the Android exporter.
+4. **Background blur → native export (RESOLVED 2026-11-25)** — Media3 1.11.0's
+   `GaussianBlurWithFrameOverlaid` blurs and overlays the SAME cropped input,
+   so it cannot produce a fitted sharp foreground over a fill-cropped blurred
+   background when aspect ratios differ. The exporter now uses a custom
+   single-input `BackgroundBlurEffect` (`GlShaderProgram`, 9 taps): the
+   backdrop is the frame sampled with fill UVs and blurred, the foreground is
+   the same frame sampled with fit UVs and left sharp. `BackgroundBlurMath`
+   mirrors the preview's `intensity/5 × resolution/reference` sigma and both
+   sides are tested against the same fixtures; the layout is computed from the
+   frame the shader actually receives, so crop, rotation and Fit/Fill are
+   honoured. `EdlMeta.background` is parsed (older EDLs default to colour) and
+   `ExportBackgroundBlurInstrumentedTest` decodes the exported MP4s: sharp
+   fitted foreground, non-black blurred same-source backdrop, stronger
+   intensity blurs more, portrait-on-landscape and landscape-on-portrait.
 5. **GIF → MP4 frame feeding (RESOLVED)** — a picked `.gif` is decoded
    natively (`GifDecoder`, pure Kotlin) into one real PNG per frame in media
    custody (`gif/<assetId>/frame-NNN.png`) plus the file's own per-frame
