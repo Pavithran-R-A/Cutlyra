@@ -69,6 +69,8 @@ import {
 	setClipKeyframeEasing,
 	setAudioFades,
 	freezeFrameAtPlayhead,
+	reverseClip,
+	cancelReverseClip,
 	setFreezeFrameHold,
 	removeFreezeFrame,
 	freezeFrameStateFor,
@@ -305,6 +307,11 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 	 *  successful freeze reports through the chrome strip. */
 	const [freezeBusy, setFreezeBusy] = useState(false);
 	const [freezeError, setFreezeError] = useState<string | null>(null);
+	/** Reverse Video feedback. Progress is the generator's own frame count, so
+	 *  the label reports real work rather than an indeterminate spinner. */
+	const [reverseBusy, setReverseBusy] = useState(false);
+	const [reverseError, setReverseError] = useState<string | null>(null);
+	const [reverseProgress, setReverseProgress] = useState<number | null>(null);
 
 	const runCutDeadSpace = ({ ref }: { ref: ElementRef }) => {
 		if (deadSpaceProgress) return; // one analysis at a time
@@ -347,6 +354,38 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 			})
 			.catch(reportChromeError)
 			.finally(() => setFreezeBusy(false));
+	};
+
+	/** Reverse Video: generate the reversed file natively, then retarget the
+	 *  clip in one undoable command (see actions.ts). A success notice appears
+	 *  only after the asset and the timeline edit were written. */
+	const runReverseClip = ({ ref }: { ref: ElementRef }) => {
+		if (reverseBusy) return;
+		setReverseError(null);
+		setChromeError(null);
+		setChromeNotice("Generating reversed frames…");
+		setReverseProgress(null);
+		setReverseBusy(true);
+		reverseClip({
+			editor,
+			ref,
+			onProgress: ({ progress }) => setReverseProgress(progress),
+		})
+			.then((outcome) => {
+				if (outcome.status === "refused") {
+					setChromeNotice(null);
+					setReverseError(outcome.message);
+					return;
+				}
+				setChromeNotice(
+					`Reversed ${outcome.frameCount} frames (${(outcome.durationMs / 1000).toFixed(2)}s). Reversed clips are silent; the original media was kept.`,
+				);
+			})
+			.catch(reportChromeError)
+			.finally(() => {
+				setReverseBusy(false);
+				setReverseProgress(null);
+			});
 	};
 
 	/** Replace Clip (#74): pick a local file, import it WITHOUT registering it,
@@ -722,6 +761,18 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 							? () => runFreezeFrame({ ref: selectedRef })
 							: undefined
 					}
+					onReverse={
+						selectedElement.type === "video"
+							? () => runReverseClip({ ref: selectedRef })
+							: undefined
+					}
+					reverseBusy={reverseBusy}
+					reverseProgress={reverseProgress}
+					reverseError={reverseError}
+					onCancelReverse={() => {
+						setChromeNotice("Cancelling the reverse…");
+						void cancelReverseClip();
+					}}
 					freezeBusy={freezeBusy}
 					freezeError={freezeError}
 					freezeHoldSeconds={selectedFreeze?.holdSeconds}

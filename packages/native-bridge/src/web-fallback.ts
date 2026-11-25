@@ -288,6 +288,16 @@ export function createWebFallbackBridge(): NativeBridge {
 			return null;
 		},
 
+		// Reverse Video needs the same native custody to ENCODE a reversed
+		// file; the web build has no encoder bridge. Reporting null is honest —
+		// the caller refuses the reverse instead of flipping a flag.
+		async reverseVideo(): Promise<null> {
+			return null;
+		},
+		async cancelReverseVideo(): Promise<void> {
+			return;
+		},
+
 		// -- Project backup (GitHub #35) ---------------------------------
 		// On web the archive is assembled in JS from OPFS bytes and saved via
 		// a browser download — there is no SAF and no native custody. These
