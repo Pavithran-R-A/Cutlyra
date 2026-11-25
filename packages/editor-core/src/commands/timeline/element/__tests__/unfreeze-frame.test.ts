@@ -75,6 +75,37 @@ describe("UnfreezeFrameCommand", () => {
 		expect(v.duration).toBe(mediaTime({ ticks: 120_000 }));
 	});
 
+	it("pulls later clips back so the timeline returns to its original length", () => {
+		const second: VideoElement = {
+			...videoElement({ id: "v2", name: "next" }),
+			startTime: mediaTime({ ticks: 120_000 }),
+		};
+		const h = buildHarness([videoElement({ id: "v1", name: "clip" }), second]);
+		const hold = mediaTime({ ticks: 30_000 });
+		const freeze = new FreezeFrameCommand({
+			trackId: h.mainTrackId,
+			elementId: "v1",
+			splitTime: mediaTime({ ticks: 60_000 }),
+			holdDuration: hold,
+			frozenMediaId: "frame-asset-1",
+		});
+		freeze.execute();
+		expect(h.tracks.main.elements.map((el) => el.startTime)).toContain(
+			mediaTime({ ticks: 150_000 }),
+		);
+
+		const unfreeze = new UnfreezeFrameCommand({
+			trackId: h.mainTrackId,
+			frozenElementId: freeze.getFrozenElementId(),
+		});
+		unfreeze.execute();
+
+		const elems = h.tracks.main.elements;
+		expect(elems.map((el) => el.id)).toEqual(["v1", "v2"]);
+		expect((elems[0] as VideoElement).duration).toBe(mediaTime({ ticks: 120_000 }));
+		expect(elems[1].startTime).toBe(mediaTime({ ticks: 120_000 }));
+	});
+
 	it("undo restores frozen state", () => {
 		const h = buildHarness([videoElement({ id: "v1", name: "clip" })]);
 		const splitTime = mediaTime({ ticks: 60_000 });

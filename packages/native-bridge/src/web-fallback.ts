@@ -280,6 +280,14 @@ export function createWebFallbackBridge(): NativeBridge {
 			};
 		},
 
+		// Freeze Frame needs native custody: web assets are blob-backed, so
+		// the host captures the frame in JS (canvas) instead. Reporting null
+		// here is honest — the caller refuses the freeze rather than faking
+		// a still.
+		async captureFreezeFrame(): Promise<null> {
+			return null;
+		},
+
 		// -- Project backup (GitHub #35) ---------------------------------
 		// On web the archive is assembled in JS from OPFS bytes and saved via
 		// a browser download — there is no SAF and no native custody. These

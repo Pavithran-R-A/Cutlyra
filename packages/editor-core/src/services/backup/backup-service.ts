@@ -33,6 +33,7 @@
 
 import type { SerializedProject, MediaAssetData } from "@/services/storage/types";
 import type { GifAssetMetadata } from "@/media/gif-asset";
+import type { FreezeFrameCaptureConfig } from "@/media/freeze-frame";
 import type { StorageService } from "@/services/storage/service";
 import {
 	ARCHIVE_FORMAT_VERSION,
@@ -334,6 +335,7 @@ export async function exportProjectArchive({
 			sourceWidth: asset.sourceWidth,
 			sourceHeight: asset.sourceHeight,
 			gif: archivedGifMetadata(asset.gif),
+			freezeFrame: asset.freezeFrame,
 			files,
 		});
 	}
@@ -514,6 +516,7 @@ export async function restoreProjectArchive({
 				// metadata keeps the timing and carries no frame paths rather
 				// than pointing at files this platform does not have.
 				gif: archivedGifMetadata(first.gif),
+				freezeFrame: first.freezeFrame,
 			};
 
 			if (primary) {
@@ -773,6 +776,8 @@ export interface NativeMediaDescriptor {
 	/** Custody-relative PNG paths of every decoded GIF frame, in frame order.
 	 *  Empty for a non-GIF asset or a build without decoded frames. */
 	gifFrames: string[];
+	/** Freeze Frame provenance for a generated still. */
+	freezeFrame?: FreezeFrameCaptureConfig;
 }
 
 /** Builds the JSON-only recipe for a native archive export. */
@@ -874,6 +879,7 @@ export async function buildExportRecipe({
 		sourceHeight: asset.sourceHeight,
 		gif: archivedGifMetadata(asset.gif),
 		gifFrames: (asset.gif?.frames ?? []).map((frame) => frame.relativePath),
+		freezeFrame: asset.freezeFrame,
 	}));
 	return {
 		projectJson: JSON.stringify(serialized, null, 2),
@@ -1050,6 +1056,7 @@ export async function applyNativeImport({
 					sourceWidth: archived?.sourceWidth,
 					sourceHeight: archived?.sourceHeight,
 					gif: gifByAsset.get(assetId),
+					freezeFrame: archived?.freezeFrame,
 					nativeRelativePath: proxy?.newPath,
 					sourceNativeRelativePath: source?.newPath,
 					thumbnailNativeRelativePath: thumb?.newPath,

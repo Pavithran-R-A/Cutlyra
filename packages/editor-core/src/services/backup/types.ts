@@ -1,4 +1,5 @@
 import type { GifAssetMetadata } from "@/media/gif-asset";
+import type { FreezeFrameCaptureConfig } from "@/media/freeze-frame";
 
 /**
  * GitHub #35 / Linear PAV-51 — project backup archives.
@@ -82,6 +83,9 @@ export interface ArchivedAsset {
 	sourceHeight?: number;
 	/** Animated-GIF metadata, so a restored GIF keeps playing. */
 	gif?: GifAssetMetadata;
+	/** Freeze Frame provenance for a generated still, so a restored freeze
+	 *  keeps pointing at the clip/instant it froze. */
+	freezeFrame?: FreezeFrameCaptureConfig;
 	files: ArchivedFileEntry[];
 }
 

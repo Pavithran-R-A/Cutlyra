@@ -17,6 +17,7 @@ import app.cutlyra.editor.edl.EdlTrack
 import app.cutlyra.editor.edl.EdlTrackKind
 import app.cutlyra.editor.edl.EdlTrackType
 import app.cutlyra.editor.edl.EdlTransform
+import app.cutlyra.editor.media.FreezeFrameCapture
 import app.cutlyra.editor.media.MediaProbe
 import app.cutlyra.editor.test.R
 import org.junit.After
@@ -37,8 +38,9 @@ import java.util.concurrent.TimeUnit
  * interval between two trimmed halves of the source video, exports it through
  * the real Media3Exporter, and decodes the resulting MP4 to confirm it is
  * valid, non-black, and has the expected total duration (first half + hold +
- * second half). Uses a real captured frame (MediaMetadataRetriever) rather than
- * a placeholder, matching the web/native capture path.
+ * second half). The still is produced by the production capture path
+ * ([FreezeFrameCapture]) from a generated red/green/blue source, so the
+ * assertions can name the exact expected colour of each interval.
  */
 @RunWith(AndroidJUnit4::class)
 class ExportFreezeFrameInstrumentedTest {
@@ -303,7 +305,6 @@ class ExportFreezeFrameInstrumentedTest {
     @Test
     fun export_preserves_the_selected_source_frame_and_source_continuity() {
         val colorSource = File(context.cacheDir, "freeze_color_source_${System.nanoTime()}.mp4")
-        val colorFrame = File(context.cacheDir, "freeze_color_frame_${System.nanoTime()}.png")
         val colorOutput = File(context.cacheDir, "freeze_color_export_${System.nanoTime()}.mp4")
         try {
             SolidColorVideoFactory.create(
@@ -319,16 +320,33 @@ class ExportFreezeFrameInstrumentedTest {
                 fps = 30,
             )
 
-            // Capture the real frame at 0.5s (RED) exactly the way the app does.
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(colorSource.absolutePath)
-            val bitmap = retriever.getFrameAtTime(500_000L, MediaMetadataRetriever.OPTION_CLOSEST)
-            assertNotNull("must extract the frame at 500ms", bitmap)
-            colorFrame.outputStream().use { out ->
-                bitmap!!.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-            }
-            bitmap!!.recycle()
-            retriever.release()
+            // Capture through the PRODUCTION path (FreezeFrameCapture), not an
+            // ad-hoc retriever call: this is the code the Freeze button runs.
+            val custody = File(context.cacheDir, "freeze-custody-${System.nanoTime()}")
+            val captured = FreezeFrameCapture.capture(
+                sourceFile = colorSource,
+                timestampMicros = 500_000L,
+                custodyRoot = custody,
+            )
+            assertEquals("freeze", captured.relativePath.substringBefore('/'))
+            assertTrue("captured still must exist", captured.file.isFile)
+            assertEquals(320, captured.width)
+            assertEquals(240, captured.height)
+            // The still itself must BE the red frame — a black/blank/first-frame
+            // capture would pass a "non-black at 1s" check but fails this.
+            val stillPixel = readCenterPixel(captured.file)
+            assertTrue(
+                "captured still should be RED, center pixel was $stillPixel",
+                stillPixel.first > stillPixel.second + 30 && stillPixel.first > stillPixel.third + 30,
+            )
+            // And an instant past the probed duration must be refused, never
+            // silently clamped to another frame.
+            val refusal = runCatching {
+                FreezeFrameCapture.capture(colorSource, 5_000_000L, custody)
+            }.exceptionOrNull()
+            assertTrue("expected a CaptureException, got $refusal", refusal is FreezeFrameCapture.CaptureException)
+            assertEquals("CAPTURE_OUT_OF_RANGE", (refusal as FreezeFrameCapture.CaptureException).code)
+            val colorFramePath = captured.file
 
             // Freeze at 0.5s (red), hold 1s, resume source at 0.5s.
             val edl = buildFixtureEdl(
@@ -336,7 +354,7 @@ class ExportFreezeFrameInstrumentedTest {
                 sourceFile = colorSource,
                 sourceDurationTicks = 3 * ticksPerSecond,
                 leftTicks = ticksPerSecond / 2,
-                frozenFrameFile = colorFrame,
+                frozenFrameFile = colorFramePath,
                 hasAudio = false,
             )
 
@@ -374,9 +392,19 @@ class ExportFreezeFrameInstrumentedTest {
             SolidColorVideoFactory.assertSolidColor(done.outputFile, atUs = 3_000_000L, expected = "blue")
         } finally {
             colorSource.delete()
-            colorFrame.delete()
             colorOutput.delete()
         }
+    }
+
+    /** Center pixel of a PNG on disk, as RGB. */
+    private fun readCenterPixel(file: File): Triple<Int, Int, Int> {
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+        assertNotNull("captured still must decode as an image", bitmap)
+        val x = bitmap!!.width / 2
+        val y = bitmap.height / 2
+        val pixel = bitmap.getPixel(x, y)
+        bitmap.recycle()
+        return Triple((pixel shr 16) and 0xFF, (pixel shr 8) and 0xFF, pixel and 0xFF)
     }
 
     private fun assertFrameDecodesNonBlack(file: File, atUs: Long) {

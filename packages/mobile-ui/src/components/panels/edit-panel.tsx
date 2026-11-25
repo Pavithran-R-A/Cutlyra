@@ -1,6 +1,8 @@
 import { Copy, FlipHorizontal2, FlipVertical2, RefreshCw, RotateCcw, RotateCw, Scissors, ScissorsLineDashed, Trash2 } from "lucide-react";
 import { setElementParam } from "../../editor/actions";
 import { CC_ICON_STROKE } from "../../tokens";
+import { FreezeFrameIcon } from "../../icons";
+import { FREEZE_HOLD_LIMITS } from "../../editor/actions";
 import { PanelSheet } from "../panel-sheet";
 import { SheetHeader } from "../sheet-header";
 import { SegmentedControl } from "../segmented-control";
@@ -42,6 +44,16 @@ interface EditPanelProps {
 	/** Nondestructive Replace Clip (#74). Absent for element types whose media
 	 *  cannot be swapped (text, captions, graphics, library audio). */
 	onReplace?: () => void;
+	/** Freeze Frame at the playhead (video clips only). */
+	onFreeze?: () => void;
+	/** Non-null while a frame is being captured and the edit is committed. */
+	freezeBusy?: boolean;
+	/** Capture/edit failure, shown verbatim. */
+	freezeError?: string | null;
+	/** Non-null when the selected element IS a frozen still: its hold length. */
+	freezeHoldSeconds?: number;
+	onSetFreezeHold?: (seconds: number) => void;
+	onRemoveFreeze?: () => void;
 	/** "Relink media" when the clip's media reference is already missing. */
 	replaceLabel?: string;
 	/** Non-null when the picked replacement is shorter than the clip's edited
@@ -78,6 +90,12 @@ export function EditPanel({
 	onFlipHorizontal,
 	onFlipVertical,
 	onReplace,
+	onFreeze,
+	freezeBusy = false,
+	freezeError = null,
+	freezeHoldSeconds,
+	onSetFreezeHold,
+	onRemoveFreeze,
 	replaceLabel = "Replace",
 	replacePrompt,
 	onConfirmReplace,
@@ -135,6 +153,18 @@ export function EditPanel({
 					<Copy size={20} strokeWidth={CC_ICON_STROKE} />
 					<span>Duplicate</span>
 				</button>
+				{onFreeze && (
+					<button
+						type="button"
+						className="cc-panel-actions__btn"
+						onClick={onFreeze}
+						disabled={freezeBusy}
+						aria-busy={freezeBusy}
+					>
+						<FreezeFrameIcon size={20} strokeWidth={CC_ICON_STROKE} />
+						<span>{freezeBusy ? "Freezing…" : "Freeze"}</span>
+					</button>
+				)}
 				<button type="button" className="cc-panel-actions__btn" onClick={onDelete}>
 					<Trash2 size={20} strokeWidth={CC_ICON_STROKE} />
 					<span>Delete</span>
@@ -157,6 +187,42 @@ export function EditPanel({
 					</button>
 				)}
 			</div>
+
+			{freezeError && (
+				<p className="cc-replace-prompt__text" role="alert">
+					{freezeError}
+				</p>
+			)}
+
+			{freezeHoldSeconds !== undefined && (
+				<>
+					{/* The hold is a still image, so it is silent by construction.
+					    Stated here because "why did the audio stop?" is the exact
+					    question a freeze raises. */}
+					<ParamRow
+						label="Hold"
+						value={freezeHoldSeconds}
+						min={FREEZE_HOLD_LIMITS.min}
+						max={FREEZE_HOLD_LIMITS.max}
+						step={0.1}
+						formatValue={(v) => `${v.toFixed(1)}s`}
+						onChange={(seconds) => onSetFreezeHold?.(seconds)}
+					/>
+					<p className="cc-replace-prompt__text">
+						Silent hold — the video before and after keeps its own audio.
+					</p>
+					{onRemoveFreeze && (
+						<button
+							type="button"
+							className="cc-panel-actions__btn"
+							onClick={onRemoveFreeze}
+						>
+							<Trash2 size={20} strokeWidth={CC_ICON_STROKE} />
+							<span>Remove freeze</span>
+						</button>
+					)}
+				</>
+			)}
 
 			{isRetimable && (
 				<>

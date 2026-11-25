@@ -86,12 +86,24 @@ object BackupArchive {
 		val gif: GifMetadata? = null,
 		/** Custody-relative PNG paths of the decoded GIF frames, in order. */
 		val gifFrames: List<String> = emptyList(),
+		/** Freeze Frame provenance for a generated still. */
+		val freezeFrame: FreezeFrameBlock? = null,
 	) {
 		data class GifMetadata(
 			val width: Int,
 			val height: Int,
 			val loopCount: Int,
 			val frameDelaysMs: List<Double>,
+		)
+
+		data class FreezeFrameBlock(
+			val sourceElementId: String,
+			val sourceMediaId: String,
+			val sourceTimestampMicros: Long,
+			val holdDurationMicros: Long,
+			val width: Int,
+			val height: Int,
+			val capturedAt: String,
 		)
 	}
 
@@ -458,6 +470,17 @@ object BackupArchive {
 			for (delay in gif.frameDelaysMs) delays.put(delay)
 			gifObj.put("frameDelaysMs", delays)
 			o.put("gif", gifObj)
+		}
+		desc.freezeFrame?.let { freeze ->
+			val freezeObj = JSONObject()
+			freezeObj.put("sourceElementId", freeze.sourceElementId)
+			freezeObj.put("sourceMediaId", freeze.sourceMediaId)
+			freezeObj.put("sourceTimestampMicros", freeze.sourceTimestampMicros)
+			freezeObj.put("holdDurationMicros", freeze.holdDurationMicros)
+			freezeObj.put("width", freeze.width)
+			freezeObj.put("height", freeze.height)
+			freezeObj.put("capturedAt", freeze.capturedAt)
+			o.put("freezeFrame", freezeObj)
 		}
 		o.put("files", files)
 		return o

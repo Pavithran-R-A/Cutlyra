@@ -112,6 +112,54 @@ function makeGifAsset(): MediaAsset {
 	};
 }
 
+const FREEZE = {
+	sourceElementId: "clip-video",
+	sourceMediaId: "asset-source",
+	sourceTimestampMicros: 1_500_000,
+	holdDurationMicros: 1_000_000,
+	width: 320,
+	height: 240,
+	capturedAt: "2026-11-25T00:00:00.000Z",
+};
+
+function makeFreezeAsset(): MediaAsset {
+	return {
+		id: "freeze-asset",
+		name: "freeze-1500000ms-ab12cd34.png",
+		type: "image",
+		file: new File([], "freeze.png", { type: "image/png" }),
+		url: "file:///custody/freeze/freeze-1.png",
+		width: 320,
+		height: 240,
+		hasAudio: false,
+		nativeRelativePath: "freeze/freeze-1.png",
+		freezeFrame: FREEZE,
+	};
+}
+
+describe("Freeze Frame metadata survives save/reopen", () => {
+	test("loadMediaAsset returns the capture record and the still's custody path", async () => {
+		const storage = new StorageService();
+		await storage.saveMediaAsset({ projectId: "p-freeze", mediaAsset: makeFreezeAsset() });
+
+		const reopened = await storage.loadMediaAsset({ projectId: "p-freeze", id: "freeze-asset" });
+
+		expect(reopened?.freezeFrame).toEqual(FREEZE);
+		expect(reopened?.nativeRelativePath).toBe("freeze/freeze-1.png");
+		expect(reopened?.type).toBe("image");
+	});
+
+	test("an ordinary still reopens without a fabricated capture record", async () => {
+		const storage = new StorageService();
+		const plain: MediaAsset = { ...makeFreezeAsset(), id: "plain-still", freezeFrame: undefined };
+		await storage.saveMediaAsset({ projectId: "p-freeze", mediaAsset: plain });
+
+		const reopened = await storage.loadMediaAsset({ projectId: "p-freeze", id: "plain-still" });
+
+		expect(reopened?.freezeFrame).toBeUndefined();
+	});
+});
+
 describe("GIF media metadata survives save/reopen", () => {
 	test("loadMediaAsset returns the persisted gif timing and frame paths", async () => {
 		const storage = new StorageService();

@@ -101,6 +101,7 @@ import type {
 	PickProgress,
 	Platform,
 	ProxyProgress,
+	FreezeFrameCapture,
 	GifAssetDecodeResult,
 	ProxySpec,
 	RestoredMediaFile,
@@ -200,6 +201,19 @@ interface NativeBridgePluginSpec {
 		uri: string;
 		assetId: string;
 	}): Promise<GifAssetDecodeResult>;
+	captureFreezeFrame(params: {
+		sourceElementId: string;
+		sourceMediaPath: string;
+		timestampMicros: number;
+		referencedFreezePaths?: string[];
+	}): Promise<{
+		captured: boolean;
+		relativePath?: string;
+		uri?: string;
+		width: number;
+		height: number;
+		timestampMicros: number;
+	}>;
 	saveGeneratedAudio(params: { assetId: string; base64: string }): Promise<{
 		relativePath: string;
 	}>;
@@ -509,6 +523,51 @@ export function createCapacitorBridge({
 				// implemented"; callers surface that as an explicit unsupported
 				// import rather than silently importing the first frame.
 				return null;
+			}
+		},
+
+		async captureFreezeFrame({
+			sourceElementId,
+			sourceMediaPath,
+			timestampMicros,
+			referencedFreezePaths,
+		}: {
+			sourceElementId: string;
+			sourceMediaPath: string;
+			timestampMicros: number;
+			referencedFreezePaths?: string[];
+		}): Promise<FreezeFrameCapture | null> {
+			try {
+				const result = await plugin.captureFreezeFrame({
+					sourceElementId,
+					sourceMediaPath,
+					timestampMicros,
+					referencedFreezePaths,
+				});
+				if (!result.captured || !result.relativePath || !result.uri) return null;
+				return {
+					captured: true,
+					relativePath: result.relativePath,
+					// Native hands back a raw sandbox path / file:// URL; every
+					// consumer of this URI is a WebView <img>, so convert here.
+					uri: toPlaybackUri(result.uri),
+					width: result.width,
+					height: result.height,
+					timestampMicros: result.timestampMicros,
+				};
+			} catch (err) {
+				// A real capture failure (source unreadable, timestamp past the
+				// end) must surface, not be swallowed into a silent null. Only a
+				// build WITHOUT the method reports UNIMPLEMENTED, which the
+				// caller turns into an explicit "unsupported" refusal.
+				if (
+					typeof err === "object" &&
+					err !== null &&
+					(err as { code?: unknown }).code === "UNIMPLEMENTED"
+				) {
+					return null;
+				}
+				throw toNativeBridgeError({ err, method: "captureFreezeFrame" });
 			}
 		},
 

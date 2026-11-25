@@ -30,6 +30,7 @@
  */
 
 import type { GifAssetMetadata } from "@/media/gif-asset";
+import type { FreezeFrameCaptureConfig } from "@/media/freeze-frame";
 import {
 	ARCHIVE_FORMAT,
 	ARCHIVE_FORMAT_VERSION,
@@ -558,6 +559,43 @@ function toArchivedGif(value: unknown): GifAssetMetadata | undefined {
 	return { width, height, loopCount, frameDelaysMs };
 }
 
+/** Validates optional Freeze Frame provenance on an archived still. */
+function toArchivedFreezeFrame(value: unknown): FreezeFrameCaptureConfig | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) manifestFail("asset freezeFrame must be an object");
+	if (typeof value.sourceElementId !== "string") manifestFail("freezeFrame missing sourceElementId");
+	if (typeof value.sourceMediaId !== "string") manifestFail("freezeFrame missing sourceMediaId");
+	if (typeof value.capturedAt !== "string") manifestFail("freezeFrame missing capturedAt");
+	const sourceTimestampMicros = optionalNumber({
+		value: value.sourceTimestampMicros,
+		field: "freezeFrame.sourceTimestampMicros",
+	});
+	const holdDurationMicros = optionalNumber({
+		value: value.holdDurationMicros,
+		field: "freezeFrame.holdDurationMicros",
+	});
+	const width = optionalNumber({ value: value.width, field: "freezeFrame.width" });
+	const height = optionalNumber({ value: value.height, field: "freezeFrame.height" });
+	if (sourceTimestampMicros === undefined || sourceTimestampMicros < 0) {
+		manifestFail("freezeFrame.sourceTimestampMicros must be non-negative");
+	}
+	if (holdDurationMicros === undefined || holdDurationMicros <= 0) {
+		manifestFail("freezeFrame.holdDurationMicros must be positive");
+	}
+	if (width === undefined || width <= 0 || height === undefined || height <= 0) {
+		manifestFail("freezeFrame dimensions must be positive");
+	}
+	return {
+		sourceElementId: value.sourceElementId,
+		sourceMediaId: value.sourceMediaId,
+		sourceTimestampMicros,
+		holdDurationMicros,
+		width,
+		height,
+		capturedAt: value.capturedAt,
+	};
+}
+
 /** Validates ONE archived asset, returning it fully typed. */
 function toArchivedAsset(value: unknown): ArchivedAsset {
 	if (!isRecord(value)) manifestFail("bad asset");
@@ -596,6 +634,7 @@ function toArchivedAsset(value: unknown): ArchivedAsset {
 		sourceWidth: optionalNumber({ value: value.sourceWidth, field: "sourceWidth" }),
 		sourceHeight: optionalNumber({ value: value.sourceHeight, field: "sourceHeight" }),
 		gif: toArchivedGif(value.gif),
+		freezeFrame: toArchivedFreezeFrame(value.freezeFrame),
 		files: value.files.map((file: unknown) => toArchivedFileEntry(file)),
 	};
 }

@@ -36,10 +36,20 @@ export interface FreezeFrameParams {
  *
  * Splits the source video element at `splitTime`, inserts a duration-adjustable
  * still (image) interval between the two halves, and preserves preceding and
- * following video. Audio behaviour: the left half keeps its source audio up to
- * the split; the frozen interval carries no audio (it is a still image); the
- * right half keeps its source audio from its new trim start. Undo restores the
- * saved scene tracks.
+ * following video: on the MAIN track (magnetic) every later clip ripples by the
+ * hold duration, so inserting the freeze can never overlap or gap the rest of
+ * the edit. Overlay tracks are free-position and are not rippled.
+ *
+ * Audio policy (explicit, and the same one the UI states):
+ *  - the LEFT half keeps its source audio up to the split;
+ *  - the frozen interval, being a still image, carries NO audio;
+ *  - the RIGHT half keeps its source audio from its new trim start.
+ * Nothing is muted, duplicated, or re-encoded differently; only the timeline
+ * interval changes. The source media is never deleted — both halves still
+ * reference the original asset.
+ *
+ * Undo restores the saved scene tracks (including the ripple), so a freeze is
+ * one undo step and its redo replays the same deterministic edit.
  */
 export class FreezeFrameCommand extends Command {
 	private savedState: SceneTracks | null = null;
@@ -144,9 +154,26 @@ export class FreezeFrameCommand extends Command {
 			...(retimeRef !== undefined ? { retime: retimeRef } : {}),
 		};
 
+		// Main-track ripple: the insert makes the edit `holdDuration` longer, so
+		// every clip that started at/after the split moves right by exactly that
+		// amount. Without this the inserted still overlapped its neighbours.
+		const ripples = this.savedState.main.id === this.trackId;
 		const newElements = track.elements.flatMap((el) => {
-			if (el.id !== this.elementId) return [el];
-			return [leftElement, frozenImage, rightElement];
+			if (el.id === this.elementId) {
+				return [leftElement, frozenImage, rightElement];
+			}
+			if (ripples && el.startTime >= this.splitTime) {
+				return [
+					{
+						...el,
+						startTime: addMediaTime({
+							a: el.startTime,
+							b: this.holdDuration,
+						}),
+					} as TimelineElement,
+				];
+			}
+			return [el];
 		});
 
 		const newTrack = { ...track, elements: newElements } as typeof track;

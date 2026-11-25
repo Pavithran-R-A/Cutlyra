@@ -215,6 +215,8 @@ export async function runBackupProject({
 			// archive entries so the restore can rewrite every path.
 			gif: m.gif,
 			gifFrames: m.gifFrames,
+			// Freeze stills keep their capture provenance across a restore.
+			freezeFrame: m.freezeFrame,
 		})),
 		appVersion: APP_VERSION,
 	});

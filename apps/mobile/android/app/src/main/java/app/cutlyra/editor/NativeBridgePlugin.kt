@@ -34,7 +34,7 @@ import app.cutlyra.editor.export.ticksToUs
 import app.cutlyra.editor.media.MediaImporter
 import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
-import app.cutlyra.editor.media.FreezeFrameConfig
+import app.cutlyra.editor.media.FreezeFrameCapture
 import app.cutlyra.editor.media.gif.GifAssetPreparer
 import app.cutlyra.editor.media.gif.GifFrameCleanup
 import app.cutlyra.editor.media.ProxyTranscoder
@@ -1064,6 +1064,17 @@ class NativeBridgePlugin : Plugin() {
 							.map { frames.optString(it) }
 							.filter { it.isNotBlank() }
 					}.orEmpty(),
+					freezeFrame = o.optJSONObject("freezeFrame")?.let { freeze ->
+						BackupArchive.MediaDescriptor.FreezeFrameBlock(
+							sourceElementId = freeze.optString("sourceElementId"),
+							sourceMediaId = freeze.optString("sourceMediaId"),
+							sourceTimestampMicros = freeze.optLong("sourceTimestampMicros"),
+							holdDurationMicros = freeze.optLong("holdDurationMicros"),
+							width = freeze.optInt("width"),
+							height = freeze.optInt("height"),
+							capturedAt = freeze.optString("capturedAt"),
+						)
+					},
 				),
 			)
 		}
@@ -1096,11 +1107,19 @@ class NativeBridgePlugin : Plugin() {
 
 	// -- Freeze Frame / GIF export (M10 sprint) -----------------------------
 
-	/** Captures a source frame for a Freeze Frame using MediaMetadataRetriever.
-	 *  Extracts the frame closest to `timestampMicros` from the source media
-	 *  identified by `sourceMediaPath`/`sourceUri`, persists it as a PNG in
-	 *  app-private cache, and returns its path. Falls back to a structured
-	 *  error when no source media is available. */
+	/** Captures the SOURCE frame at `timestampMicros` for a Freeze Frame.
+	 *
+	 *  The JS side maps timeline time to source time (trim + retime) and passes
+	 *  the resulting instant; this method extracts exactly that instant with
+	 *  MediaMetadataRetriever (`OPTION_CLOSEST`, never a keyframe seek), writes
+	 *  it as a real PNG in MEDIA CUSTODY (not cache — the still must persist and
+	 *  be backed up), and returns its custody-relative path + dimensions.
+	 *
+	 *  Failures are typed (`CAPTURE_OUT_OF_RANGE`, `CAPTURE_FAILED`, `IO_ERROR`).
+	 *  There is NO fallback frame: a freeze that cannot be extracted at the
+	 *  requested instant is refused rather than silently showing another frame.
+	 *  `referencedFreezePaths` lets the same call prune stills the project no
+	 *  longer references. */
 	@PluginMethod
 	fun captureFreezeFrame(call: PluginCall) {
 		val sourceElementId = call.getString("sourceElementId")
@@ -1114,66 +1133,44 @@ class NativeBridgePlugin : Plugin() {
 			call.reject("sourceMediaPath or sourceUri is required", "INVALID_ARGS")
 			return
 		}
+		val referencedPaths = call.getArray("referencedFreezePaths")?.let { array ->
+			(0 until array.length())
+				.map { array.optString(it) }
+				.filter { it.isNotBlank() }
+		}.orEmpty()
 		Thread {
 			try {
-				val retriever = MediaMetadataRetriever()
-				val file = fileFromNativeUri(sourcePath)
-				if (file != null && file.exists()) {
-					retriever.setDataSource(file.absolutePath)
-				} else {
-					retriever.setDataSource(context, Uri.parse(sourcePath))
-				}
-				val bitmap = retriever.getFrameAtTime(
-					timestampMicros,
-					MediaMetadataRetriever.OPTION_CLOSEST,
-				) ?: retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST)
-				retriever.release()
-				if (bitmap == null) {
-					call.reject("could not extract frame", "CAPTURE_FAILED")
-					return@Thread
-				}
-				val frameWidth = bitmap.width
-				val frameHeight = bitmap.height
-				val outDir = File(context.cacheDir, "freeze-frames")
-				outDir.mkdirs()
-				val outFile = File(outDir, "freeze-${sourceElementId}-${timestampMicros}.png")
-				FileOutputStream(outFile).use { os ->
-					bitmap.compress(Bitmap.CompressFormat.PNG, 100, os)
-				}
-				bitmap.recycle()
+				val sourceFile = fileFromNativeUri(sourcePath)
+					?: throw FreezeFrameCapture.CaptureException(
+						"CAPTURE_FAILED",
+						"Source media is not a local file: $sourcePath",
+					)
+				// Prune FIRST: the list is the project's referenced set, which does
+				// not yet contain the still this call is about to write.
+				FreezeFrameCapture.pruneUnreferenced(
+					custodyRoot = context.noBackupFilesDir,
+					referencedPaths = referencedPaths,
+				)
+				val frame = FreezeFrameCapture.capture(
+					sourceFile = sourceFile,
+					timestampMicros = timestampMicros,
+					custodyRoot = context.noBackupFilesDir,
+				)
 				val result = JSObject()
 				result.put("captured", true)
-				result.put("framePath", outFile.absolutePath)
+				result.put("relativePath", frame.relativePath)
+				result.put("uri", Uri.fromFile(frame.file).toString())
 				result.put("sourceElementId", sourceElementId)
-				result.put("timestampMicros", timestampMicros)
-				result.put("width", frameWidth)
-				result.put("height", frameHeight)
+				result.put("timestampMicros", frame.timestampMicros)
+				result.put("width", frame.width)
+				result.put("height", frame.height)
 				call.resolve(result)
+			} catch (e: FreezeFrameCapture.CaptureException) {
+				call.reject(e.message, e.code, e)
 			} catch (e: Exception) {
 				call.reject("freeze-frame capture failed: ${e.message}", "CAPTURE_FAILED", e)
 			}
 		}.start()
-	}
-
-	/** Validates a freeze-frame config via the pure-logic model and echoes it
-	 *  back for the caller to persist through the project save pipeline.
-	 *  Actual persistence of scene tracks happens in the editor core command
-	 *  (FreezeFrameCommand) + project save; this method does not claim to
-	 *  persist on its own. */
-	@PluginMethod
-	fun persistFreezeFrame(call: PluginCall) {
-		val raw = call.getString("configJson")
-		val config = try {
-			FreezeFrameConfig.fromJson(org.json.JSONObject(raw ?: "{}"))
-		} catch (e: Exception) {
-			call.reject("invalid freeze-frame config: ${e.message}", "INVALID_ARGS")
-			return
-		}
-		val result = JSObject()
-		result.put("id", config.id)
-		result.put("validated", true)
-		result.put("configJson", config.toJson().toString())
-		call.resolve(result)
 	}
 
 	/**
