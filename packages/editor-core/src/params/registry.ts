@@ -578,6 +578,53 @@ const captionElementParams: ElementParamDefinition[] = [
 		keyframable: false,
 	},
 	{
+		// Drop shadow for captions (percent-of-font-size units, like the
+		// text element's shadow and strokeWidth). Off by default so existing
+		// projects keep their exact look.
+		key: "shadowEnabled",
+		label: "Shadow",
+		type: "boolean",
+		default: false,
+		keyframable: false,
+	},
+	{
+		key: "shadowColor",
+		label: "Shadow Color",
+		type: "color",
+		default: "#000000",
+		keyframable: false,
+	},
+	{
+		key: "shadowBlur",
+		label: "Shadow Blur",
+		type: "number",
+		default: 25,
+		min: 0,
+		max: 100,
+		step: 1,
+		keyframable: false,
+	},
+	{
+		key: "shadowOffsetX",
+		label: "Shadow Offset X",
+		type: "number",
+		default: 4,
+		min: -100,
+		max: 100,
+		step: 1,
+		keyframable: false,
+	},
+	{
+		key: "shadowOffsetY",
+		label: "Shadow Offset Y",
+		type: "number",
+		default: 6,
+		min: -100,
+		max: 100,
+		step: 1,
+		keyframable: false,
+	},
+	{
 		key: "background.enabled",
 		label: "Background Enabled",
 		type: "boolean",

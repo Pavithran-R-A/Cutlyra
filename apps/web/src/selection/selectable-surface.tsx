@@ -209,12 +209,15 @@ export function SelectableSurface({
 	);
 
 	useEffect(() => {
-		setSelectionState((state) =>
-			pruneSelection({
-				state,
-				orderedIds,
-			}),
-		);
+		const t = setTimeout(() => {
+			setSelectionState((state) =>
+				pruneSelection({
+					state,
+					orderedIds,
+				}),
+			);
+		}, 0);
+		return () => clearTimeout(t);
 	}, [orderedIds]);
 
 	useEffect(() => {
@@ -226,7 +229,7 @@ export function SelectableSurface({
 			return;
 		}
 
-		setHighlightedId(revealId);
+		const t = setTimeout(() => setHighlightedId(revealId), 0);
 		getItemElement(revealId)?.scrollIntoView({ block: "center" });
 
 		const timer = setTimeout(() => {
@@ -234,7 +237,10 @@ export function SelectableSurface({
 			onRevealComplete?.();
 		}, 1500);
 
-		return () => clearTimeout(timer);
+		return () => {
+			clearTimeout(t);
+			clearTimeout(timer);
+		};
 	}, [getItemElement, onRevealComplete, revealId]);
 
 	const isBoxSelecting = isSelecting;

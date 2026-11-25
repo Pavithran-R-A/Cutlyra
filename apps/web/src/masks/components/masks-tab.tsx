@@ -143,8 +143,8 @@ export function MasksTab({ element, trackId }: MasksTabProps) {
 	const canvasSize = useEditor(
 		(e) => e.project.getActive().settings.canvasSize,
 	);
-	const masks = element.masks ?? [];
-	const renderMasks = renderElement.masks ?? masks;
+	const masks = (element as { masks?: Mask[] }).masks ?? [];
+	const renderMasks = (renderElement as { masks?: Mask[] }).masks ?? masks;
 	const hasMask = masks.length > 0;
 	const { onPointerLeave, onOpenChange, markCommitted } = useMenuPreview();
 	const [isDropdownOpen, setIsDropdownOpen] = useState(false);

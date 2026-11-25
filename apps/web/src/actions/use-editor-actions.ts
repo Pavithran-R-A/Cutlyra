@@ -14,9 +14,13 @@ import {
 	subMediaTime,
 	TICKS_PER_SECOND,
 	ZERO_MEDIA_TIME,
+	type MediaTime,
 } from "@/wasm";
+import { captureFrameFromFile } from "@/media/capture-frame";
+import { toast } from "sonner";
 import { useKeyframeSelection } from "@/timeline/hooks/element/use-keyframe-selection";
 import { getElementsAtTime, hasMediaId } from "@/timeline";
+import { AddMediaAssetCommand, RemoveMediaAssetCommand } from "@/commands/media";
 import { cancelInteraction } from "@/editor/cancel-interaction";
 import { invokeAction } from "@/actions";
 import { canToggleSourceAudio } from "@/timeline/audio-separation";
@@ -417,6 +421,109 @@ export function useEditorActions() {
 			editor.timeline.duplicateElements({
 				elements: selectedElements,
 			});
+		},
+		undefined,
+	);
+
+	useActionHandler(
+		"freeze-frame",
+		async () => {
+			if (selectedElements.length !== 1) return;
+			const target = selectedElements[0];
+			const activeProject = editor.project.getActive();
+			if (!activeProject) return;
+
+			const tracks = editor.scenes.getActiveScene().tracks;
+			const track =
+				tracks.main.id === target.trackId
+					? tracks.main
+					: tracks.overlay.find((t) => t.id === target.trackId);
+			const element = track?.elements.find((e) => e.id === target.elementId);
+			if (!element || element.type !== "video") return;
+
+			const videoEl = element as {
+				mediaId: string;
+				startTime: MediaTime;
+				trimStart: MediaTime;
+				retime?: { rate?: number };
+			};
+			const asset = editor.media.getAssets().find((a) => a.id === videoEl.mediaId);
+			if (!asset || !asset.file) return;
+
+			const currentTime = editor.playback.getCurrentTime();
+			const clipTime = (currentTime as number) - (videoEl.startTime as number);
+			const rate = videoEl.retime?.rate ?? 1;
+			const sourceTicks = (videoEl.trimStart as number) + Math.round(clipTime * rate);
+			const sourceSeconds = sourceTicks / TICKS_PER_SECOND;
+
+			let frozenMediaId: string | null = null;
+			try {
+				const file = await captureFrameFromFile({
+					file: asset.file,
+					timeSeconds: sourceSeconds,
+					name: `freeze-${target.elementId}.png`,
+				});
+				const addCmd = new AddMediaAssetCommand({
+					projectId: activeProject.metadata.id,
+					asset: {
+						name: `freeze-${target.elementId}.png`,
+						type: "image",
+						file,
+					},
+				});
+				editor.command.execute({ command: addCmd });
+				frozenMediaId = addCmd.getAssetId();
+			} catch (err) {
+				console.error("Freeze frame capture failed:", err);
+				toast.error("Freeze frame failed");
+				return;
+			}
+
+			if (!frozenMediaId) return;
+
+			const holdDuration = mediaTimeFromSeconds({ seconds: 1 });
+			editor.timeline.freezeFrame({
+				trackId: target.trackId,
+				elementId: target.elementId,
+				splitTime: currentTime,
+				holdDuration,
+				frozenMediaId,
+			});
+			toast.success("Frame frozen");
+		},
+		undefined,
+	);
+
+	useActionHandler(
+		"unfreeze-frame",
+		() => {
+			if (selectedElements.length !== 1) return;
+			const target = selectedElements[0];
+			// Only unfreeze if the selected element is a frozen (image) segment.
+			const tracks = editor.scenes.getActiveScene().tracks;
+			const track =
+				tracks.main.id === target.trackId
+					? tracks.main
+					: tracks.overlay.find((t) => t.id === target.trackId);
+			const el = track?.elements.find((e) => e.id === target.elementId);
+			if (!el || el.type !== "image") return;
+			const frozenMediaId = (el as { mediaId?: string }).mediaId;
+			editor.timeline.unfreezeFrame({
+				trackId: target.trackId,
+				frozenElementId: target.elementId,
+			});
+			// Clean up the now-unreferenced generated asset.
+			if (frozenMediaId) {
+				try {
+					const removeCmd = new RemoveMediaAssetCommand({
+						projectId: editor.project.getActive()!.metadata.id,
+						assetId: frozenMediaId,
+					});
+					editor.command.execute({ command: removeCmd });
+				} catch (err) {
+					console.error("Failed to clean up freeze asset:", err);
+				}
+			}
 		},
 		undefined,
 	);

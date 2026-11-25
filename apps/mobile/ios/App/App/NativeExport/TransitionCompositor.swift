@@ -33,6 +33,11 @@ public struct SourcePlacement {
 	/// EDL clip transform, authored in the preview's screen convention:
 	/// position offsets from canvas center, +Y DOWN, rotation clockwise.
 	public let transform: EdlTransform
+	/// Normalised source-space crop rectangle (top-left origin, y-down).
+	/// Full-frame (0,0,1,1) means the whole decoded frame, matching the TS
+	/// reader; applied to the raw source before orientation/fit so iOS
+	/// agrees with Android's `EdlCropEffect` (crop first).
+	public let crop: EdlCrop
 	/// Container display rotation (0|90|180|270, from `EdlAsset
 	/// .rotationDegrees` == MediaProbe's preferredTransform decode) that
 	/// uprights the coded frame.
@@ -43,8 +48,9 @@ public struct SourcePlacement {
 	/// BASE values and the per-frame values come from `resolved(at:)`.
 	public let animation: PlacementAnimation?
 
-	public init(transform: EdlTransform, rotationDegrees: Int, opacity: Double, animation: PlacementAnimation? = nil) {
+	public init(transform: EdlTransform, crop: EdlCrop = EdlCrop(), rotationDegrees: Int, opacity: Double, animation: PlacementAnimation? = nil) {
 		self.transform = transform
+		self.crop = crop
 		self.rotationDegrees = rotationDegrees
 		self.opacity = opacity
 		self.animation = animation
@@ -52,6 +58,7 @@ public struct SourcePlacement {
 
 	public static let identity = SourcePlacement(
 		transform: EdlTransform(positionX: 0, positionY: 0, scaleX: 1, scaleY: 1, rotateDegrees: 0),
+		crop: EdlCrop(),
 		rotationDegrees: 0,
 		opacity: 1
 	)
@@ -66,6 +73,7 @@ public struct SourcePlacement {
 		let localTicks = animation.localTicks(atCompositionTicks: compositionTicks)
 		return SourcePlacement(
 			transform: KeyframeEvaluator.resolveTransform(base: transform, channels: animation.channels, localTicks: localTicks),
+			crop: crop,
 			rotationDegrees: rotationDegrees,
 			opacity: KeyframeEvaluator.resolveOpacity(base: opacity, channels: animation.channels, localTicks: localTicks),
 			animation: nil
@@ -560,6 +568,41 @@ public final class EdlTransitionCompositor: NSObject, AVVideoCompositing {
 	/// rotation sign flip here, ONCE, in this one function.
 	static func place(image: CIImage, placement: SourcePlacement, renderSize: CGSize) -> CIImage {
 		var result = image
+
+		// Crop FIRST, on the raw decoded frame (top-left origin, y-down),
+		// mirroring Android's `EdlCropEffect` (crop before orientation/fit/
+		// transform). A full-frame crop is a no-op so uncropped frames are
+		// byte-identical to before.
+		let crop = placement.crop
+		let isFull = crop.x <= 1e-6 && crop.y <= 1e-6 && crop.width >= 1.0 - 1e-6 && crop.height >= 1.0 - 1e-6
+		if !isFull {
+			var extent = result.extent
+			if extent.origin != .zero {
+				result = result.transformed(by: CGAffineTransform(
+					translationX: -extent.origin.x,
+					y: -extent.origin.y
+				))
+				extent = result.extent
+			}
+			let w = extent.width
+			let h = extent.height
+			guard w > 0, h > 0 else { return result }
+			let cx = CGFloat(crop.x) * w
+			let cy = CGFloat(crop.y) * h
+			let cw = max(1.0, CGFloat(crop.width) * w)
+			let ch = max(1.0, CGFloat(crop.height) * h)
+			// top-left y-down -> CI bottom-left y-up
+			let ciY = h - (cy + ch)
+			let cropRect = CGRect(x: cx, y: ciY, width: cw, height: ch)
+			result = result.cropped(to: cropRect)
+			let e2 = result.extent
+			if e2.origin != .zero {
+				result = result.transformed(by: CGAffineTransform(
+					translationX: -e2.origin.x,
+					y: -e2.origin.y
+				))
+			}
+		}
 
 		if let orientation = Self.orientation(fromRotationDegrees: placement.rotationDegrees) {
 			result = result.oriented(orientation)

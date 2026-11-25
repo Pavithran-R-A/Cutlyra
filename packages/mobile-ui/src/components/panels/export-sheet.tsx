@@ -18,6 +18,7 @@ import {
 	type OverlayFrame,
 } from "@cutlyra/editor-core/export/overlay-frames";
 import {
+	assertGifFramesExportable,
 	buildNativeEdlAssetResolver, materializeLibraryAudioSounds, setProjectFps, setProjectResolution, toEdlMediaAssets } from "../../editor/actions";
 import { exportErrorMessage } from "../../editor/export-errors";
 import {
@@ -317,6 +318,18 @@ export function ExportSheet({ editor, onClose }: ExportSheetProps) {
 		} catch (error) {
 			setRunState("error");
 			setExportError(exportErrorMessage({ value: error }));
+			return;
+		}
+
+		// Animated GIF: decode every frame the EDL just referenced BEFORE the
+		// encoder starts. A missing/corrupt frame would otherwise fail halfway
+		// through with a generic Media3 asset-loader error; here the refusal
+		// arrives with the native code and the offending path, shown verbatim.
+		try {
+			await assertGifFramesExportable({ editor });
+		} catch (error) {
+			setRunState("error");
+			setExportError(error instanceof Error ? error.message : String(error));
 			return;
 		}
 

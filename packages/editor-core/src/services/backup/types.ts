@@ -1,3 +1,6 @@
+import type { GifAssetMetadata } from "@/media/gif-asset";
+import type { FreezeFrameCaptureConfig } from "@/media/freeze-frame";
+
 /**
  * GitHub #35 / Linear PAV-51 — project backup archives.
  *
@@ -27,8 +30,15 @@ export const ARCHIVE_FORMAT_VERSION = 1 as const;
 /** The manifest file's name inside the container. */
 export const MANIFEST_ENTRY_NAME = "manifest.json" as const;
 
-/** A media file role inside the archive. */
-export type ArchivedFileRole = "proxy" | "source" | "thumbnail";
+/**
+ * A media file role inside the archive.
+ *
+ * `gif` is one decoded GIF frame PNG. An animated GIF is archived as its
+ * timing metadata plus one `gif` entry per frame, so a restore can rewrite
+ * every frame path onto the restored device's custody locations instead of
+ * pointing a project at files that only exist on the exporting device.
+ */
+export type ArchivedFileRole = "proxy" | "source" | "thumbnail" | "gif";
 
 /**
  * One archived media file. `path` is a CONTAINER-INTERNAL path (always
@@ -43,6 +53,10 @@ export interface ArchivedFileEntry {
 	sha256: string;
 	/** Extension (with dot) used to rebuild the restored file's name. */
 	extension: string;
+	/** `gif` entries only: 0-based index into the asset's frame order, so a
+	 *  restore can pair each frame file with its delay and re-sort it after a
+	 *  fresh-name extraction. */
+	frameIndex?: number;
 }
 
 /**
@@ -67,6 +81,11 @@ export interface ArchivedAsset {
 	sourceRotationDegrees?: 0 | 90 | 180 | 270;
 	sourceWidth?: number;
 	sourceHeight?: number;
+	/** Animated-GIF metadata, so a restored GIF keeps playing. */
+	gif?: GifAssetMetadata;
+	/** Freeze Frame provenance for a generated still, so a restored freeze
+	 *  keeps pointing at the clip/instant it froze. */
+	freezeFrame?: FreezeFrameCaptureConfig;
 	files: ArchivedFileEntry[];
 }
 

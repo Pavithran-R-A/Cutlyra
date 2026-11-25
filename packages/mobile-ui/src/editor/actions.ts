@@ -30,7 +30,19 @@ import {
 	TransitionsSnapshotCommand,
 	TracksSnapshotCommand,
 	ReplaceClipMediaCommand,
+	RemoveMediaAssetCommand,
 } from "@cutlyra/editor-core/commands";
+import {
+	FREEZE_HOLD_DEFAULT_SECONDS,
+	FREEZE_HOLD_MAX_SECONDS,
+	FREEZE_HOLD_MIN_SECONDS,
+	FreezeFrameError,
+	clampFreezeHoldSeconds,
+	freezeFrameConfigFromCapture,
+	freezeSourceTimestampMicros,
+	persistFreezeFrame,
+} from "@cutlyra/editor-core/media/freeze-frame";
+import { storageService } from "@cutlyra/editor-core/services/storage/service";
 import {
 	buildTextElement,
 	buildLibraryAudioElement,
@@ -124,14 +136,126 @@ export function buildNativeEdlAssetResolver(): EdlAssetResolver {
 			: null;
 		const sourceUri = source ?? proxy;
 		if (!sourceUri) return null;
+
+		// Animated GIF: hand the exporter every decoded frame with its own
+		// delay, so Media3 plays the animation rather than one still. A
+		// missing frame is a hard error — silently exporting a still would
+		// misrepresent the project.
+		const gifFrames = asset.gif?.frames;
+		const gif =
+			gifFrames && gifFrames.length > 0
+				? {
+						loopCount: asset.gif?.loopCount ?? 0,
+						frames: gifFrames.map((frame) => {
+							const uri = resolveNativeMediaRawPath(frame.relativePath);
+							if (!uri) {
+								throw new Error(
+									`GIF frame is missing from media custody: ${frame.relativePath}`,
+								);
+							}
+							return {
+								uri,
+								durationTicks: mediaTimeFromSeconds({
+									seconds: frame.delayMs / 1000,
+								}),
+							};
+						}),
+				  }
+				: undefined;
+
 		return {
 			sourceUri,
 			proxyUri: proxy,
 			// The proxy is baked upright; only the original needs its
 			// display rotation applied at export time.
 			rotationDegrees: source ? (asset.sourceRotationDegrees ?? 0) : 0,
+			...(gif ? { gif } : {}),
 		};
 	};
+}
+
+/**
+ * Minimal bridge surface the GIF export preflight needs. Structural on
+ * purpose: the real `NativeBridge` satisfies it, and tests can pass a fake
+ * without constructing a shell.
+ */
+export interface GifExportPreflightBridge {
+	prepareGifExport?(params: {
+		assetId: string;
+		frames: { relativePath: string; delayMs: number }[];
+	}): Promise<unknown>;
+}
+
+/** A GIF cannot be exported as authored. `message` carries the native
+ *  refusal VERBATIM (including the offending frame path), because that is
+ *  what tells the user which file to re-import. */
+export class GifExportPreflightError extends Error {
+	readonly assetName: string;
+	constructor({ assetName, message, cause }: { assetName: string; message: string; cause?: unknown }) {
+		super(`GIF "${assetName}" can't be exported: ${message}`);
+		this.name = "GifExportPreflightError";
+		this.assetName = assetName;
+		this.cause = cause;
+	}
+}
+
+export interface GifExportPreflightSummary {
+	/** GIF assets whose frames were actually decoded by the native side. */
+	checkedAssets: number;
+	checkedFrames: number;
+	/** True when this platform/build has no native preflight (the exporter then
+	 *  reports any frame problem itself). */
+	skipped: boolean;
+}
+
+/**
+ * Export preflight for animated-GIF assets.
+ *
+ * The exporter feeds the asset's decoded per-frame PNGs into the EDL, so a
+ * missing or corrupt frame used to surface only as a generic Media3 "asset
+ * loader error" after encoding had already started. Here every referenced
+ * frame is decoded by the native side first; a refusal is raised as a typed
+ * [GifExportPreflightError] whose text is the native message verbatim.
+ */
+export async function assertGifFramesExportable({
+	editor,
+	bridge,
+}: {
+	editor: EditorCore;
+	bridge?: GifExportPreflightBridge | null;
+}): Promise<GifExportPreflightSummary> {
+	const gifAssets = editor.media
+		.getAssets()
+		.filter((asset) => (asset.gif?.frames?.length ?? 0) > 0);
+	if (gifAssets.length === 0) {
+		return { checkedAssets: 0, checkedFrames: 0, skipped: false };
+	}
+
+	const resolved = bridge === undefined ? await getNativeBridge() : bridge;
+	const prepare = resolved?.prepareGifExport;
+	if (!prepare) {
+		return { checkedAssets: 0, checkedFrames: 0, skipped: true };
+	}
+
+	let checkedFrames = 0;
+	for (const asset of gifAssets) {
+		const frames = (asset.gif?.frames ?? []).map((frame) => ({
+			relativePath: frame.relativePath,
+			delayMs: frame.delayMs,
+		}));
+		if (frames.length === 0) continue;
+		try {
+			await prepare({ assetId: asset.id, frames });
+			checkedFrames += frames.length;
+		} catch (error) {
+			throw new GifExportPreflightError({
+				assetName: asset.name,
+				message: error instanceof Error ? error.message : String(error),
+				cause: error,
+			});
+		}
+	}
+	return { checkedAssets: gifAssets.length, checkedFrames, skipped: false };
 }
 
 export type NativeImportProgressHandler = (
@@ -1347,6 +1471,14 @@ interface EdlMediaAssetInput {
 	hasAudio?: boolean;
 	ephemeral?: boolean;
 	thumbnailUrl?: string;
+	/** Animated-GIF metadata (see editor-core `media/gif-asset.ts`). */
+	gif?: {
+		width: number;
+		height: number;
+		loopCount: number;
+		frameDelaysMs: number[];
+		frames?: { relativePath: string; delayMs: number }[];
+	};
 }
 
 /**
@@ -1375,6 +1507,7 @@ export function toEdlMediaAssets({ assets }: { assets: MediaAsset[] }): EdlMedia
 		hasAudio: asset.hasAudio,
 		ephemeral: asset.ephemeral,
 		thumbnailUrl: asset.thumbnailUrl,
+		gif: asset.gif,
 		// Custody identities — the EDL asset resolver
 		// (buildNativeEdlAssetResolver) reads these; dropping them here
 		// starved the resolver and re-broke export (caught 2026-08-20).
@@ -1897,3 +2030,314 @@ export function isClipMediaMissing({
 	if (!element || !("mediaId" in element)) return false;
 	return !editor.media.getAssets().some((asset) => asset.id === element.mediaId);
 }
+
+// ------------------------------ Freeze Frame -------------------------------
+//
+// Freeze Frame inserts a REAL captured still, not a duplicated element with a
+// still-image flag:
+//   1. the playhead is mapped to the clip's SOURCE instant (trim + retime),
+//   2. native extracts exactly that source frame and writes a PNG into media
+//      custody (never a keyframe, never a fallback frame — a refusal is a
+//      refusal),
+//   3. the still is registered + persisted as an ordinary image asset with its
+//      capture provenance (`freezeFrame`),
+//   4. FreezeFrameCommand splits the clip and inserts the hold interval,
+//      rippling later main-track clips.
+// Audio policy: the hold is silent; the video before keeps its audio to the
+// split and the video after keeps its audio from its new trim start.
+
+/** A refusal that must be shown to the user verbatim. */
+export type FreezeFrameRefusalReason =
+	| "element-missing"
+	| "not-video"
+	| "outside-clip"
+	| "no-media"
+	| "no-source-path"
+	| "capture-unsupported"
+	| "capture-failed"
+	| "save-failed"
+	| "edit-failed";
+
+export type FreezeFrameOutcome =
+	| {
+			status: "frozen";
+			frozenElementId: string;
+			assetId: string;
+			sourceTimestampMicros: number;
+			holdSeconds: number;
+		}
+	| { status: "refused"; reason: FreezeFrameRefusalReason; message: string };
+
+function freezeRefused(
+	reason: FreezeFrameRefusalReason,
+	message: string,
+): FreezeFrameOutcome {
+	return { status: "refused", reason, message };
+}
+
+/** The hold interval of a selected frozen still, or null when the selection is
+ *  not a freeze still (the panel uses this to show hold/remove controls). */
+export function freezeFrameStateFor({
+	editor,
+	ref,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+}): { assetId: string; holdSeconds: number } | null {
+	const element = getElement({ editor, ref });
+	if (!element || element.type !== "image" || !("mediaId" in element)) return null;
+	const asset = editor.media.getAssets().find((candidate) => candidate.id === element.mediaId);
+	if (!asset?.freezeFrame) return null;
+	return {
+		assetId: asset.id,
+		holdSeconds: mediaTimeToSeconds({ time: element.duration }),
+	};
+}
+
+/**
+ * Freezes the frame under the playhead.
+ *
+ * Resolves only after the still is written to media custody, its asset record
+ * (with provenance) is persisted, and the timeline command ran — so a
+ * `"frozen"` result means the edit really happened, not that it was queued.
+ */
+export async function freezeFrameAtPlayhead({
+	editor,
+	ref,
+	holdSeconds = FREEZE_HOLD_DEFAULT_SECONDS,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	holdSeconds?: number;
+}): Promise<FreezeFrameOutcome> {
+	const element = getElement({ editor, ref });
+	if (!element) return freezeRefused("element-missing", "Select a clip first.");
+	if (element.type !== "video") {
+		return freezeRefused(
+			"not-video",
+			"Freeze Frame works on a video clip — images and GIFs are already stills.",
+		);
+	}
+
+	const timelineTime = editor.playback.getCurrentTime();
+	const mapped = freezeSourceTimestampMicros({ element, timelineTime });
+	if (!mapped.ok) {
+		return freezeRefused(
+			mapped.reason === "not-video" ? "not-video" : "outside-clip",
+			"Move the playhead inside the clip to pick the frame to freeze.",
+		);
+	}
+
+	const project = editor.project.getActiveOrNull();
+	if (!project) return freezeRefused("edit-failed", "No active project.");
+	const projectId = project.metadata.id;
+
+	const assets = editor.media.getAssets();
+	const sourceAsset = assets.find((asset) => asset.id === element.mediaId);
+	if (!sourceAsset) {
+		return freezeRefused("no-media", "This clip's media is missing from the project.");
+	}
+	// Full-resolution ORIGINAL first: the frozen still is exported at source
+	// quality, so it must not come from the 540p preview proxy when the
+	// original custody path is known.
+	const sourcePath =
+		sourceAsset.sourceNativeRelativePath ?? sourceAsset.nativeRelativePath;
+	if (!sourcePath) {
+		return freezeRefused(
+			"no-source-path",
+			"This clip has no source file on this device, so its frame cannot be captured.",
+		);
+	}
+
+	const bridge = await getNativeBridge();
+	if (!bridge.captureFreezeFrame) {
+		return freezeRefused(
+			"capture-unsupported",
+			"This build can't capture a frame from the clip's source media.",
+		);
+	}
+
+	const hold = clampFreezeHoldSeconds(holdSeconds);
+	const holdDuration = mediaTimeFromSeconds({ seconds: hold });
+	// Stills that are still in the project: native prunes everything else in
+	// its generated-freeze directory as part of this capture.
+	const referencedFreezePaths = assets
+		.filter((asset) => asset.freezeFrame !== undefined && asset.nativeRelativePath)
+		.map((asset) => asset.nativeRelativePath as string);
+
+	let capture: Awaited<ReturnType<NonNullable<typeof bridge.captureFreezeFrame>>>;
+	try {
+		capture = await bridge.captureFreezeFrame({
+			sourceElementId: element.id,
+			sourceMediaPath: sourcePath,
+			timestampMicros: mapped.sourceMicros,
+			referencedFreezePaths,
+		});
+	} catch (error) {
+		return freezeRefused(
+			"capture-failed",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+	if (!capture?.captured) {
+		return freezeRefused(
+			"capture-unsupported",
+			"Freeze Frame needs a native build: this platform cannot capture the source frame.",
+		);
+	}
+
+	const stillId = crypto.randomUUID();
+	const name = `freeze-${Math.round(mapped.sourceMicros / 1000)}ms-${stillId.slice(0, 8)}.png`;
+	const config = freezeFrameConfigFromCapture({
+		element,
+		sourceTimestampMicros: mapped.sourceMicros,
+		holdDurationMicros: holdDuration,
+		width: capture.width,
+		height: capture.height,
+	});
+	const still: MediaAsset = {
+		id: stillId,
+		name,
+		type: "image",
+		width: capture.width,
+		height: capture.height,
+		nativeRelativePath: capture.relativePath,
+		url: capture.uri,
+		freezeFrame: config,
+		// Native-custody asset: zero-byte JS stub, real bytes behind `url`
+		// (the same shape native import uses).
+		file: new File([], name, { type: "image/png" }),
+	};
+
+	let persisted;
+	try {
+		await storageService.saveMediaAsset({ projectId, mediaAsset: still });
+		persisted = await persistFreezeFrame({
+			store: storageService,
+			projectId,
+			assetId: stillId,
+			config,
+		});
+	} catch (error) {
+		// Nothing was inserted, so drop the half-written record instead of
+		// leaving an asset the timeline never references.
+		await storageService
+			.deleteMediaAsset({ projectId, id: stillId })
+			.catch(() => undefined);
+		return freezeRefused(
+			"save-failed",
+			error instanceof FreezeFrameError
+				? error.message
+				: `Could not save the frozen frame: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+
+	editor.media.setAssets({ assets: [...assets, { ...still, freezeFrame: persisted.freezeFrame }] });
+	const frozenElementId = editor.timeline.freezeFrame({
+		trackId: ref.trackId,
+		elementId: ref.elementId,
+		splitTime: timelineTime,
+		holdDuration,
+		frozenMediaId: stillId,
+	});
+	if (!frozenElementId) {
+		editor.media.setAssets({ assets });
+		await storageService
+			.deleteMediaAsset({ projectId, id: stillId })
+			.catch(() => undefined);
+		return freezeRefused(
+			"edit-failed",
+			"The freeze frame could not be inserted at the playhead.",
+		);
+	}
+	return {
+		status: "frozen",
+		frozenElementId,
+		assetId: stillId,
+		sourceTimestampMicros: mapped.sourceMicros,
+		holdSeconds: hold,
+	};
+}
+
+/**
+ * Changes a frozen still's hold length. One snapshot command, so it is one
+ * undo step, and later main-track clips ripple by the delta so the timeline
+ * stays butted instead of overlapping or gapping.
+ */
+export function setFreezeFrameHold({
+	editor,
+	ref,
+	seconds,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	seconds: number;
+}): void {
+	const element = getElement({ editor, ref });
+	if (!element || element.type !== "image") return;
+	const active = editor.scenes.getActiveSceneOrNull();
+	if (!active) return;
+	const before = active.tracks;
+	const hold = mediaTimeFromSeconds({ seconds: clampFreezeHoldSeconds(seconds) });
+	const delta = subMediaTime({ a: hold, b: element.duration });
+	if (delta === 0) return;
+
+	const restStart = addMediaTime({ a: element.startTime, b: element.duration });
+	const shift = (value: MediaTime): MediaTime =>
+		delta > 0
+			? addMediaTime({ a: value, b: delta })
+			: subMediaTime({ a: value, b: -delta as MediaTime });
+
+	const isMain = before.main.id === ref.trackId;
+	const main: typeof before.main = {
+		...before.main,
+		elements: before.main.elements.map((el) => {
+			if (el.id === element.id) return { ...el, duration: hold };
+			if (isMain && el.startTime >= restStart) {
+				return { ...el, startTime: shift(el.startTime) };
+			}
+			return el;
+		}),
+	};
+	editor.command.execute({
+		command: new TracksSnapshotCommand({
+			before,
+			after: { ...before, main },
+		}),
+	});
+}
+
+/**
+ * Removes a freeze: the hold interval disappears, the two video halves rejoin
+ * (later main-track clips ripple back), and the generated still asset is
+ * deleted from the project. The SOURCE video is never touched. Two undo steps
+ * (the trim merge, then the asset removal) by construction.
+ */
+export function removeFreezeFrame({
+	editor,
+	ref,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+}): { removedAssetId: string | null } | null {
+	const element = getElement({ editor, ref });
+	if (!element || element.type !== "image" || !("mediaId" in element)) return null;
+	const assetId = element.mediaId;
+	const asset = editor.media.getAssets().find((candidate) => candidate.id === assetId);
+	const projectId = editor.project.getActiveOrNull()?.metadata.id ?? null;
+
+	editor.timeline.unfreezeFrame({ trackId: ref.trackId, frozenElementId: ref.elementId });
+
+	if (!asset?.freezeFrame || !projectId) return { removedAssetId: null };
+	editor.command.execute({
+		command: new RemoveMediaAssetCommand({ projectId, assetId }),
+	});
+	return { removedAssetId: assetId };
+}
+
+/** Bounds the hold slider in the UI (kept next to the clamp it mirrors). */
+export const FREEZE_HOLD_LIMITS = {
+	min: FREEZE_HOLD_MIN_SECONDS,
+	max: FREEZE_HOLD_MAX_SECONDS,
+	default: FREEZE_HOLD_DEFAULT_SECONDS,
+} as const;

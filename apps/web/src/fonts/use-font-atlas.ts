@@ -20,8 +20,9 @@ export function useFontAtlas({ open }: { open: boolean }) {
 	useEffect(() => {
 		if (!open || atlas) return;
 
-		setStatus("loading");
+		const t = setTimeout(() => setStatus("loading"), 0);
 		loadFontAtlas().then((data) => {
+			clearTimeout(t);
 			if (data) {
 				setAtlas(data);
 				setStatus("idle");

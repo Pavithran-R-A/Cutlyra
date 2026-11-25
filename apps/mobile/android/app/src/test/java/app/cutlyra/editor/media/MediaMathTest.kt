@@ -103,6 +103,7 @@ class MediaMathTest {
 		assertEquals("video", inferKindFromMime("video/mp4"))
 		assertEquals("audio", inferKindFromMime("audio/mpeg"))
 		assertEquals("image", inferKindFromMime("image/jpeg"))
+		assertEquals("image", inferKindFromMime("image/gif"))
 	}
 
 	@Test

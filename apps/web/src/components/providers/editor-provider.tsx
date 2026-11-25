@@ -139,14 +139,14 @@ function EditorRuntimeBindings() {
 	);
 
 	useEffect(() => {
-		editor.command.isRippleEnabled = rippleEditingEnabled;
+		editor.command.setRippleEnabled(rippleEditingEnabled);
 	}, [editor, rippleEditingEnabled]);
 
 	useEffect(() => {
 		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
 			if (!editor.save.getIsDirty()) return;
 			event.preventDefault();
-			(event as unknown as { returnValue: string }).returnValue = "";
+			event.returnValue = "";
 		};
 
 		window.addEventListener("beforeunload", handleBeforeUnload);

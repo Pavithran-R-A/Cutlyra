@@ -1,3 +1,4 @@
+import type { GifAssetMetadata } from "@/media/gif-asset";
 import {
 	VisualNode,
 	type ResolvedVisualSourceNodeState,
@@ -7,6 +8,8 @@ import {
 export interface ImageNodeParams extends VisualNodeParams {
 	url: string;
 	maxSourceSize?: number;
+	/** Present for animated GIF assets: drives per-frame selection. */
+	gif?: GifAssetMetadata;
 }
 
 export interface CachedImageSource {

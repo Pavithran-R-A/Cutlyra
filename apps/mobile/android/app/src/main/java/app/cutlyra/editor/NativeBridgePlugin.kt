@@ -5,6 +5,9 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
@@ -32,10 +35,15 @@ import app.cutlyra.editor.export.ticksToUs
 import app.cutlyra.editor.media.MediaImporter
 import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
+import app.cutlyra.editor.media.FreezeFrameCapture
+import app.cutlyra.editor.media.gif.GifAssetPreparer
+import app.cutlyra.editor.media.gif.GifExportPreflight
+import app.cutlyra.editor.media.gif.GifFrameCleanup
 import app.cutlyra.editor.media.ProxyTranscoder
 import app.cutlyra.editor.media.ThumbnailStripGenerator
 import app.cutlyra.editor.stt.WhisperTranscriber
 import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 
 /**
@@ -1008,6 +1016,7 @@ class NativeBridgePlugin : Plugin() {
 					one.put("role", f.role)
 					one.put("newPath", f.newPath)
 					one.put("sha256", f.sha256)
+					f.frameIndex?.let { index -> one.put("frameIndex", index) }
 					files.put(one)
 				}
 				ret.put("restoredFiles", files)
@@ -1042,6 +1051,32 @@ class NativeBridgePlugin : Plugin() {
 					sourceRotationDegrees = if (o.has("sourceRotationDegrees")) o.optInt("sourceRotationDegrees") else null,
 					sourceWidth = if (o.has("sourceWidth")) o.optInt("sourceWidth") else null,
 					sourceHeight = if (o.has("sourceHeight")) o.optInt("sourceHeight") else null,
+					gif = o.optJSONObject("gif")?.let { gif ->
+						BackupArchive.MediaDescriptor.GifMetadata(
+							width = gif.optInt("width"),
+							height = gif.optInt("height"),
+							loopCount = gif.optInt("loopCount"),
+							frameDelaysMs = gif.optJSONArray("frameDelaysMs")?.let { delays ->
+								(0 until delays.length()).map { delays.optDouble(it) }
+							}.orEmpty(),
+						)
+					},
+					gifFrames = o.optJSONArray("gifFrames")?.let { frames ->
+						(0 until frames.length())
+							.map { frames.optString(it) }
+							.filter { it.isNotBlank() }
+					}.orEmpty(),
+					freezeFrame = o.optJSONObject("freezeFrame")?.let { freeze ->
+						BackupArchive.MediaDescriptor.FreezeFrameBlock(
+							sourceElementId = freeze.optString("sourceElementId"),
+							sourceMediaId = freeze.optString("sourceMediaId"),
+							sourceTimestampMicros = freeze.optLong("sourceTimestampMicros"),
+							holdDurationMicros = freeze.optLong("holdDurationMicros"),
+							width = freeze.optInt("width"),
+							height = freeze.optInt("height"),
+							capturedAt = freeze.optString("capturedAt"),
+						)
+					},
 				),
 			)
 		}
@@ -1071,4 +1106,193 @@ class NativeBridgePlugin : Plugin() {
 		val path = uri.path ?: return null
 		return File(path)
 	}
+
+	// -- Freeze Frame / GIF export (M10 sprint) -----------------------------
+
+	/** Captures the SOURCE frame at `timestampMicros` for a Freeze Frame.
+	 *
+	 *  The JS side maps timeline time to source time (trim + retime) and passes
+	 *  the resulting instant; this method extracts exactly that instant with
+	 *  MediaMetadataRetriever (`OPTION_CLOSEST`, never a keyframe seek), writes
+	 *  it as a real PNG in MEDIA CUSTODY (not cache — the still must persist and
+	 *  be backed up), and returns its custody-relative path + dimensions.
+	 *
+	 *  Failures are typed (`CAPTURE_OUT_OF_RANGE`, `CAPTURE_FAILED`, `IO_ERROR`).
+	 *  There is NO fallback frame: a freeze that cannot be extracted at the
+	 *  requested instant is refused rather than silently showing another frame.
+	 *  `referencedFreezePaths` lets the same call prune stills the project no
+	 *  longer references. */
+	@PluginMethod
+	fun captureFreezeFrame(call: PluginCall) {
+		val sourceElementId = call.getString("sourceElementId")
+		val timestampMicros = call.getLong("timestampMicros") ?: 0L
+		val sourcePath = call.getString("sourceMediaPath") ?: call.getString("sourceUri")
+		if (sourceElementId.isNullOrBlank()) {
+			call.reject("sourceElementId is required", "INVALID_ARGS")
+			return
+		}
+		if (sourcePath.isNullOrBlank()) {
+			call.reject("sourceMediaPath or sourceUri is required", "INVALID_ARGS")
+			return
+		}
+		val referencedPaths = call.getArray("referencedFreezePaths")?.let { array ->
+			(0 until array.length())
+				.map { array.optString(it) }
+				.filter { it.isNotBlank() }
+		}.orEmpty()
+		Thread {
+			try {
+				val sourceFile = fileFromNativeUri(sourcePath)
+					?: throw FreezeFrameCapture.CaptureException(
+						"CAPTURE_FAILED",
+						"Source media is not a local file: $sourcePath",
+					)
+				// Prune FIRST: the list is the project's referenced set, which does
+				// not yet contain the still this call is about to write.
+				FreezeFrameCapture.pruneUnreferenced(
+					custodyRoot = context.noBackupFilesDir,
+					referencedPaths = referencedPaths,
+				)
+				val frame = FreezeFrameCapture.capture(
+					sourceFile = sourceFile,
+					timestampMicros = timestampMicros,
+					custodyRoot = context.noBackupFilesDir,
+				)
+				val result = JSObject()
+				result.put("captured", true)
+				result.put("relativePath", frame.relativePath)
+				result.put("uri", Uri.fromFile(frame.file).toString())
+				result.put("sourceElementId", sourceElementId)
+				result.put("timestampMicros", frame.timestampMicros)
+				result.put("width", frame.width)
+				result.put("height", frame.height)
+				call.resolve(result)
+			} catch (e: FreezeFrameCapture.CaptureException) {
+				call.reject(e.message, e.code, e)
+			} catch (e: Exception) {
+				call.reject("freeze-frame capture failed: ${e.message}", "CAPTURE_FAILED", e)
+			}
+		}.start()
+	}
+
+	/**
+	 * Decodes an imported GIF into per-frame PNGs inside media custody and
+	 * returns its timing metadata. Called during native import so the project
+	 * carries the same dimensions, per-frame delays and loop count the shared
+	 * renderer uses — native-custody assets have a zero-byte JS stub, so the
+	 * JS decoder can never see the bytes.
+	 */
+	@PluginMethod
+	fun decodeGifAsset(call: PluginCall) {
+		val uri = call.getString("uri")
+		val assetId = call.getString("assetId")
+		if (uri.isNullOrBlank() || assetId.isNullOrBlank()) {
+			call.reject("assetId and uri are required", "INVALID_ARGS")
+			return
+		}
+		try {
+			val file = fileFromNativeUri(uri)
+			if (file == null || !file.isFile) {
+				call.reject("GIF file not found: $uri", "IO_ERROR")
+				return
+			}
+			if (!GifAssetPreparer.isGifFile(file)) {
+				call.reject("Not a GIF: ${file.name}", "NOT_A_GIF")
+				return
+			}
+			val prepared = GifAssetPreparer.prepareFromFile(
+				gifFile = file,
+				outputRoot = context.noBackupFilesDir,
+				assetId = assetId,
+			)
+			// A re-import of the same asset can decode a different frame count;
+			// stale PNGs from the previous decode would otherwise linger in
+			// custody forever. The frames just written are the referenced set.
+			GifFrameCleanup.pruneAssetFrames(
+				custodyRoot = context.noBackupFilesDir,
+				assetId = assetId,
+				referencedPaths = prepared.frames.map { it.relativePath },
+			)
+			val frames = JSArray()
+			for (frame in prepared.frames) {
+				frames.put(
+					JSObject().apply {
+						put("relativePath", frame.relativePath)
+						put("delayMs", frame.delayMs)
+					}
+				)
+			}
+			call.resolve(
+				JSObject().apply {
+					put("assetId", assetId)
+					put("width", prepared.width)
+					put("height", prepared.height)
+					put("loopCount", prepared.loopCount)
+					put("totalDurationMs", prepared.totalDurationMs)
+					put("frames", frames)
+				}
+			)
+		} catch (e: Exception) {
+			call.reject("Could not decode GIF: ${e.message}", "GIF_DECODE_FAILED")
+		}
+	}
+
+	/**
+	 * Export preflight for a GIF asset: proves every frame the EDL is about to
+	 * reference really decodes, before Media3 starts encoding.
+	 *
+	 * This used to only check that the paths existed, which cannot tell a real
+	 * frame from a truncated PNG — the exporter would then die mid-encode with
+	 * an opaque "Asset loader error". Each frame is now DECODED (and its
+	 * dimensions checked against the first frame), so a corrupt or inconsistent
+	 * frame fails HERE with a typed code and the offending path:
+	 * `GIF_FRAMES_MISSING`, `GIF_FRAME_UNREADABLE`,
+	 * `GIF_FRAME_DIMENSION_MISMATCH`, `INVALID_ARGS`.
+	 */
+	@PluginMethod
+	fun prepareGifExport(call: PluginCall) {
+		val assetId = call.getString("assetId")
+		val frames = call.getArray("frames")
+		if (assetId.isNullOrBlank() || frames == null || frames.length() == 0) {
+			call.reject(
+				"assetId and at least one frames[{relativePath, delayMs}] are required",
+				"INVALID_ARGS",
+			)
+			return
+		}
+		val refs = mutableListOf<GifExportPreflight.FrameRef>()
+		for (index in 0 until frames.length()) {
+			val frame = frames.optJSONObject(index)
+			val relativePath = frame?.optString("relativePath").orEmpty()
+			val delayMs = frame?.optLong("delayMs", -1L) ?: -1L
+			if (relativePath.isBlank() || delayMs < 0L) {
+				call.reject(
+					"frame[$index] needs a relativePath and a non-negative delayMs",
+					"INVALID_ARGS",
+				)
+				return
+			}
+			refs.add(GifExportPreflight.FrameRef(relativePath, delayMs))
+		}
+		try {
+			val report = GifExportPreflight.verify(
+				custodyRoot = context.noBackupFilesDir,
+				frames = refs,
+			)
+			call.resolve(
+				JSObject().apply {
+					put("assetId", assetId)
+					put("ready", true)
+					put("frameCount", report.frameCount)
+					put("width", report.width)
+					put("height", report.height)
+					put("totalDurationMs", report.totalDurationMs)
+				}
+			)
+		} catch (e: GifExportPreflight.Refusal) {
+			call.reject(e.message ?: "GIF export preflight failed", e.code)
+		}
+	}
+
 }
+

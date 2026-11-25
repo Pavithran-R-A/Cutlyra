@@ -96,6 +96,7 @@ public enum VideoCompositionBuilder {
 			let rotation = clip.assetId.flatMap { assetById[$0]?.rotationDegrees } ?? 0
 			return SourcePlacement(
 				transform: clip.transform,
+				crop: clip.crop ?? EdlCrop(),
 				rotationDegrees: rotation,
 				opacity: clip.opacity,
 				animation: PlacementAnimation.make(clip: clip, clipStartTicks: insertStartByClipId[clipId] ?? clip.startTicks)
@@ -124,6 +125,7 @@ public enum VideoCompositionBuilder {
 				let rotation = assetById[assetId]?.rotationDegrees ?? 0
 				let placement = SourcePlacement(
 					transform: clip.transform,
+					crop: clip.crop ?? EdlCrop(),
 					rotationDegrees: rotation,
 					opacity: clip.opacity,
 					// Overlay clips in `edl` are already remapped to OUTPUT time

@@ -32,31 +32,6 @@ interface AssScriptInfo {
 	playResY: number;
 }
 
-interface AssStyleRecord {
-	name: string;
-	fontname?: string;
-	fontsize?: string;
-	primarycolour?: string;
-	secondarycolour?: string;
-	outlinecolour?: string;
-	backcolour?: string;
-	bold?: string;
-	italic?: string;
-	underline?: string;
-	strikeout?: string;
-	scalex?: string;
-	scaley?: string;
-	spacing?: string;
-	angle?: string;
-	borderstyle?: string;
-	outline?: string;
-	shadow?: string;
-	alignment?: string;
-	marginl?: string;
-	marginr?: string;
-	marginv?: string;
-}
-
 export function parseAss({ input }: { input: string }): ParseSubtitleResult {
 	const normalized = input.replace(/\r\n?/g, "\n").trim();
 	if (!normalized) {
@@ -133,7 +108,7 @@ export function parseAss({ input }: { input: string }): ParseSubtitleResult {
 					continue;
 				}
 
-				const record = mapFieldsToRecord<AssStyleRecord>({
+				const record = mapFieldsToRecord({
 					fields: styleFormat,
 					values,
 				});
@@ -174,7 +149,7 @@ export function parseAss({ input }: { input: string }): ParseSubtitleResult {
 				continue;
 			}
 
-			const record = mapFieldsToRecord<Record<string, string>>({
+			const record = mapFieldsToRecord({
 				fields: eventFormat,
 				values,
 			});
@@ -298,20 +273,20 @@ function splitAssFields({
 	return result;
 }
 
-function mapFieldsToRecord<T extends object>({
+function mapFieldsToRecord({
 	fields,
 	values,
 }: {
 	fields: string[];
 	values: string[];
-}): T {
+}): Record<string, string | undefined> {
 	const record = {} as Record<string, string | undefined>;
 
 	for (let index = 0; index < fields.length; index++) {
 		record[fields[index]] = values[index];
 	}
 
-	return record as T;
+	return record;
 }
 
 function parseAssTimestamp({ input }: { input: string | undefined }): number {
@@ -360,7 +335,7 @@ function mapAssStyleToSubtitleStyle({
 	style,
 	scriptInfo,
 }: {
-	style: AssStyleRecord;
+	style: Record<string, string | undefined>;
 	scriptInfo: AssScriptInfo;
 }): {
 	style: SubtitleStyleOverrides;

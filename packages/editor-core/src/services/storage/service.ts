@@ -342,6 +342,13 @@ class StorageService {
 			// The bundled-library fingerprint (GitHub #63) — pass through so the
 			// same sound dedupes to one asset row after reopen/restore.
 			librarySoundId: mediaAsset.librarySoundId,
+			// Animated-GIF timing + custody-relative frame paths. Without this
+			// a reopened project would treat the GIF as a still: the renderer
+			// would lose its delays/loop count and the exporter its frames.
+			gif: mediaAsset.gif,
+			// Freeze Frame provenance — the still is only meaningful with the
+			// clip/instant it froze, and "Remove freeze" reads it back.
+			freezeFrame: mediaAsset.freezeFrame,
 		};
 
 		try {
@@ -467,6 +474,10 @@ class StorageService {
 			sourceRotationDegrees: metadata.sourceRotationDegrees,
 			sourceWidth: metadata.sourceWidth,
 			sourceHeight: metadata.sourceHeight,
+			// Animated-GIF metadata survives reopen so the restored clip still
+			// animates with its own delays/loop count and export frames.
+			gif: metadata.gif,
+			freezeFrame: metadata.freezeFrame,
 			// Relative strip paths ride through unresolved — the timeline
 			// resolves them per read via resolveNativeMediaPath so a
 			// container-UUID rotation re-anchors at the LAST possible moment

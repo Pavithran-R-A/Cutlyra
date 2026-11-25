@@ -101,6 +101,9 @@ import type {
 	PickProgress,
 	Platform,
 	ProxyProgress,
+	FreezeFrameCapture,
+	GifAssetDecodeResult,
+	GifExportPreflight,
 	ProxySpec,
 	RestoredMediaFile,
 	ThumbnailStrip,
@@ -195,6 +198,27 @@ interface NativeTranscribeResult {
 interface NativeBridgePluginSpec {
 	getDeviceInfo(): Promise<NativeDeviceInfo>;
 	getMediaRoot(): Promise<{ root: string }>;
+	decodeGifAsset(params: {
+		uri: string;
+		assetId: string;
+	}): Promise<GifAssetDecodeResult>;
+	prepareGifExport(params: {
+		assetId: string;
+		frames: { relativePath: string; delayMs: number }[];
+	}): Promise<GifExportPreflight>;
+	captureFreezeFrame(params: {
+		sourceElementId: string;
+		sourceMediaPath: string;
+		timestampMicros: number;
+		referencedFreezePaths?: string[];
+	}): Promise<{
+		captured: boolean;
+		relativePath?: string;
+		uri?: string;
+		width: number;
+		height: number;
+		timestampMicros: number;
+	}>;
 	saveGeneratedAudio(params: { assetId: string; base64: string }): Promise<{
 		relativePath: string;
 	}>;
@@ -487,6 +511,102 @@ export function createCapacitorBridge({
 				// "not implemented" — degrade to absolute-path persistence
 				// rather than failing the import flow.
 				return null;
+			}
+		},
+
+		async decodeGifAsset({
+			uri,
+			assetId,
+		}: {
+			uri: string;
+			assetId: string;
+		}): Promise<GifAssetDecodeResult | null> {
+			try {
+				return await plugin.decodeGifAsset({ uri, assetId });
+			} catch (err) {
+				// A build predating the method rejects UNIMPLEMENTED, which the
+				// import flow reports as an explicit "no native GIF decoder".
+				// Any OTHER rejection is a real decode failure (corrupt file,
+				// no frames, unsupported version) and must keep its message:
+				// swallowing it made every corrupt GIF look like a missing
+				// decoder.
+				if (
+					typeof err === "object" &&
+					err !== null &&
+					(err as { code?: unknown }).code === "UNIMPLEMENTED"
+				) {
+					return null;
+				}
+				throw toNativeBridgeError({ err, method: "decodeGifAsset" });
+			}
+		},
+
+		async prepareGifExport({
+			assetId,
+			frames,
+		}: {
+			assetId: string;
+			frames: { relativePath: string; delayMs: number }[];
+		}): Promise<GifExportPreflight | null> {
+			try {
+				return await plugin.prepareGifExport({ assetId, frames });
+			} catch (err) {
+				// Missing/unreadable/mismatched frames are REAL refusals and are
+				// rethrown with their native code and path; only an old native
+				// build degrades to null (the exporter then reports any problem).
+				if (
+					typeof err === "object" &&
+					err !== null &&
+					(err as { code?: unknown }).code === "UNIMPLEMENTED"
+				) {
+					return null;
+				}
+				throw toNativeBridgeError({ err, method: "prepareGifExport" });
+			}
+		},
+
+		async captureFreezeFrame({
+			sourceElementId,
+			sourceMediaPath,
+			timestampMicros,
+			referencedFreezePaths,
+		}: {
+			sourceElementId: string;
+			sourceMediaPath: string;
+			timestampMicros: number;
+			referencedFreezePaths?: string[];
+		}): Promise<FreezeFrameCapture | null> {
+			try {
+				const result = await plugin.captureFreezeFrame({
+					sourceElementId,
+					sourceMediaPath,
+					timestampMicros,
+					referencedFreezePaths,
+				});
+				if (!result.captured || !result.relativePath || !result.uri) return null;
+				return {
+					captured: true,
+					relativePath: result.relativePath,
+					// Native hands back a raw sandbox path / file:// URL; every
+					// consumer of this URI is a WebView <img>, so convert here.
+					uri: toPlaybackUri(result.uri),
+					width: result.width,
+					height: result.height,
+					timestampMicros: result.timestampMicros,
+				};
+			} catch (err) {
+				// A real capture failure (source unreadable, timestamp past the
+				// end) must surface, not be swallowed into a silent null. Only a
+				// build WITHOUT the method reports UNIMPLEMENTED, which the
+				// caller turns into an explicit "unsupported" refusal.
+				if (
+					typeof err === "object" &&
+					err !== null &&
+					(err as { code?: unknown }).code === "UNIMPLEMENTED"
+				) {
+					return null;
+				}
+				throw toNativeBridgeError({ err, method: "captureFreezeFrame" });
 			}
 		},
 

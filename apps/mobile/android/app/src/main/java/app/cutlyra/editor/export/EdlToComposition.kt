@@ -13,12 +13,15 @@ import androidx.media3.transformer.Composition
 import com.google.common.collect.ImmutableList
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
+import app.cutlyra.editor.media.gif.GifFrameTimeline
+import app.cutlyra.editor.media.gif.GifFrameTimelineArgs
 import androidx.media3.transformer.Effects
 import app.cutlyra.editor.edl.Edl
 import app.cutlyra.editor.edl.EdlAsset
 import app.cutlyra.editor.edl.EdlAssetKind
 import app.cutlyra.editor.edl.EdlClip
 import app.cutlyra.editor.edl.EdlOverlayKind
+import app.cutlyra.editor.edl.EdlRational
 import app.cutlyra.editor.edl.EdlTrackKind
 import app.cutlyra.editor.edl.EdlTrackType
 
@@ -162,25 +165,27 @@ object EdlToComposition {
         // exception, then a released-audio-input crash at 54%.
         var baseSeqBuilder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
         for (placed in placements.placedClips) {
-            baseSeqBuilder = baseSeqBuilder.addItem(
-                buildEditedMediaItem(
-                    clip = placed.clip,
-                    asset = requireAsset(edl, placed.clip),
-                    us = ::us,
-                    ticksPerSecond = tps,
-                    canvasWidth = edl.meta.canvasWidth,
-                    canvasHeight = edl.meta.canvasHeight,
-                    frameRate = outputFrameRate,
-                    outputWidth = edl.output.resolutionWidth,
-                    outputHeight = edl.output.resolutionHeight,
-                    // Keyframes/animations run on the preview's own
-                    // element-local clock, not the sequence position.
-                    itemStartTicks = placed.insertStartTicks,
-                    // Video only — the main track's audio rides its own
-                    // sequence (see "audio sequences" below).
-                    removeAudio = true,
-                ),
-            )
+            // An animated GIF expands into one image item per displayed frame;
+            // everything else stays a single item. See `buildTimelineItems`.
+            for (item in buildTimelineItems(
+                clip = placed.clip,
+                asset = requireAsset(edl, placed.clip),
+                us = ::us,
+                ticksPerSecond = tps,
+                canvasWidth = edl.meta.canvasWidth,
+                canvasHeight = edl.meta.canvasHeight,
+                frameRate = outputFrameRate,
+                outputWidth = edl.output.resolutionWidth,
+                outputHeight = edl.output.resolutionHeight,
+                // Keyframes/animations run on the preview's own
+                // element-local clock, not the sequence position.
+                itemStartTicks = placed.insertStartTicks,
+                // Video only — the main track's audio rides its own
+                // sequence (see "audio sequences" below).
+                removeAudio = true,
+            )) {
+                baseSeqBuilder = baseSeqBuilder.addItem(item)
+            }
         }
         // Black tail. Without it the video stream simply STOPS at the last
         // main clip while a PiP/graphic overlay (and the audio) runs on — a
@@ -212,7 +217,7 @@ object EdlToComposition {
                 sourceEndTicks = incomingClip.sourceStartTicks +
                     Math.round(window.durationTicks * incomingClip.speed.toDouble()),
             )
-            val overlayItem = buildEditedMediaItem(
+            val overlayItems = buildTimelineItems(
                 clip = headClip,
                 asset = requireAsset(edl, headClip),
                 us = ::us,
@@ -259,9 +264,10 @@ object EdlToComposition {
             if (windowStartUs > 0) {
                 overlaySeqBuilder.addGap(windowStartUs)
             }
-            val overlaySeq = overlaySeqBuilder
-                .addItem(overlayItem)
-                .build()
+            for (item in overlayItems) {
+                overlaySeqBuilder.addItem(item)
+            }
+            val overlaySeq = overlaySeqBuilder.build()
             sequences.add(overlaySeq)
             transitionWindows[nextIndex] = TransitionAlphaMath.Window(windowStartUs, windowEndUs)
             nextIndex++
@@ -285,7 +291,7 @@ object EdlToComposition {
                 val clip = rawClip.copy(startTicks = placements.remapNominalTick(rawClip.startTicks))
                 val asset = requireAsset(edl, clip)
                 val animated = KeyframeEvaluator.hasVisualAnimations(clip)
-                val item = buildEditedMediaItem(
+                val items = buildTimelineItems(
                     clip = clip,
                     asset = asset,
                     us = ::us,
@@ -307,9 +313,10 @@ object EdlToComposition {
                 if (clip.startTicks > 0) {
                     seqBuilder.addGap(us(clip.startTicks))
                 }
-                val seq = seqBuilder
-                    .addItem(item)
-                    .build()
+                for (item in items) {
+                    seqBuilder.addItem(item)
+                }
+                val seq = seqBuilder.build()
                 sequences.add(seq)
                 if (animated) {
                     // Round 47: geometry (position/scale/rotation, keyframed)
@@ -584,6 +591,96 @@ object EdlToComposition {
     private fun findClip(edl: Edl, trackId: String, clipId: String): EdlClip? =
         edl.tracks.firstOrNull { it.trackId == trackId }
             ?.clips?.firstOrNull { it.clipId == clipId }
+
+    /**
+     * Expands one clip into the [EditedMediaItem]s that cover it. A plain clip
+     * is one item; an animated GIF asset becomes one still item per DISPLAYED
+     * frame, each holding for that frame's own delay. Spans come from
+     * `GifFrameTimeline` — the same trim, loop/ hold and speed mapping the
+     * shared renderer uses — and each frame is built through
+     * `buildEditedMediaItem`, so crop, framing, transform, keyframes, opacity
+     * and colour effects apply per frame exactly as they do to a still.
+     */
+    private fun buildTimelineItems(
+        clip: EdlClip,
+        asset: EdlAsset,
+        us: (Long) -> Long,
+        ticksPerSecond: Long,
+        canvasWidth: Int,
+        canvasHeight: Int,
+        frameRate: Int,
+        outputWidth: Int,
+        outputHeight: Int,
+        itemStartTicks: Long = clip.startTicks,
+        removeAudio: Boolean,
+        applyOpacity: Boolean = true,
+    ): List<EditedMediaItem> {
+        val gif = asset.gif
+        val isImageClip = clip.kind == "image" || asset.kind == EdlAssetKind.IMAGE
+        if (gif != null && gif.frames.isNotEmpty() && isImageClip) {
+            val spans = GifFrameTimeline.spans(
+                GifFrameTimelineArgs(
+                    frameDurationTicks = gif.frames.map { it.durationTicks },
+                    loopCount = gif.loopCount,
+                    sourceStartTicks = clip.sourceStartTicks,
+                    sourceEndTicks = clip.sourceEndTicks,
+                    timelineDurationTicks = clip.durationTicks,
+                    speedNumerator = clip.speed.numerator,
+                    speedDenominator = clip.speed.denominator,
+                ),
+            )
+            if (spans.isEmpty()) {
+                throw ExportUnsupportedException(
+                    "GIF clip ${clip.clipId} (${asset.name}) produced no frame spans " +
+                        "(durationTicks=${clip.durationTicks}, source=${clip.sourceStartTicks}..${clip.sourceEndTicks})",
+                )
+            }
+            var elapsedTicks = 0L
+            return spans.map { span ->
+                val frame = gif.frames[span.frameIndex]
+                val frameAsset = asset.copy(sourceUri = frame.uri)
+                // The span length already IS timeline ticks — the frame is a
+                // still, so no retiming is applied twice.
+                val frameClip = clip.copy(
+                    durationTicks = span.timelineTicks,
+                    speed = EdlRational(1, 1),
+                )
+                val item = buildEditedMediaItem(
+                    clip = frameClip,
+                    asset = frameAsset,
+                    us = us,
+                    ticksPerSecond = ticksPerSecond,
+                    canvasWidth = canvasWidth,
+                    canvasHeight = canvasHeight,
+                    frameRate = frameRate,
+                    outputWidth = outputWidth,
+                    outputHeight = outputHeight,
+                    itemStartTicks = itemStartTicks + elapsedTicks,
+                    removeAudio = removeAudio,
+                    applyOpacity = applyOpacity,
+                )
+                elapsedTicks += span.timelineTicks
+                item
+            }
+        }
+
+        return listOf(
+            buildEditedMediaItem(
+                clip = clip,
+                asset = asset,
+                us = us,
+                ticksPerSecond = ticksPerSecond,
+                canvasWidth = canvasWidth,
+                canvasHeight = canvasHeight,
+                frameRate = frameRate,
+                outputWidth = outputWidth,
+                outputHeight = outputHeight,
+                itemStartTicks = itemStartTicks,
+                removeAudio = removeAudio,
+                applyOpacity = applyOpacity,
+            ),
+        )
+    }
 
     private fun buildEditedMediaItem(
         clip: EdlClip,

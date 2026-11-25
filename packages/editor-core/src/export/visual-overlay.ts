@@ -87,7 +87,10 @@ function resolveSource({
 		const resolved = node.resolved as ResolvedGraphicNodeState | null;
 		if (!resolved) return null;
 		try {
-			return node.getSource({ resolvedParams: resolved.resolvedParams });
+			return node.getSource({
+				resolvedParams: resolved.resolvedParams,
+				time: (node.resolved as ResolvedGraphicNodeState | null)?.localTime ?? 0,
+			});
 		} catch {
 			// A bad graphic definition must not take the export down.
 			return null;

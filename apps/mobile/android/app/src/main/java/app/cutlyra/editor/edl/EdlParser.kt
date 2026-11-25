@@ -72,7 +72,24 @@ object EdlParser {
             durationTicks = o.optLongOrNull("durationTicks"),
             rotationDegrees = o.getInt("rotationDegrees"),
             hasAudio = o.getBoolean("hasAudio"),
+            gif = o.optJSONObject("gif")?.let(::parseGifAsset),
         )
+
+    private fun parseGifAsset(o: JSONObject): EdlGifAsset {
+        val frames = o.getJSONArray("frames").map { frame ->
+            val uri = frame.optStringOrNull("uri")
+                ?: throw EdlParseException("gif frame missing uri")
+            EdlGifFrame(
+                uri = uri,
+                durationTicks = frame.getLong("durationTicks"),
+            )
+        }
+        if (frames.isEmpty()) throw EdlParseException("gif.frames must not be empty")
+        return EdlGifAsset(
+            loopCount = o.optInt("loopCount", 0).coerceAtLeast(0),
+            frames = frames,
+        )
+    }
 
     private fun parseAssetKind(raw: String): EdlAssetKind = when (raw) {
         "video" -> EdlAssetKind.VIDEO

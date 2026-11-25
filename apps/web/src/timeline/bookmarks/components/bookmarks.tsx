@@ -96,11 +96,11 @@ export function TimelineBookmarksRow({
 				type="button"
 				onWheel={handleWheel}
 				onClick={(event) => {
-					if (!event.currentTarget.contains(event.target as Node)) return;
+					if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
 					handleTimelineContentClick(event);
 				}}
 				onPointerDown={(event) => {
-					if (!event.currentTarget.contains(event.target as Node)) return;
+					if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
 					handleRulerMouseDown(event);
 					handleRulerTrackingMouseDown(event);
 				}}
@@ -305,11 +305,14 @@ function BookmarkPopoverContent({
 	);
 
 	useEffect(() => {
-		setDraftColorHex(
-			(bookmark.color ?? DEFAULT_TIMELINE_BOOKMARK_COLOR)
-				.replace("#", "")
-				.toUpperCase(),
-		);
+		const t = setTimeout(() => {
+			setDraftColorHex(
+				(bookmark.color ?? DEFAULT_TIMELINE_BOOKMARK_COLOR)
+					.replace("#", "")
+					.toUpperCase(),
+			);
+		}, 0);
+		return () => clearTimeout(t);
 	}, [bookmark.color]);
 
 	const handleRemove = () => {

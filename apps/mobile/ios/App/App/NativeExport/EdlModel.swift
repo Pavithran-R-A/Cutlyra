@@ -91,6 +91,24 @@ public struct EdlTransform: Codable, Equatable {
 	public var rotateDegrees: Double
 }
 
+/// Normalised source-space crop rectangle (top-left origin, y-down),
+/// mirroring `EdlCrop` in `edl/types.ts` and `readCropFromParams` in
+/// `packages/editor-core/src/rendering/crop.ts`. Optional on the wire
+/// (omitted for full-frame crops); `nil` means "whole frame".
+public struct EdlCrop: Codable, Equatable {
+	public var x: Double
+	public var y: Double
+	public var width: Double
+	public var height: Double
+
+	public init(x: Double = 0, y: Double = 0, width: Double = 1, height: Double = 1) {
+		self.x = x
+		self.y = y
+		self.width = width
+		self.height = height
+	}
+}
+
 /// `params`/effect params are `Record<string, number|string|boolean>` in TS —
 /// `AnyCodableValue` is the minimal Swift shape that round-trips exactly
 /// those three JSON leaf types without pulling in a third-party dependency
@@ -199,6 +217,9 @@ public struct EdlClip: Codable, Equatable {
 	public var muted: Bool
 	public var hidden: Bool
 	public var transform: EdlTransform
+	/// Optional normalised crop rectangle. `nil` (or absent on the wire)
+	/// means the whole frame, matching the TS reader's `FULL_CROP`.
+	public var crop: EdlCrop?
 	public var opacity: Double
 	public var blendMode: String
 	public var effects: [EdlEffect]

@@ -145,8 +145,8 @@ function NumberField({
 
 	useLayoutEffect(() => {
 		if (!suffix) {
-			setSuffixLeft(0);
-			return;
+			const raf = requestAnimationFrame(() => setSuffixLeft(0));
+			return () => cancelAnimationFrame(raf);
 		}
 		if (!ghostRef.current || !inputRef.current) return;
 		if (ghostRef.current.textContent !== ghostValue) {
@@ -154,7 +154,9 @@ function NumberField({
 		}
 		const paddingLeft =
 			parseFloat(getComputedStyle(inputRef.current).paddingLeft) || 0;
-		setSuffixLeft(paddingLeft + ghostRef.current.offsetWidth);
+		const next = paddingLeft + ghostRef.current.offsetWidth;
+		const raf = requestAnimationFrame(() => setSuffixLeft(next));
+		return () => cancelAnimationFrame(raf);
 	}, [ghostValue, suffix]);
 
 	const { containerRef: wrapperRef } = useFocusLock<HTMLDivElement>({

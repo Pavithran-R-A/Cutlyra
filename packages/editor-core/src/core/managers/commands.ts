@@ -12,6 +12,10 @@ interface CommandHistoryEntry {
 
 export class CommandManager {
 	public isRippleEnabled = false;
+
+	public setRippleEnabled(value: boolean): void {
+		this.isRippleEnabled = value;
+	}
 	private history: CommandHistoryEntry[] = [];
 	private redoStack: CommandHistoryEntry[] = [];
 	private reactors: Array<() => void> = [];

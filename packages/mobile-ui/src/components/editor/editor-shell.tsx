@@ -68,6 +68,10 @@ import {
 	seekToClipKeyframeTime,
 	setClipKeyframeEasing,
 	setAudioFades,
+	freezeFrameAtPlayhead,
+	setFreezeFrameHold,
+	removeFreezeFrame,
+	freezeFrameStateFor,
 	type DeadSpaceCutOutcome,
 } from "../../editor/actions";
 import { Scissors, ScissorsLineDashed, Trash2, CopyPlus, SlidersHorizontal, Spline, Type } from "lucide-react";
@@ -296,6 +300,11 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 		asset: Parameters<typeof applyClipReplacement>[0]["asset"];
 		message: string;
 	} | null>(null);
+	/** Freeze Frame capture feedback. The verb lives in the Edit sheet, so a
+	 *  capture refusal is shown THERE (next to the button that failed); a
+	 *  successful freeze reports through the chrome strip. */
+	const [freezeBusy, setFreezeBusy] = useState(false);
+	const [freezeError, setFreezeError] = useState<string | null>(null);
 
 	const runCutDeadSpace = ({ ref }: { ref: ElementRef }) => {
 		if (deadSpaceProgress) return; // one analysis at a time
@@ -313,6 +322,31 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 			.then((outcome) => setChromeNotice(describeDeadSpaceCut({ outcome })))
 			.catch(reportChromeError)
 			.finally(() => setDeadSpaceProgress(null));
+	};
+
+	/** Freeze Frame: capture the SOURCE frame under the playhead, persist it as
+	 *  a real still, and insert the hold interval (see actions.ts). The whole
+	 *  operation is awaited — a success notice only appears once the asset and
+	 *  the timeline edit were actually written. */
+	const runFreezeFrame = ({ ref }: { ref: ElementRef }) => {
+		if (freezeBusy) return;
+		setFreezeError(null);
+		setChromeError(null);
+		setChromeNotice("Capturing the frame under the playhead…");
+		setFreezeBusy(true);
+		freezeFrameAtPlayhead({ editor, ref })
+			.then((outcome) => {
+				if (outcome.status === "refused") {
+					setChromeNotice(null);
+					setFreezeError(outcome.message);
+					return;
+				}
+				setChromeNotice(
+					`Frozen at ${(outcome.sourceTimestampMicros / 1_000_000).toFixed(2)}s — ${outcome.holdSeconds.toFixed(1)}s silent hold. The video before and after keeps its audio.`,
+				);
+			})
+			.catch(reportChromeError)
+			.finally(() => setFreezeBusy(false));
 	};
 
 	/** Replace Clip (#74): pick a local file, import it WITHOUT registering it,
@@ -447,6 +481,10 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 	}, []);
 
 	const [selectedRef, selectedElement] = useSelectedElement();
+	/** The selected clip's freeze hold, when it IS a frozen still. */
+	const selectedFreeze = selectedRef
+		? freezeFrameStateFor({ editor, ref: selectedRef })
+		: null;
 	const currentTimeSeconds = useCurrentTimeSeconds();
 	const durationSeconds = useProjectDurationSeconds();
 	const isPlaying = useIsPlaying();
@@ -679,6 +717,30 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 						closeSheet();
 					}}
 					onDuplicate={() => duplicateSelected({ editor, refs: [selectedRef] })}
+					onFreeze={
+						selectedElement.type === "video"
+							? () => runFreezeFrame({ ref: selectedRef })
+							: undefined
+					}
+					freezeBusy={freezeBusy}
+					freezeError={freezeError}
+					freezeHoldSeconds={selectedFreeze?.holdSeconds}
+					onSetFreezeHold={
+						selectedFreeze
+							? (seconds) =>
+									setFreezeFrameHold({ editor, ref: selectedRef, seconds })
+							: undefined
+					}
+					onRemoveFreeze={
+						selectedFreeze
+							? () => {
+									removeFreezeFrame({ editor, ref: selectedRef });
+									setChromeNotice("Freeze removed — the clip's halves were rejoined.");
+									setFreezeError(null);
+									closeSheet();
+								}
+							: undefined
+					}
 					onCutDeadSpace={
 						AUDIBLE_ELEMENT_TYPES.has(selectedElement.type)
 							? () => {

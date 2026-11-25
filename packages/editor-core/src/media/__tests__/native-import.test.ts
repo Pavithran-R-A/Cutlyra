@@ -448,4 +448,144 @@ describe("importMediaFromNative", () => {
 			height: 1080,
 		});
 	});
+
+	function makeGifHandle(id = "gif1"): NativeMediaHandle {
+		return {
+			id,
+			uri: `/sandbox/Media/${id}.gif`,
+			kind: "image",
+			fileName: `${id}.gif`,
+			sizeBytes: 2048,
+			durationMicros: 0,
+			width: 320,
+			height: 240,
+			hasAudio: false,
+			codec: "gif",
+			frameRate: null,
+		};
+	}
+
+	test("an animated GIF imports with native-decoded timing metadata", async () => {
+		const editor = EditorCore.getInstance();
+		const handle = makeGifHandle();
+		const source = fakeSource({
+			async pickMedia() {
+				return [handle];
+			},
+			async decodeGifAsset() {
+				return {
+					width: 320,
+					height: 240,
+					loopCount: 0,
+					totalDurationMs: 1000,
+					frames: [
+						{ relativePath: "gif/gif1/frame-000.png", delayMs: 200 },
+						{ relativePath: "gif/gif1/frame-001.png", delayMs: 300 },
+						{ relativePath: "gif/gif1/frame-002.png", delayMs: 500 },
+					],
+				};
+			},
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["image"],
+			allowMultiple: false,
+		});
+
+		expect(result.failed).toHaveLength(0);
+		expect(result.imported).toHaveLength(1);
+		const asset = result.imported[0]!;
+		expect(asset.gif).toEqual({
+			width: 320,
+			height: 240,
+			loopCount: 0,
+			frameDelaysMs: [200, 300, 500],
+			frames: [
+				{ relativePath: "gif/gif1/frame-000.png", delayMs: 200 },
+				{ relativePath: "gif/gif1/frame-001.png", delayMs: 300 },
+				{ relativePath: "gif/gif1/frame-002.png", delayMs: 500 },
+			],
+		});
+		// Endless GIF -> one loop of playback, not the probe's zero still duration.
+		expect(asset.duration).toBe(1);
+		expect(asset.width).toBe(320);
+		expect(asset.height).toBe(240);
+	});
+
+	test("a finite GIF's playback duration counts every loop", async () => {
+		const editor = EditorCore.getInstance();
+		const source = fakeSource({
+			async pickMedia() {
+				return [makeGifHandle("gif2")];
+			},
+			async decodeGifAsset() {
+				return {
+					width: 64,
+					height: 64,
+					loopCount: 3,
+					totalDurationMs: 500,
+					frames: [{ relativePath: "gif/gif2/frame-000.png", delayMs: 500 }],
+				};
+			},
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["image"],
+			allowMultiple: false,
+		});
+
+		expect(result.imported[0]?.duration).toBe(1.5);
+	});
+
+	test("a GIF with no native decoder fails loudly instead of importing a still", async () => {
+		const editor = EditorCore.getInstance();
+		const source = fakeSource({
+			async pickMedia() {
+				return [makeGifHandle("gif3")];
+			},
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["image"],
+			allowMultiple: false,
+		});
+
+		expect(result.imported).toHaveLength(0);
+		expect(result.failed).toHaveLength(1);
+		expect(result.failed[0]?.error).toContain("GIF decoder");
+		expect(editor.media.getAssets()).toHaveLength(0);
+	});
+
+	test("a failed GIF decode fails the import rather than falling back to a still", async () => {
+		const editor = EditorCore.getInstance();
+		const source = fakeSource({
+			async pickMedia() {
+				return [makeGifHandle("gif4")];
+			},
+			async decodeGifAsset() {
+				throw new Error("corrupt GIF");
+			},
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["image"],
+			allowMultiple: false,
+		});
+
+		expect(result.imported).toHaveLength(0);
+		expect(result.failed[0]?.error).toBe("corrupt GIF");
+		expect(editor.media.getAssets()).toHaveLength(0);
+	});
 });

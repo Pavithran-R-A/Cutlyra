@@ -48,6 +48,23 @@ data class EdlMeta(
 
 enum class EdlAssetKind { VIDEO, IMAGE, AUDIO }
 
+/**
+ * One pre-decoded animated-GIF frame (TS `EdlGifFrame`). `uri` is a native
+ * file handle for a PNG the importer wrote into media custody; `durationTicks`
+ * is the frame's own delay. Additive to EDL v1: an asset without a `gif`
+ * object is an ordinary still and every existing mapper keeps working.
+ */
+data class EdlGifFrame(
+    val uri: String,
+    val durationTicks: Long,
+)
+
+data class EdlGifAsset(
+    /** 0 = loop forever. */
+    val loopCount: Int,
+    val frames: List<EdlGifFrame>,
+)
+
 data class EdlAsset(
     val assetId: String,
     val kind: EdlAssetKind,
@@ -62,6 +79,9 @@ data class EdlAsset(
     val durationTicks: Long?,
     val rotationDegrees: Int,
     val hasAudio: Boolean,
+    /** Present only for animated GIFs whose frames the native importer
+     *  decoded. Absent = ordinary still image. */
+    val gif: EdlGifAsset? = null,
 )
 
 enum class EdlTrackKind { MAIN, OVERLAY, AUDIO }

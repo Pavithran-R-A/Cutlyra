@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useCallback, type CSSProperties } from "react";
+import { useState, useMemo, useRef, useCallback, type CSSProperties } from "react";
 import { List, type RowComponentProps } from "react-window";
 import {
 	Popover,
@@ -75,18 +75,22 @@ export function FontPicker({
 		[onValueChange],
 	);
 
-	useEffect(() => {
-		if (!open) {
-			setSearch("");
-			setActiveTab("all");
-		}
-	}, [open]);
+	const handleOpenChange = useCallback(
+		(next: boolean) => {
+			if (!next) {
+				setSearch("");
+				setActiveTab("all");
+			}
+			setOpen(next);
+		},
+		[],
+	);
 
 	const activeTabLabel =
 		FONT_TABS.find((t) => t.key === activeTab)?.label.toLowerCase() ?? "";
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover open={open} onOpenChange={handleOpenChange}>
 			<PopoverTrigger
 				className={cn(
 					"border-border bg-accent flex h-7 w-full cursor-pointer items-center justify-between gap-1 rounded-md border px-2.5 text-sm whitespace-nowrap focus-visible:border-primary focus-visible:ring-0 focus:outline-hidden",

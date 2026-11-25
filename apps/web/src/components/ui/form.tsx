@@ -55,9 +55,8 @@ function Form<
 		try {
 			const stored = store.getItem(persistKeyOnMount.current);
 			if (stored) {
-				resetRef.current(
-					JSON.parse(stored) as DefaultValues<TFieldValues>,
-				);
+				const parsed: DefaultValues<TFieldValues> = JSON.parse(stored);
+				resetRef.current(parsed);
 			}
 		} catch {
 			// Storage may be unavailable (private browsing, storage blocked)
@@ -109,9 +108,7 @@ type FormFieldContextValue<
 	name: TName;
 };
 
-const FormFieldContext = React.createContext<FormFieldContextValue>(
-	{} as FormFieldContextValue,
-);
+const FormFieldContext = React.createContext<FormFieldContextValue>(null!);
 
 const FormField = <
 	TFieldValues extends FieldValues = FieldValues,
@@ -153,9 +150,7 @@ type FormItemContextValue = {
 	id: string;
 };
 
-const FormItemContext = React.createContext<FormItemContextValue>(
-	{} as FormItemContextValue,
-);
+const FormItemContext = React.createContext<FormItemContextValue>(null!);
 
 const FormItem = React.forwardRef<
 	HTMLDivElement,

@@ -32,6 +32,8 @@
  */
 
 import type { SerializedProject, MediaAssetData } from "@/services/storage/types";
+import type { GifAssetMetadata } from "@/media/gif-asset";
+import type { FreezeFrameCaptureConfig } from "@/media/freeze-frame";
 import type { StorageService } from "@/services/storage/service";
 import {
 	ARCHIVE_FORMAT_VERSION,
@@ -66,7 +68,29 @@ export interface BackupIO {
 		projectId: string;
 		assetId: string;
 		role: ArchivedFileRole;
+		/** `gif` role only: which decoded frame to read. */
+		frameIndex?: number;
 	}): Promise<Uint8Array | null>;
+}
+
+/**
+ * GIF metadata as a MANIFEST carries it: timing only.
+ *
+ * Frame FILES are archived separately (role `gif` + `frameIndex`), because a
+ * custody-relative frame path is only meaningful on the device that wrote it
+ * — archiving the paths inside the `gif` block would hand a restored project
+ * a set of files it can never open. A restore rebuilds `frames` from the
+ * extracted entries; an archive without them keeps the timing and drops the
+ * paths instead of carrying dangling ones forward.
+ */
+function archivedGifMetadata(gif: GifAssetMetadata | undefined): GifAssetMetadata | undefined {
+	if (!gif) return undefined;
+	return {
+		width: gif.width,
+		height: gif.height,
+		loopCount: gif.loopCount,
+		frameDelaysMs: [...gif.frameDelaysMs],
+	};
 }
 
 export interface ExportResult {
@@ -224,7 +248,10 @@ export async function exportProjectArchive({
 
 	let totalBytes = 0;
 	let processed = 0;
-	const work = mediaData.length + 1; // +1 for the project JSON
+	const work =
+		mediaData.length +
+		1 + // the project JSON
+		mediaData.reduce((count, asset) => count + (asset.gif?.frames?.length ?? 0), 0);
 
 	// Project JSON entry.
 	const projectPath = projectEntryPath(projectId);
@@ -259,6 +286,40 @@ export async function exportProjectArchive({
 			processed++;
 			reportProgress({ ctx, stage: "hashing", fraction: processed / work });
 		}
+		// Decoded GIF frames: one entry per frame, in frame order. A platform
+		// without native custody (web) has no decoded frame files and returns
+		// null here; the archive then carries the timing only, exactly like an
+		// archive written before frames were archived at all.
+		const gifFrames = asset.gif?.frames ?? [];
+		for (let frameIndex = 0; frameIndex < gifFrames.length; frameIndex++) {
+			const bytes = await ctx.io.readMediaBytes({
+				projectId,
+				assetId: asset.id,
+				role: "gif",
+				frameIndex,
+			});
+			if (!bytes) continue;
+			const path = mediaEntryPath({
+				projectId,
+				assetId: asset.id,
+				role: "gif",
+				extension: ".png",
+				frameIndex,
+			});
+			const sha = await sha256Hex({ bytes });
+			totalBytes += bytes.byteLength;
+			writer.addEntry({ path, data: bytes });
+			files.push({
+				role: "gif",
+				path,
+				sizeBytes: bytes.byteLength,
+				sha256: sha,
+				extension: ".png",
+				frameIndex,
+			});
+			processed++;
+			reportProgress({ ctx, stage: "hashing", fraction: processed / work });
+		}
 		archivedAssets.push({
 			id: asset.id,
 			name: asset.name,
@@ -273,6 +334,8 @@ export async function exportProjectArchive({
 			sourceRotationDegrees: asset.sourceRotationDegrees,
 			sourceWidth: asset.sourceWidth,
 			sourceHeight: asset.sourceHeight,
+			gif: archivedGifMetadata(asset.gif),
+			freezeFrame: asset.freezeFrame,
 			files,
 		});
 	}
@@ -448,6 +511,12 @@ export async function restoreProjectArchive({
 				sourceRotationDegrees: first.sourceRotationDegrees,
 				sourceWidth: first.sourceWidth,
 				sourceHeight: first.sourceHeight,
+				// The web has no native custody: any archived GIF frame entries
+				// were verified above but cannot be written here, so the restored
+				// metadata keeps the timing and carries no frame paths rather
+				// than pointing at files this platform does not have.
+				gif: archivedGifMetadata(first.gif),
+				freezeFrame: first.freezeFrame,
 			};
 
 			if (primary) {
@@ -702,6 +771,13 @@ export interface NativeMediaDescriptor {
 	sourceRotationDegrees?: 0 | 90 | 180 | 270;
 	sourceWidth?: number;
 	sourceHeight?: number;
+	/** Animated-GIF timing (never the frame paths — see `gifFrames`). */
+	gif?: GifAssetMetadata;
+	/** Custody-relative PNG paths of every decoded GIF frame, in frame order.
+	 *  Empty for a non-GIF asset or a build without decoded frames. */
+	gifFrames: string[];
+	/** Freeze Frame provenance for a generated still. */
+	freezeFrame?: FreezeFrameCaptureConfig;
 }
 
 /** Builds the JSON-only recipe for a native archive export. */
@@ -801,6 +877,9 @@ export async function buildExportRecipe({
 		sourceRotationDegrees: asset.sourceRotationDegrees,
 		sourceWidth: asset.sourceWidth,
 		sourceHeight: asset.sourceHeight,
+		gif: archivedGifMetadata(asset.gif),
+		gifFrames: (asset.gif?.frames ?? []).map((frame) => frame.relativePath),
+		freezeFrame: asset.freezeFrame,
 	}));
 	return {
 		projectJson: JSON.stringify(serialized, null, 2),
@@ -814,9 +893,64 @@ export async function buildExportRecipe({
  *  so a restore never overwrites an existing file). */
 export interface RestoredMediaFile {
 	assetId: string;
-	role: "proxy" | "source" | "thumbnail";
+	role: "proxy" | "source" | "thumbnail" | "gif";
 	newPath: string;
 	sha256: string;
+	/** `gif` role only: the frame's index in the archived frame order. */
+	frameIndex?: number;
+}
+
+/**
+ * Rebuilds an asset's GIF metadata from the frames native extracted.
+ *
+ * - no `gif` block: not a GIF, nothing to rebuild;
+ * - `gif` block but no frame entries: an archive written before frames were
+ *  archived (or one whose frames were never decoded). The timing is kept and
+ *  `frames` stays absent — never a frame path this device cannot open;
+ * - frames present: every frame must be there and indexed exactly
+ *  `0..n-1` against `frameDelaysMs`, otherwise the archive is inconsistent
+ *  and the restore is refused before any record is written.
+ */
+function gifMetadataForRestore({
+	assetId,
+	archived,
+	restored,
+}: {
+	assetId: string;
+	archived: GifAssetMetadata | undefined;
+	restored: RestoredMediaFile[];
+}): GifAssetMetadata | undefined {
+	if (!archived) return undefined;
+	const timing: GifAssetMetadata = {
+		width: archived.width,
+		height: archived.height,
+		loopCount: archived.loopCount,
+		frameDelaysMs: [...archived.frameDelaysMs],
+	};
+	if (restored.length === 0) return timing;
+
+	const sorted = [...restored].sort(
+		(a, b) => (a.frameIndex ?? -1) - (b.frameIndex ?? -1),
+	);
+	if (sorted.length !== timing.frameDelaysMs.length) {
+		throw new BackupError({
+			code: "CORRUPT_ARCHIVE",
+			message: `Archive declares ${timing.frameDelaysMs.length} GIF frame delays for ${assetId} but holds ${sorted.length} frame file(s)`,
+		});
+	}
+	const frames = sorted.map((file, index) => {
+		if (file.frameIndex !== index) {
+			throw new BackupError({
+				code: "CORRUPT_ARCHIVE",
+				message: `Archive GIF frame ${index} for ${assetId} carries index ${String(file.frameIndex)}`,
+			});
+		}
+		return {
+			relativePath: file.newPath,
+			delayMs: timing.frameDelaysMs[index] as number,
+		};
+	});
+	return { ...timing, frames };
 }
 
 /** Applies a native-verified import: writes the project record (remapping a
@@ -867,6 +1001,22 @@ export async function applyNativeImport({
 		byAsset.set(file.assetId, list);
 	}
 
+	// Rebuild every asset's GIF frame list BEFORE writing the first record, so
+	// an inconsistent frame set is refused without leaving a half-restored
+	// project (native has already extracted the bytes; the IDs are fresh, so
+	// nothing existing is affected).
+	const gifByAsset = new Map<string, GifAssetMetadata | undefined>();
+	for (const [assetId, files] of byAsset) {
+		gifByAsset.set(
+			assetId,
+			gifMetadataForRestore({
+				assetId,
+				archived: archivedAssets.find((a) => a.id === assetId)?.gif,
+				restored: files.filter((file) => file.role === "gif"),
+			}),
+		);
+	}
+
 	const writtenAssetIds: string[] = [];
 	try {
 		for (const [assetId, files] of byAsset) {
@@ -905,6 +1055,8 @@ export async function applyNativeImport({
 					sourceRotationDegrees: archived?.sourceRotationDegrees,
 					sourceWidth: archived?.sourceWidth,
 					sourceHeight: archived?.sourceHeight,
+					gif: gifByAsset.get(assetId),
+					freezeFrame: archived?.freezeFrame,
 					nativeRelativePath: proxy?.newPath,
 					sourceNativeRelativePath: source?.newPath,
 					thumbnailNativeRelativePath: thumb?.newPath,

@@ -130,6 +130,14 @@ export const ACTIONS = {
 		description: "Toggle bookmark at playhead",
 		category: "timeline",
 	},
+	"freeze-frame": {
+		description: "Freeze the current frame of the selected element",
+		category: "editing",
+	},
+	"unfreeze-frame": {
+		description: "Remove a frozen frame and rejoin the video",
+		category: "editing",
+	},
 	undo: {
 		description: "Undo",
 		category: "history",

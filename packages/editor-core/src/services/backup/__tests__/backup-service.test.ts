@@ -20,7 +20,8 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { StorageService as StorageServiceType } from "@/services/storage/service";
 import type { SerializedProject as SerializedProjectType } from "@/services/storage/types";
 import type { BackupIO } from "@/services/backup/backup-service";
-import type { BackupProgress } from "@/services/backup/types";
+import type { ArchivedAsset, BackupProgress } from "@/services/backup/types";
+import type { GifAssetMetadata } from "@/media/gif-asset";
 
 // ---------------------------------------------------------------------------
 // In-memory persistence fakes (structured-clone semantics like real IndexedDB)
@@ -628,5 +629,250 @@ describe("project backup archive (GitHub #35)", () => {
 		expect(readBack).toBeDefined();
 		expect([...(readBack ?? new Uint8Array())]).toEqual([...payload]);
 		expect(entries.get("manifest.json")).toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Animated GIF frames (backup → restore)
+//
+// An animated GIF is archived as its timing plus one entry per decoded frame
+// PNG. The manifest must NEVER carry a custody-relative frame path (it is only
+// valid on the exporting device), restore must point every frame at the FRESH
+// location native extracted it to, and an archive without frame entries (one
+// written before this existed) must still restore with its timing intact.
+// ---------------------------------------------------------------------------
+
+describe("project backup archive — animated GIF frames", () => {
+	const projectId = "proj-gif";
+	const assetId = "gif-1";
+	const delays = [100, 200, 300];
+	const sourceFrames = delays.map((delayMs, index) => ({
+		relativePath: `gif/${assetId}/frame-${String(index).padStart(3, "0")}.png`,
+		delayMs,
+	}));
+
+	function gifMetadata({ withFrames }: { withFrames: boolean }): GifAssetMetadata {
+		const metadata: GifAssetMetadata = {
+			width: 4,
+			height: 4,
+			loopCount: 0,
+			frameDelaysMs: [...delays],
+		};
+		return withFrames ? { ...metadata, frames: sourceFrames.map((frame) => ({ ...frame })) } : metadata;
+	}
+
+	async function seedGifProject({
+		storage,
+		withFrames = true,
+	}: {
+		storage: StorageServiceType;
+		withFrames?: boolean;
+	}) {
+		await storage.putSerializedProject({
+			project: makeSerializedProject({ id: projectId, name: "GIF project" }),
+		});
+		await storage.putMediaAssetData({
+			projectId,
+			data: {
+				id: assetId,
+				name: "anim.gif",
+				type: "image",
+				size: 64,
+				lastModified: 1729000000000,
+				width: 4,
+				height: 4,
+				gif: gifMetadata({ withFrames }),
+			},
+		});
+		await storage.putMediaAssetFile({
+			projectId,
+			assetId,
+			file: new File([new Uint8Array([0x47, 0x49, 0x46])], "anim.gif", { type: "image/gif" }),
+		});
+	}
+
+	/** Bytes come from the only place a frame can live on native (custody);
+	 *  each frame gets its own payload so a restore can prove the mapping. */
+	function gifIo({ storage }: { storage: StorageServiceType }): BackupIO {
+		return {
+			async readMediaBytes({ assetId: id, role, frameIndex }) {
+				if (role === "gif") {
+					if (typeof frameIndex !== "number") return null;
+					return new Uint8Array([0x89, 0x50, frameIndex, 0x0a]);
+				}
+				if (role !== "proxy") return null;
+				const file = await storage.loadMediaAsset({ projectId, id });
+				if (!file?.file) return null;
+				return new Uint8Array(await file.file.arrayBuffer());
+			},
+		};
+	}
+
+	function archivedAsset({ withFrames }: { withFrames: boolean }): ArchivedAsset {
+		return {
+			id: assetId,
+			name: "anim.gif",
+			type: "image",
+			sizeBytes: 64,
+			lastModified: 1729000000000,
+			width: 4,
+			height: 4,
+			gif: gifMetadata({ withFrames }),
+			files: [],
+		};
+	}
+
+	it("archives every frame with its index and never the exporting device's paths", async () => {
+		const storage = new StorageService();
+		await seedGifProject({ storage });
+
+		const exported = await backup.exportProjectArchive({
+			projectId,
+			ctx: makeCtx({ storage, io: gifIo({ storage }) }),
+		});
+
+		const asset = exported.manifest.projects[0].assets[0];
+		expect(asset.gif).toBeDefined();
+		expect(asset.gif?.frameDelaysMs).toEqual(delays);
+		// Timing only in the manifest: no custody paths travel with it.
+		expect(asset.gif?.frames).toBeUndefined();
+
+		const gifEntries = asset.files.filter((file) => file.role === "gif");
+		expect(gifEntries.map((file) => file.frameIndex)).toEqual([0, 1, 2]);
+		expect(gifEntries.map((file) => file.path)).toEqual([
+			`data/${projectId}/media/${assetId}/gif/frame-000.png`,
+			`data/${projectId}/media/${assetId}/gif/frame-001.png`,
+			`data/${projectId}/media/${assetId}/gif/frame-002.png`,
+		]);
+		for (const entry of gifEntries) {
+			expect(entry.sha256).toMatch(/^[0-9a-f]{64}$/);
+			expect(entry.sizeBytes).toBe(4);
+			expect(entry.extension).toBe(".png");
+		}
+	});
+
+	it("restores the timing (and verifies the frame bytes) on a platform without custody", async () => {
+		const storage = new StorageService();
+		await seedGifProject({ storage });
+		const exported = await backup.exportProjectArchive({
+			projectId,
+			ctx: makeCtx({ storage, io: gifIo({ storage }) }),
+		});
+
+		// Web restore: the frame entries are verified by SHA-256 inside
+		// restoreProjectArchive even though this platform cannot store them.
+		const restored = await backup.restoreProjectArchive({
+			archive: exported.archive,
+			ctx: makeCtx({ storage, io: gifIo({ storage }) }),
+			forceNewId: true,
+		});
+		const media = await storage.listMediaAssetData({ projectId: restored.projectId });
+		expect(media).toHaveLength(1);
+		expect(media[0].gif?.frameDelaysMs).toEqual(delays);
+		expect(media[0].gif?.frames).toBeUndefined();
+	});
+
+	it("rewrites restored frames onto their fresh custody paths (id remap)", async () => {
+		const storage = new StorageService();
+		// An existing project with the archived id forces a remap.
+		await storage.putSerializedProject({
+			project: makeSerializedProject({ id: projectId, name: "Existing" }),
+		});
+
+		const restoredFiles = [
+			{ assetId, role: "proxy" as const, newPath: `media/${assetId}.gif`, sha256: "a".repeat(64) },
+			...sourceFrames.map((frame, index) => ({
+				assetId,
+				role: "gif" as const,
+				newPath: `gif/restored-${assetId}/frame-${String(index).padStart(3, "0")}.png`,
+				sha256: "b".repeat(64),
+				frameIndex: index,
+			})),
+		];
+		const result = await backup.applyNativeImport({
+			projectJson: JSON.stringify(makeSerializedProject({ id: projectId, name: "GIF project" })),
+			archivedAssets: [archivedAsset({ withFrames: false })],
+			restoredFiles,
+			storage,
+		});
+
+		expect(result.remapped).toBe(true);
+		const media = await storage.listMediaAssetData({ projectId: result.projectId });
+		expect(media).toHaveLength(1);
+		expect(media[0].gif?.frameDelaysMs).toEqual(delays);
+		expect(media[0].gif?.frames).toEqual(
+			sourceFrames.map((_, index) => ({
+				relativePath: `gif/restored-${assetId}/frame-${String(index).padStart(3, "0")}.png`,
+				delayMs: delays[index] as number,
+			})),
+		);
+	});
+
+	it("restores an archive that predates GIF frames with its timing intact", async () => {
+		const storage = new StorageService();
+		const result = await backup.applyNativeImport({
+			projectJson: JSON.stringify(makeSerializedProject({ id: "proj-old", name: "Old archive" })),
+			archivedAssets: [archivedAsset({ withFrames: false })],
+			restoredFiles: [
+				{ assetId, role: "proxy", newPath: `media/${assetId}.gif`, sha256: "a".repeat(64) },
+			],
+			storage,
+			forceNewId: true,
+		});
+
+		const media = await storage.listMediaAssetData({ projectId: result.projectId });
+		expect(media[0].gif?.frameDelaysMs).toEqual(delays);
+		expect(media[0].gif?.loopCount).toBe(0);
+		// No dangling paths: the timing survives, `frames` stays absent.
+		expect(media[0].gif?.frames).toBeUndefined();
+	});
+
+	it("refuses a restore whose frame count disagrees with the timing", async () => {
+		const storage = new StorageService();
+		const error = await backup
+			.applyNativeImport({
+				projectJson: JSON.stringify(makeSerializedProject({ id: "proj-bad", name: "Bad" })),
+				archivedAssets: [archivedAsset({ withFrames: false })],
+				restoredFiles: [
+					{ assetId, role: "gif", newPath: "gif/x/frame-000.png", sha256: "c".repeat(64), frameIndex: 0 },
+				],
+				storage,
+				forceNewId: true,
+			})
+			.then(
+				() => null,
+				(e: unknown) => e,
+			);
+
+		expect(error).toBeInstanceOf(BackupError);
+		expect((error as InstanceType<typeof BackupError>).code).toBe("CORRUPT_ARCHIVE");
+		// Nothing was written for the rejected project.
+		expect(mediaMetaStore.size).toBe(0);
+		expect(projectStore.has("proj-bad")).toBe(false);
+	});
+
+	it("refuses a restore whose frame indices are not 0..n-1", async () => {
+		const storage = new StorageService();
+		const error = await backup
+			.applyNativeImport({
+				projectJson: JSON.stringify(makeSerializedProject({ id: "proj-bad-index", name: "Bad" })),
+				archivedAssets: [archivedAsset({ withFrames: false })],
+				restoredFiles: sourceFrames.map((frame, index) => ({
+					assetId,
+					role: "gif" as const,
+					newPath: frame.relativePath,
+					sha256: "d".repeat(64),
+					frameIndex: index === 2 ? 5 : index,
+				})),
+				storage,
+				forceNewId: true,
+			})
+			.then(
+				() => null,
+				(e: unknown) => e,
+			);
+
+		expect(error).toBeInstanceOf(BackupError);
+		expect((error as InstanceType<typeof BackupError>).code).toBe("CORRUPT_ARCHIVE");
 	});
 });

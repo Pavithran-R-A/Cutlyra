@@ -21,12 +21,11 @@ export function useElementPreview<T extends TimelineElement>({
 	useEditor((e) => e.timeline.getPreviewTracks());
 
 	const previewTracks = editor.timeline.getPreviewTracks();
-	const renderElement =
-		(findTrackInSceneTracks({
-			tracks: previewTracks ?? editor.scenes.getActiveScene().tracks,
-			trackId,
-		})?.elements.find((element) => element.id === elementId) as T | undefined) ??
-		fallback;
+	const foundElement = findTrackInSceneTracks({
+		tracks: previewTracks ?? editor.scenes.getActiveScene().tracks,
+		trackId,
+	})?.elements.find((element) => element.id === elementId);
+	const renderElement = foundElement ?? fallback;
 
 	const previewUpdates = (updates: Partial<TimelineElement>) =>
 		editor.timeline.previewElements({

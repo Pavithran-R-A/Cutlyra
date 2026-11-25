@@ -211,6 +211,12 @@ export async function runBackupProject({
 			sourceRotationDegrees: m.sourceRotationDegrees,
 			sourceWidth: m.sourceWidth,
 			sourceHeight: m.sourceHeight,
+			// Animated GIFs: timing in the manifest, frame PNGs as their own
+			// archive entries so the restore can rewrite every path.
+			gif: m.gif,
+			gifFrames: m.gifFrames,
+			// Freeze stills keep their capture provenance across a restore.
+			freezeFrame: m.freezeFrame,
 		})),
 		appVersion: APP_VERSION,
 	});

@@ -18,7 +18,7 @@ export function useInfiniteScroll({
 	const scrollAreaRef = useRef<HTMLDivElement>(null);
 
 	const handleScroll = useCallback(
-		(event: React.UIEvent<HTMLDivElement>) => {
+		(event: { currentTarget: HTMLDivElement }) => {
 			if (!enabled) return;
 
 			const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;

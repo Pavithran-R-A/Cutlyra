@@ -6,6 +6,13 @@ import type { MediaAsset } from "@/media/types";
 import { readVideoFile } from "./mediabunny";
 import type { VideoFileData } from "./mediabunny";
 import { renderThumbnailDataUrl } from "./thumbnail";
+import {
+	gifMetadataFromDecode,
+	gifPlaybackDurationSeconds,
+	type GifAssetMetadata,
+} from "@/media/gif-asset";
+import { decodeGif } from "@/media/gif-decoder";
+import { gifFrameImageData } from "@/media/gif-frames";
 
 export interface ProcessedMediaAsset extends Omit<MediaAsset, "id"> {}
 
@@ -82,6 +89,61 @@ async function generateImageThumbnail({
 	});
 }
 
+const isGifFile = ({ file }: { file: File }): boolean =>
+	file.type === "image/gif" || /\.gif$/i.test(file.name);
+
+/**
+ * Decodes an animated GIF into the metadata the renderer needs to play it and
+ * a thumbnail of its first frame. Returns null for single-frame GIFs, which
+ * the ordinary image path already handles.
+ */
+async function readAnimatedGif({
+	file,
+}: {
+	file: File;
+}): Promise<{
+	gif: GifAssetMetadata;
+	thumbnailUrl: string;
+	width: number;
+	height: number;
+	duration: number;
+} | null> {
+	const decoded = await decodeGif(await file.arrayBuffer());
+	if (decoded.frames.length < 2) return null;
+
+	const gif = gifMetadataFromDecode(decoded);
+	const firstFrame = decoded.frames[0];
+	const thumbnailUrl = renderThumbnailDataUrl({
+		width: decoded.width,
+		height: decoded.height,
+		draw: ({ context, width, height }) => {
+			const frameCanvas = document.createElement("canvas");
+			frameCanvas.width = decoded.width;
+			frameCanvas.height = decoded.height;
+			const frameContext = frameCanvas.getContext("2d");
+			if (!frameContext) throw new Error("Could not get canvas context");
+			frameContext.putImageData(
+				gifFrameImageData({
+					rgba: firstFrame.rgba,
+					width: decoded.width,
+					height: decoded.height,
+				}),
+				0,
+				0,
+			);
+			context.drawImage(frameCanvas, 0, 0, width, height);
+		},
+	});
+
+	return {
+		gif,
+		thumbnailUrl,
+		width: decoded.width,
+		height: decoded.height,
+		duration: gifPlaybackDurationSeconds(gif),
+	};
+}
+
 export async function processMediaAssets({
 	files,
 	onProgress,
@@ -124,13 +186,34 @@ export async function processMediaAssets({
 		let height: number | undefined;
 		let fps: number | undefined;
 		let hasAudio: boolean | undefined;
+		let gif: GifAssetMetadata | undefined;
 
 		try {
 			if (fileType === "image") {
-				const result = await generateImageThumbnail({ imageFile: file });
-				thumbnailUrl = result.thumbnailUrl;
-				width = result.width;
-				height = result.height;
+				if (isGifFile({ file })) {
+					try {
+						const animated = await readAnimatedGif({ file });
+						if (animated) {
+							gif = animated.gif;
+							thumbnailUrl = animated.thumbnailUrl;
+							width = animated.width;
+							height = animated.height;
+							duration = animated.duration;
+						}
+					} catch (error) {
+						console.error("Could not decode GIF animation:", file.name, error);
+						toast.error(`Couldn't animate ${file.name}`, {
+							description: "Importing it as a still image instead.",
+						});
+					}
+				}
+
+				if (!gif) {
+					const result = await generateImageThumbnail({ imageFile: file });
+					thumbnailUrl = result.thumbnailUrl;
+					width = result.width;
+					height = result.height;
+				}
 			} else if (fileType === "video") {
 				try {
 					const videoData = await readVideoFile({ file });
@@ -175,6 +258,7 @@ export async function processMediaAssets({
 				height,
 				fps,
 				hasAudio,
+				...(gif && { gif }),
 			});
 
 			await new Promise((resolve) => setTimeout(resolve, 0));
@@ -198,7 +282,11 @@ const getMediaDuration = ({ file }: { file: File }): Promise<number> => {
 	return new Promise((resolve, reject) => {
 		const element = document.createElement(
 			file.type.startsWith("video/") ? "video" : "audio",
-		) as HTMLVideoElement;
+		);
+		if (!(element instanceof HTMLMediaElement)) {
+			reject(new Error("Unsupported media element"));
+			return;
+		}
 		const objectUrl = URL.createObjectURL(file);
 
 		element.addEventListener("loadedmetadata", () => {
