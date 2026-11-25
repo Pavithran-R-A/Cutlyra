@@ -44,6 +44,15 @@ interface EditPanelProps {
 	/** Nondestructive Replace Clip (#74). Absent for element types whose media
 	 *  cannot be swapped (text, captions, graphics, library audio). */
 	onReplace?: () => void;
+	/** Reverse the whole clip into real reversed media (video clips only). */
+	onReverse?: () => void;
+	/** True while the native generator is encoding reversed frames. */
+	reverseBusy?: boolean;
+	/** 0..1 progress of the current reverse run, or null before the first frame. */
+	reverseProgress?: number | null;
+	/** Reverse failure, shown verbatim. */
+	reverseError?: string | null;
+	onCancelReverse?: () => void;
 	/** Freeze Frame at the playhead (video clips only). */
 	onFreeze?: () => void;
 	/** Non-null while a frame is being captured and the edit is committed. */
@@ -64,9 +73,9 @@ interface EditPanelProps {
 }
 
 /**
- * Release edit panel: split/speed/volume/delete/duplicate. Reverse remains
- * in the engine data model for project compatibility, but is intentionally
- * hidden in v0.1.0 until preview and native export can honor it. Speed/volume
+ * Release edit panel: split/speed/volume/delete/duplicate, Freeze Frame and
+ * Reverse. Reverse generates real reversed media natively and retargets the
+ * clip at it, so the control is shown only where that bridge exists. Speed/volume
  * only apply to retimable
  * elements (video/audio, per `RETIMABLE_ELEMENT_TYPES` in the engine) —
  * for a text/sticker/graphic selection those controls are hidden
@@ -90,6 +99,11 @@ export function EditPanel({
 	onFlipHorizontal,
 	onFlipVertical,
 	onReplace,
+	onReverse,
+	reverseBusy = false,
+	reverseProgress = null,
+	reverseError = null,
+	onCancelReverse,
 	onFreeze,
 	freezeBusy = false,
 	freezeError = null,
@@ -165,6 +179,31 @@ export function EditPanel({
 						<span>{freezeBusy ? "Freezing…" : "Freeze"}</span>
 					</button>
 				)}
+				{onReverse && (
+					<button
+						type="button"
+						className="cc-panel-actions__btn"
+						onClick={onReverse}
+						disabled={reverseBusy}
+						aria-busy={reverseBusy}
+					>
+						<RefreshCw size={20} strokeWidth={CC_ICON_STROKE} />
+						<span>
+							{reverseBusy
+								? `Reversing… ${Math.round((reverseProgress ?? 0) * 100)}%`
+								: "Reverse"}
+						</span>
+					</button>
+				)}
+				{reverseBusy && onCancelReverse && (
+					<button
+						type="button"
+						className="cc-panel-actions__btn"
+						onClick={onCancelReverse}
+					>
+						<span>Cancel reverse</span>
+					</button>
+				)}
 				<button type="button" className="cc-panel-actions__btn" onClick={onDelete}>
 					<Trash2 size={20} strokeWidth={CC_ICON_STROKE} />
 					<span>Delete</span>
@@ -191,6 +230,19 @@ export function EditPanel({
 			{freezeError && (
 				<p className="cc-replace-prompt__text" role="alert">
 					{freezeError}
+				</p>
+			)}
+
+			{reverseError && (
+				<p className="cc-replace-prompt__text" role="alert">
+					{reverseError}
+				</p>
+			)}
+
+			{onReverse && (
+				<p className="cc-replace-prompt__text">
+					Reversing rewrites this clip's frames into a new file; the original
+					stays in the project. Reversed clips are silent.
 				</p>
 			)}
 

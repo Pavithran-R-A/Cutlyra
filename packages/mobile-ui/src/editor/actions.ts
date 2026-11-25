@@ -42,6 +42,13 @@ import {
 	freezeSourceTimestampMicros,
 	persistFreezeFrame,
 } from "@cutlyra/editor-core/media/freeze-frame";
+import {
+	REVERSE_DEFAULT_FPS,
+	REVERSE_SUBDIR,
+	buildReversedElementPatch,
+	reverseSourceRange,
+	reversedAssetName,
+} from "@cutlyra/editor-core/media/reverse";
 import { storageService } from "@cutlyra/editor-core/services/storage/service";
 import {
 	buildTextElement,
@@ -2341,3 +2348,190 @@ export const FREEZE_HOLD_LIMITS = {
 	max: FREEZE_HOLD_MAX_SECONDS,
 	default: FREEZE_HOLD_DEFAULT_SECONDS,
 } as const;
+
+// -- Reverse Video --------------------------------------------------------
+
+export type ReverseClipRefusalReason =
+	| "element-missing"
+	| "not-video"
+	| "empty-range"
+	| "no-media"
+	| "no-source-path"
+	| "reverse-unsupported"
+	| "cancelled"
+	| "reverse-failed"
+	| "save-failed"
+	| "edit-failed";
+
+export type ReverseClipOutcome =
+	| {
+			status: "reversed";
+			assetId: string;
+			frameCount: number;
+			durationMs: number;
+		}
+	| { status: "refused"; reason: ReverseClipRefusalReason; message: string };
+
+function reverseRefused(
+	reason: ReverseClipRefusalReason,
+	message: string,
+): ReverseClipOutcome {
+	return { status: "refused", reason, message };
+}
+
+function bridgeErrorCode(error: unknown): string | null {
+	if (typeof error !== "object" || error === null) return null;
+	const code = (error as { code?: unknown }).code;
+	return typeof code === "string" ? code : null;
+}
+
+/**
+ * Reverses a video clip for real.
+ *
+ * The native generator encodes the clip's own source range backwards into an
+ * ordinary forward-playing MP4 (video only), and the clip is then retargeted at
+ * that file in a single undoable command — so preview and export play real
+ * reversed frames with no reverse-aware playback path. The original media is
+ * untouched, trim/retime/duration are preserved, and transform/crop/framing/
+ * effects keep applying on top.
+ *
+ * Audio policy: the generated file has no audio track, so the reversed clip is
+ * silent. Callers must show that; nothing here pretends reversed audio exists.
+ *
+ * Resolves only after the asset is persisted and the timeline edit ran.
+ */
+export async function reverseClip({
+	editor,
+	ref,
+	onProgress,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	onProgress?: (progress: { done: number; total: number; progress: number }) => void;
+}): Promise<ReverseClipOutcome> {
+	const element = getElement({ editor, ref });
+	if (!element) return reverseRefused("element-missing", "Select a clip first.");
+	if (element.type !== "video") {
+		return reverseRefused("not-video", "Reverse works on a video clip.");
+	}
+	const range = reverseSourceRange({ element });
+	if (!range.ok) {
+		return reverseRefused(
+			"empty-range",
+			"This clip has no source frames to reverse.",
+		);
+	}
+	const project = editor.project.getActiveOrNull();
+	if (!project) return reverseRefused("edit-failed", "No active project.");
+	const projectId = project.metadata.id;
+
+	const assets = editor.media.getAssets();
+	const sourceAsset = assets.find((asset) => asset.id === element.mediaId);
+	if (!sourceAsset) {
+		return reverseRefused("no-media", "This clip's media is missing from the project.");
+	}
+	// Full-resolution ORIGINAL first: the reversed file is what gets exported.
+	const sourcePath =
+		sourceAsset.sourceNativeRelativePath ?? sourceAsset.nativeRelativePath;
+	if (!sourcePath) {
+		return reverseRefused(
+			"no-source-path",
+			"This clip has no source file on this device, so it cannot be reversed.",
+		);
+	}
+
+	const bridge = await getNativeBridge();
+	const reverseVideo = bridge.reverseVideo;
+	if (!reverseVideo) {
+		return reverseRefused(
+			"reverse-unsupported",
+			"This build can't generate reversed media for the clip's source.",
+		);
+	}
+
+	const assetId = crypto.randomUUID();
+	const startMs = Math.round(range.startMicros / 1000);
+	const endMs = Math.round(range.endMicros / 1000);
+	// Generated reversed files still in the project: native prunes the rest of
+	// its own directory as part of this run.
+	const referencedReversePaths = assets
+		.filter(
+			(asset) =>
+				asset.nativeRelativePath?.startsWith(`${REVERSE_SUBDIR}/`) ?? false,
+		)
+		.map((asset) => asset.nativeRelativePath as string);
+
+	let generated: Awaited<ReturnType<typeof reverseVideo>>;
+	try {
+		generated = await reverseVideo({
+			assetId,
+			sourceMediaPath: sourcePath,
+			startMs,
+			endMs,
+			fps: REVERSE_DEFAULT_FPS,
+			referencedReversePaths,
+		}, onProgress);
+	} catch (error) {
+		const code = bridgeErrorCode(error);
+		return reverseRefused(
+			code === "CANCELLED" ? "cancelled" : "reverse-failed",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+	if (!generated) {
+		return reverseRefused(
+			"reverse-unsupported",
+			"Reverse Video needs a native build: this platform cannot encode reversed media.",
+		);
+	}
+
+	const name = reversedAssetName({
+		startMicros: range.startMicros,
+		endMicros: range.endMicros,
+	});
+	const asset: MediaAsset = {
+		id: assetId,
+		name,
+		type: "video",
+		width: generated.width,
+		height: generated.height,
+		duration: generated.durationMs / 1000,
+		hasAudio: false,
+		nativeRelativePath: generated.relativePath,
+		url: generated.uri,
+		// Native-custody asset: zero-byte JS stub, real bytes behind `url`.
+		file: new File([], name, { type: "video/mp4" }),
+	};
+	const patch = buildReversedElementPatch({ element, mediaId: assetId });
+	if (!patch) {
+		return reverseRefused("edit-failed", "The clip could not be retargeted.");
+	}
+
+	try {
+		await storageService.saveMediaAsset({ projectId, mediaAsset: asset });
+	} catch (error) {
+		return reverseRefused(
+			"save-failed",
+			`Could not save the reversed clip: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+
+	editor.media.setAssets({ assets: [...assets, asset] });
+	editor.command.execute({
+		command: new UpdateElementsCommand({
+			updates: [{ trackId: ref.trackId, elementId: ref.elementId, patch }],
+		}),
+	});
+	return {
+		status: "reversed",
+		assetId,
+		frameCount: generated.frameCount,
+		durationMs: generated.durationMs,
+	};
+}
+
+/** Requests cancellation of the in-flight `reverseClip`. */
+export async function cancelReverseClip(): Promise<void> {
+	const bridge = await getNativeBridge();
+	await bridge.cancelReverseVideo?.();
+}

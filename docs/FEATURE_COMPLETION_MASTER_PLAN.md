@@ -51,11 +51,11 @@ Source-truth check performed:
 
 | Feature | State | Blocker / owner |
 | --- | --- | --- |
-| Reverse | PARTIAL (param only) | native reverse-media generation + UI — Phase 1 of the 2026-11-25 qualification program |
+| Reverse | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | native bounded reverse generation, clip retarget, progress/cancel, silent by policy; see Phase 8 |
 | Freeze frame | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | source-frame capture at the trim/retime-mapped instant, persisted provenance, ripple insert, hold/remove UI; see Phase 7 |
 | GIF import (media type + timing) | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-25) | real per-frame decode with per-frame delays + loop count, EDL frame feed, decode-based export preflight; see Phase 7 |
 | Per-clip crop | IMPLEMENTED; preview pixels + Android native export verified; iOS mapper implemented (unverified build) | physical-device fingertip check pending; iOS build verification pending (no Xcode) |
-| Background blur (mobile) | GAP (engine exists) | native Android export support — Phase 2 of the 2026-11-25 qualification program |
+| Background blur (mobile) | GAP (engine exists; NOT exposed on mobile) | Phase 2 investigated 2026-11-25: Media3 1.11.0 does ship `GaussianBlurWithFrameOverlaid`, but its contract blurs the SAME cropped input it overlays sharp, so it cannot produce a fit-foreground over a fill-blurred background when aspect ratios differ (the portrait-to-landscape case this feature exists for). Correct export needs either a custom single-input GlShaderProgram (sample fill UV for the blurred backdrop, fit UV for the foreground) or a second composited sequence; neither is implemented. Export currently ignores `meta.background`, so a blur project exports on the default base — not exposed in mobile UI, and not claimed as done. |
 | Voiceover recording | GAP | RECORD_AUDIO permission + recorder |
 | SRT/VTT import/export | EXPORT + PASTE IMPORT (mobile); no file picker | native document picker for `.srt`/`.vtt` files |
 | Text shadow | IMPLEMENTED for text elements AND captions (preview + native export by construction) | caption shadow shipped 2026-11-22; no exported frame sampled |
@@ -359,6 +359,49 @@ Bun CI and Mobile CI are green on the merge head.
 **Remaining limitations:** exotic/malformed GIF variants refuse with
 `GIF_DECODE_FAILED` and the reason rather than partially rendering; the picker
 interaction itself was not driven by hand on a physical device.
+
+## Phase 8 — Reverse Video (implemented 2026-11-25)
+
+Reverse used to be a persisted `reversed` boolean that nothing downstream read:
+the retime engine only accepts positive rates, and neither the WASM preview
+compositor nor the Media3 exporter decodes backwards.
+
+Chosen approach: **bounded reverse-media generation**, not negative-rate
+playback. `ReverseMediaGenerator` (Kotlin) reads the clip's own source range —
+`trimStart` plus the clip duration converted through its retime rate — samples
+it backwards with `MediaMetadataRetriever.getFrameAtTime(..., OPTION_CLOSEST)`
+(never `OPTION_CLOSEST_SYNC`), applies the container rotation, and encodes one
+video-only AVC MP4 per output frame with `MediaCodec` + `MediaMuxer`. The clip
+is then retargeted at that file by ONE undoable `UpdateElementsCommand`, so
+preview and native export need no reverse-aware path: they play an ordinary
+forward file.
+
+Properties this design gives for free:
+- the original source media is never modified or deleted;
+- trim boundaries are respected because only the played range is sampled;
+- clip duration is preserved (same span, same retime rate kept on the element);
+- rotation/crop/framing/transform/effects stay on the element and apply on top;
+- memory is bounded — one bitmap and one YUV frame alive at a time;
+- progress is the generator's own frame count and cancellation is checked
+  between frames, with the partial file deleted;
+- generated files live in custody (`reverse/`) and unreferenced ones are pruned;
+- `reversed` is cleared on the clip because the media really is reversed.
+
+**Audio policy (explicit):** the generated file has no audio track, so a
+reversed clip is silent. The UI states this next to the button and in the
+success notice. Reversed audio is NOT implemented.
+
+Verification: `ReverseMediaGeneratorTest` (JVM: frame count, mirror mapping,
+trim clamp, cleanup) and `ReverseVideoInstrumentedTest` (emulator: decodes the
+generated MP4 and asserts blue→green→red order on a red→green→blue 30fps
+source, ~3.0s duration, 320x240 and 240x320 orientation, zero audio tracks,
+cancellation leaving no file, and out-of-range refusal).
+
+Known limits: video-only (silent); an undone reverse leaves its generated asset
+row behind until the next reverse prune removes the file, because `undo`
+restores the element rather than deleting an asset row; variable-frame-rate
+sources are sampled by timestamp (each output frame is the closest displayed
+source frame), so frame counts follow the output fps, not the source's.
 
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.

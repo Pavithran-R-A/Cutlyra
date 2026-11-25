@@ -300,6 +300,25 @@ export interface FreezeFrameCapture {
 	timestampMicros: number;
 }
 
+/**
+ * One generated reversed file. `uri` is a playback URI for the WebView;
+ * `relativePath` is the durable custody-relative identity the media asset row
+ * stores. `hasAudio` is false by construction — see `reverseVideo`.
+ */
+export interface ReverseVideoResult {
+	assetId: string;
+	relativePath: string;
+	uri: string;
+	width: number;
+	height: number;
+	/** Length of the generated file: exactly the clip's source span. */
+	durationMs: number;
+	frameCount: number;
+	hasAudio: false;
+	startMs: number;
+	endMs: number;
+}
+
 /** One media file as native restored it into custody under a FRESH path. */
 export interface RestoredMediaFile {
 	assetId: string;
@@ -573,6 +592,36 @@ export interface NativeBridge {
 		timestampMicros: number;
 		referencedFreezePaths?: string[];
 	}): Promise<FreezeFrameCapture | null>;
+	/**
+	 * Generates a real reversed MP4 for `[startMs, endMs)` of the source: the
+	 * clip's own frames encoded backwards into an ordinary forward-playing
+	 * file. The caller retargets the element at the returned asset, so preview
+	 * and native export need no reverse-aware code path.
+	 *
+	 * The file is video-only (the reversed clip is silent; the UI says so), and
+	 * `referencedReversePaths` lets native prune generated files the project no
+	 * longer references. Progress is delivered through `onProgress`; rejects
+	 * with the native code (`CANCELLED`, `RANGE_OUT_OF_BOUNDS`,
+	 * `FRAME_UNAVAILABLE`, `REVERSE_FAILED`) rather than resolving empty.
+	 * Absent on platforms without native media custody (callers must refuse).
+	 */
+	reverseVideo?(
+		params: {
+			assetId: string;
+			sourceMediaPath: string;
+			startMs: number;
+			endMs: number;
+			fps?: number;
+			referencedReversePaths?: string[];
+		},
+		onProgress?: (progress: {
+			done: number;
+			total: number;
+			progress: number;
+		}) => void,
+	): Promise<ReverseVideoResult | null>;
+	/** Requests cancellation of the in-flight `reverseVideo`. */
+	cancelReverseVideo?(): Promise<void>;
 	exportArchive(params: {
 		destinationUri: string;
 		/** Replayed from `pickArchiveDestination` — the ownership evidence a

@@ -102,6 +102,7 @@ import type {
 	Platform,
 	ProxyProgress,
 	FreezeFrameCapture,
+	ReverseVideoResult,
 	GifAssetDecodeResult,
 	GifExportPreflight,
 	ProxySpec,
@@ -159,6 +160,13 @@ interface RawProxyProgress {
  * by `exportId` (see `generateExportId`'s doc comment for why an export
  * needs one and a proxy doesn't) but otherwise the same shape as the
  * public `ExportProgress`. */
+interface RawReverseProgress {
+	assetId: string;
+	done: number;
+	total: number;
+	progress: number;
+}
+
 interface RawExportProgress {
 	exportId: string;
 	stage: "preparing" | "encoding" | "muxing" | "done" | "error";
@@ -206,6 +214,30 @@ interface NativeBridgePluginSpec {
 		assetId: string;
 		frames: { relativePath: string; delayMs: number }[];
 	}): Promise<GifExportPreflight>;
+	reverseVideo(params: {
+		assetId: string;
+		sourceMediaPath: string;
+		startMs: number;
+		endMs: number;
+		fps?: number;
+		referencedReversePaths?: string[];
+	}): Promise<{
+		assetId: string;
+		relativePath: string;
+		uri: string;
+		width: number;
+		height: number;
+		durationMs: number;
+		frameCount: number;
+		hasAudio: boolean;
+		startMs: number;
+		endMs: number;
+	}>;
+	cancelReverseVideo(): Promise<{ cancelled: boolean }>;
+	addListener(
+		eventName: "reverseProgress",
+		listenerFunc: (data: RawReverseProgress) => void,
+	): Promise<PluginListenerHandle>;
 	captureFreezeFrame(params: {
 		sourceElementId: string;
 		sourceMediaPath: string;
@@ -607,6 +639,92 @@ export function createCapacitorBridge({
 					return null;
 				}
 				throw toNativeBridgeError({ err, method: "captureFreezeFrame" });
+			}
+		},
+
+		async reverseVideo(
+			{
+				assetId,
+				sourceMediaPath,
+				startMs,
+				endMs,
+				fps,
+				referencedReversePaths,
+			}: {
+				assetId: string;
+				sourceMediaPath: string;
+				startMs: number;
+				endMs: number;
+				fps?: number;
+				referencedReversePaths?: string[];
+			},
+			onProgress?: (progress: { done: number; total: number; progress: number }) => void,
+		): Promise<ReverseVideoResult | null> {
+			// Progress is pushed by the native generator; subscribe BEFORE the
+			// kickoff so a fast run cannot emit its first frames unheard.
+			let handle: PluginListenerHandle | null = null;
+			if (onProgress) {
+				handle = await plugin.addListener("reverseProgress", (data) => {
+					if (data.assetId !== assetId) return;
+					onProgress({
+						done: data.done,
+						total: data.total,
+						progress: data.progress,
+					});
+				});
+			}
+			try {
+				const result = await plugin.reverseVideo({
+					assetId,
+					sourceMediaPath,
+					startMs,
+					endMs,
+					fps,
+					referencedReversePaths,
+				});
+				return {
+					assetId: result.assetId,
+					relativePath: result.relativePath,
+					uri: toPlaybackUri(result.uri),
+					width: result.width,
+					height: result.height,
+					durationMs: result.durationMs,
+					frameCount: result.frameCount,
+					// Video-only by construction (see `reverseVideo`).
+					hasAudio: false,
+					startMs: result.startMs,
+					endMs: result.endMs,
+				};
+			} catch (err) {
+				// Real generator failures (unreadable source, out-of-range trim,
+				// cancellation, encoder failure) surface with their native code.
+				// Only a build WITHOUT the method reports UNIMPLEMENTED, which the
+				// caller turns into an explicit "unsupported" refusal.
+				if (
+					typeof err === "object" &&
+					err !== null &&
+					(err as { code?: unknown }).code === "UNIMPLEMENTED"
+				) {
+					return null;
+				}
+				throw toNativeBridgeError({ err, method: "reverseVideo" });
+			} finally {
+				await handle?.remove().catch(() => undefined);
+			}
+		},
+
+		async cancelReverseVideo(): Promise<void> {
+			try {
+				await plugin.cancelReverseVideo();
+			} catch (err) {
+				if (
+					typeof err === "object" &&
+					err !== null &&
+					(err as { code?: unknown }).code === "UNIMPLEMENTED"
+				) {
+					return;
+				}
+				throw toNativeBridgeError({ err, method: "cancelReverseVideo" });
 			}
 		},
 

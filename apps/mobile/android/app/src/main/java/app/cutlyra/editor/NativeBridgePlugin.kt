@@ -39,6 +39,7 @@ import app.cutlyra.editor.media.FreezeFrameCapture
 import app.cutlyra.editor.media.gif.GifAssetPreparer
 import app.cutlyra.editor.media.gif.GifExportPreflight
 import app.cutlyra.editor.media.gif.GifFrameCleanup
+import app.cutlyra.editor.media.reverse.ReverseMediaGenerator
 import app.cutlyra.editor.media.ProxyTranscoder
 import app.cutlyra.editor.media.ThumbnailStripGenerator
 import app.cutlyra.editor.stt.WhisperTranscriber
@@ -80,6 +81,11 @@ import java.util.UUID
 	permissions = [Permission(strings = [Manifest.permission.CAMERA], alias = "camera")],
 )
 class NativeBridgePlugin : Plugin() {
+
+	/** Set by `cancelReverseVideo`; checked by `ReverseMediaGenerator` between
+	 * frames. A cancelled run deletes its partial file and rejects `CANCELLED`. */
+	@Volatile
+	private var reverseCancelRequested = false
 
 	/** Bridges `MediaPickerIntents.buildCameraCaptureIntent`'s output across
 	 * the permission-request and/or activity-result round trip — Capacitor
@@ -1292,6 +1298,109 @@ class NativeBridgePlugin : Plugin() {
 		} catch (e: GifExportPreflight.Refusal) {
 			call.reject(e.message ?: "GIF export preflight failed", e.code)
 		}
+	}
+
+	// -- Reverse Video ------------------------------------------------------
+
+	/**
+	 * Generates a real reversed MP4 for the source range `[startMs, endMs)` and
+	 * returns its custody-relative path plus dimensions.
+	 *
+	 * This is the whole native half of Reverse: [`ReverseMediaGenerator`] samples
+	 * the clip's own source frames backwards and encodes them into an ordinary
+	 * forward-playing file. Nothing about playback, preview or export needs to
+	 * understand "reverse"; the clip simply points at this file.
+	 *
+	 * The file is video-only by construction (the reversed clip is silent; the
+	 * JS side records and displays that). Progress is streamed as
+	 * `reverseProgress` (`{assetId, done, total, progress}`), and
+	 * `cancelReverseVideo` aborts between frames. Partial output is deleted on
+	 * both failure and cancellation, and stale generated files the project no
+	 * longer references are pruned before generation starts.
+	 */
+	@PluginMethod
+	fun reverseVideo(call: PluginCall) {
+		val assetId = call.getString("assetId")
+		val sourcePath = call.getString("sourceMediaPath") ?: call.getString("sourceUri")
+		val startMs = call.getLong("startMs")
+		val endMs = call.getLong("endMs")
+		if (assetId.isNullOrBlank()) {
+			call.reject("assetId is required", "INVALID_ARGS")
+			return
+		}
+		if (sourcePath.isNullOrBlank()) {
+			call.reject("sourceMediaPath is required", "INVALID_ARGS")
+			return
+		}
+		if (startMs == null || endMs == null) {
+			call.reject("startMs and endMs are required", "INVALID_ARGS")
+			return
+		}
+		val fps = call.getInt("fps") ?: 30
+		val referencedPaths = call.getArray("referencedReversePaths")?.let { array ->
+			(0 until array.length())
+				.map { array.optString(it) }
+				.filter { it.isNotBlank() }
+		}.orEmpty()
+		reverseCancelRequested = false
+		Thread {
+			try {
+				val sourceFile = fileFromNativeUri(sourcePath)
+					?: throw ReverseMediaGenerator.ReverseException(
+						"SOURCE_UNREADABLE",
+						"Source media is not a local file: $sourcePath",
+					)
+				ReverseMediaGenerator.pruneUnreferenced(
+					custodyRoot = context.noBackupFilesDir,
+					referencedPaths = referencedPaths,
+				)
+				val generated = ReverseMediaGenerator.generate(
+					sourceFile = sourceFile,
+					startMs = startMs,
+					endMs = endMs,
+					fps = fps,
+					custodyRoot = context.noBackupFilesDir,
+					isCancelled = { reverseCancelRequested },
+					onProgress = { done, total ->
+						notifyListeners(
+							"reverseProgress",
+							JSObject().apply {
+								put("assetId", assetId)
+								put("done", done)
+								put("total", total)
+								put("progress", done.toDouble() / total.toDouble())
+							},
+						)
+					},
+				)
+				call.resolve(
+					JSObject().apply {
+						put("assetId", assetId)
+						put("relativePath", generated.relativePath)
+						put("uri", Uri.fromFile(generated.file).toString())
+						put("width", generated.width)
+						put("height", generated.height)
+						put("durationMs", generated.durationMs)
+						put("frameCount", generated.frameCount)
+						put("hasAudio", generated.hasAudio)
+						put("startMs", startMs)
+						put("endMs", endMs)
+					}
+				)
+			} catch (e: ReverseMediaGenerator.ReverseException) {
+				call.reject(e.message, e.code, e)
+			} catch (e: Exception) {
+				call.reject("reverse generation failed: ${e.message}", "REVERSE_FAILED", e)
+			}
+		}.start()
+	}
+
+	/** Requests cancellation of the in-flight [reverseVideo]. The generator
+	 *  checks this between frames and rejects `CANCELLED`. */
+	@PluginMethod
+	fun cancelReverseVideo(call: PluginCall) {
+		reverseCancelRequested = true
+		call.resolve(JSObject().apply { put("cancelled", true) })
 	}
 
 }
