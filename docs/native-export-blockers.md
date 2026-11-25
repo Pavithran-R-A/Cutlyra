@@ -34,10 +34,37 @@ must be validated in CI or on a physical device.
    `FreezeFrameCapture` path, exports the freeze EDL, and decodes the MP4 to
    assert the exact colours of the frozen frame, the neighbouring frames and
    the expected total duration.
-3. **GIF → MP4 frame feeding** — `prepareGifExport` validates the plan and
-   returns `DEVICE_ONLY` for the encode step; frame timing/transparency/loop
-   metadata are covered by `GifExportPlan` unit tests and the web decoder
-   contract (`packages/editor-core/src/media/gif-decoder.ts`).
+3. **GIF → MP4 frame feeding (RESOLVED)** — a picked `.gif` is decoded
+   natively (`GifDecoder`, pure Kotlin) into one real PNG per frame in media
+   custody (`gif/<assetId>/frame-NNN.png`) plus the file's own per-frame
+   delays and Netscape loop count; the JS import persists that on the asset
+   (`MediaAssetData.gif`), with no uniform-delay guess.
+
+   Export feeds those frames, not metadata: `buildEdl` carries each frame's
+   custody URI and its own delay (`EdlGifAsset`/`EdlGifFrame`),
+   `GifFrameTimeline` maps the clip's source span (trim + speed) onto the
+   frames, and `EdlToComposition.buildTimelineItems` builds one Media3 item per
+   visible frame through the same still-image path as any still (so framing,
+   crop, colour effects and keyframes apply per frame).
+
+   LOOP RULE: an ENDLESS GIF is placed at one loop of content and the export
+   plays the clip's authored duration (it repeats inside that window, then the
+   sequence ends — a video file cannot loop forever); a FINITE GIF gets
+   `loopCount × loop duration` as its asset duration and HOLDS its last frame
+   after the final loop instead of wrapping back to the first.
+
+   `prepareGifExport` is now a real preflight, not a file-existence check: it
+   DECODES every frame the EDL is about to reference and rejects with
+   `GIF_FRAMES_MISSING`, `GIF_FRAME_UNREADABLE` or
+   `GIF_FRAME_DIMENSION_MISMATCH` (naming the path), and the export sheet runs
+   it before encoding starts so a corrupt frame is reported verbatim instead of
+   as a generic Media3 asset-loader error.
+
+   Verified on the emulator by `GifNativePipelineInstrumentedTest`
+   (generated red/green/blue GIF, decoded-MP4 assertions on colour order,
+   non-uniform per-frame timing, looping, trim/hold, per-frame filters and
+   transforms), `GifExportPreflightInstrumentedTest` and
+   `GifBackupRestoreInstrumentedTest` (frame order survives backup/restore).
 4. **Android unit tests offline** — `testDebugUnitTest` needs
    `org.json:json:20250517` and `mockito-core:5.20.0`, which are not cached
    in offline mode. Run with network access: `./gradlew testDebugUnitTest`.
@@ -59,5 +86,6 @@ must be validated in CI or on a physical device.
   rippling undoable timeline edit with a silent-hold audio policy, UI
   (freeze at playhead, hold slider, remove, progress/error), and a
   deterministic exported-MP4 pixel test.
-- Remaining M3 deep work (feeding real GIF frames to the encoder) is
-  Rust/GIF-pipeline dependent and tracked here.
+- GIF (M3) is implemented end to end: native pick+decode to per-frame PNGs
+  with the file's own delays and loop count, real frame feeding into the
+  Media3 export, a decoding export preflight, and decoded-MP4 verification.

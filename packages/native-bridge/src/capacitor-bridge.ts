@@ -103,6 +103,7 @@ import type {
 	ProxyProgress,
 	FreezeFrameCapture,
 	GifAssetDecodeResult,
+	GifExportPreflight,
 	ProxySpec,
 	RestoredMediaFile,
 	ThumbnailStrip,
@@ -201,6 +202,10 @@ interface NativeBridgePluginSpec {
 		uri: string;
 		assetId: string;
 	}): Promise<GifAssetDecodeResult>;
+	prepareGifExport(params: {
+		assetId: string;
+		frames: { relativePath: string; delayMs: number }[];
+	}): Promise<GifExportPreflight>;
 	captureFreezeFrame(params: {
 		sourceElementId: string;
 		sourceMediaPath: string;
@@ -518,11 +523,45 @@ export function createCapacitorBridge({
 		}): Promise<GifAssetDecodeResult | null> {
 			try {
 				return await plugin.decodeGifAsset({ uri, assetId });
-			} catch {
-				// A build predating the method rejects with Capacitor's "not
-				// implemented"; callers surface that as an explicit unsupported
-				// import rather than silently importing the first frame.
-				return null;
+			} catch (err) {
+				// A build predating the method rejects UNIMPLEMENTED, which the
+				// import flow reports as an explicit "no native GIF decoder".
+				// Any OTHER rejection is a real decode failure (corrupt file,
+				// no frames, unsupported version) and must keep its message:
+				// swallowing it made every corrupt GIF look like a missing
+				// decoder.
+				if (
+					typeof err === "object" &&
+					err !== null &&
+					(err as { code?: unknown }).code === "UNIMPLEMENTED"
+				) {
+					return null;
+				}
+				throw toNativeBridgeError({ err, method: "decodeGifAsset" });
+			}
+		},
+
+		async prepareGifExport({
+			assetId,
+			frames,
+		}: {
+			assetId: string;
+			frames: { relativePath: string; delayMs: number }[];
+		}): Promise<GifExportPreflight | null> {
+			try {
+				return await plugin.prepareGifExport({ assetId, frames });
+			} catch (err) {
+				// Missing/unreadable/mismatched frames are REAL refusals and are
+				// rethrown with their native code and path; only an old native
+				// build degrades to null (the exporter then reports any problem).
+				if (
+					typeof err === "object" &&
+					err !== null &&
+					(err as { code?: unknown }).code === "UNIMPLEMENTED"
+				) {
+					return null;
+				}
+				throw toNativeBridgeError({ err, method: "prepareGifExport" });
 			}
 		},
 

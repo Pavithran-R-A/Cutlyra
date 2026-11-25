@@ -377,6 +377,22 @@ export interface GifAssetDecodeResult {
 	frames: GifAssetFrame[];
 }
 
+/**
+ * Result of the export preflight for one GIF asset: the decoder re-opened
+ * every frame the EDL is about to reference and confirmed it yields real
+ * pixels of a consistent size, so the exporter cannot fail halfway through on
+ * a corrupt frame. `ready` is always true on resolve — failures reject with a
+ * typed code instead of resolving `ready: false`.
+ */
+export interface GifExportPreflight {
+	assetId: string;
+	ready: true;
+	frameCount: number;
+	width: number;
+	height: number;
+	totalDurationMs: number;
+}
+
 export interface NativeBridge {
 	readonly platform: Platform;
 	/** Subscribe to Android hardware Back; returning false delegates to native exit. */
@@ -421,6 +437,19 @@ export interface NativeBridge {
 		uri: string;
 		assetId: string;
 	}): Promise<GifAssetDecodeResult | null>;
+	/**
+	 * Proves a GIF asset's decoded frame files are exportable BEFORE the native
+	 * encoder starts: each frame is decoded and dimension-checked. Rejects with
+	 * a `NativeBridgeError` carrying the native code (`GIF_FRAMES_MISSING`,
+	 * `GIF_FRAME_UNREADABLE`, `GIF_FRAME_DIMENSION_MISMATCH`) and the offending
+	 * path, so the export sheet shows the real reason instead of a generic
+	 * Media3 failure. Absent on platforms/builds without it (the caller then
+	 * lets the exporter report the failure itself).
+	 */
+	prepareGifExport?(params: {
+		assetId: string;
+		frames: { relativePath: string; delayMs: number }[];
+	}): Promise<GifExportPreflight | null>;
 	/**
 	 * Persist a JS-generated audio clip (a bundled library sound) into the
 	 * media custody root so it becomes a real, durable asset the native

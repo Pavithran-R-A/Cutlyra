@@ -6,6 +6,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -36,6 +37,7 @@ import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
 import app.cutlyra.editor.media.FreezeFrameCapture
 import app.cutlyra.editor.media.gif.GifAssetPreparer
+import app.cutlyra.editor.media.gif.GifExportPreflight
 import app.cutlyra.editor.media.gif.GifFrameCleanup
 import app.cutlyra.editor.media.ProxyTranscoder
 import app.cutlyra.editor.media.ThumbnailStripGenerator
@@ -1236,43 +1238,60 @@ class NativeBridgePlugin : Plugin() {
 	}
 
 	/**
-	 * Export-pipeline readiness check for GIF assets. Ready ONLY when every
-	 * frame file the caller lists actually exists in media custody — the
-	 * exporter feeds those exact frames into the EDL, so this never claims
-	 * readiness for a plan it cannot deliver.
+	 * Export preflight for a GIF asset: proves every frame the EDL is about to
+	 * reference really decodes, before Media3 starts encoding.
+	 *
+	 * This used to only check that the paths existed, which cannot tell a real
+	 * frame from a truncated PNG — the exporter would then die mid-encode with
+	 * an opaque "Asset loader error". Each frame is now DECODED (and its
+	 * dimensions checked against the first frame), so a corrupt or inconsistent
+	 * frame fails HERE with a typed code and the offending path:
+	 * `GIF_FRAMES_MISSING`, `GIF_FRAME_UNREADABLE`,
+	 * `GIF_FRAME_DIMENSION_MISMATCH`, `INVALID_ARGS`.
 	 */
 	@PluginMethod
 	fun prepareGifExport(call: PluginCall) {
 		val assetId = call.getString("assetId")
 		val frames = call.getArray("frames")
-		if (assetId.isNullOrBlank() || frames == null) {
-			call.reject("assetId and frames[{relativePath}] are required", "INVALID_ARGS")
+		if (assetId.isNullOrBlank() || frames == null || frames.length() == 0) {
+			call.reject(
+				"assetId and at least one frames[{relativePath, delayMs}] are required",
+				"INVALID_ARGS",
+			)
 			return
 		}
-		val root = context.noBackupFilesDir
-		val missing = mutableListOf<String>()
-		var verified = 0
+		val refs = mutableListOf<GifExportPreflight.FrameRef>()
 		for (index in 0 until frames.length()) {
-			val relativePath = frames.optJSONObject(index)?.optString("relativePath").orEmpty()
-			if (relativePath.isBlank() || !File(root, relativePath).isFile) {
-				missing.add(if (relativePath.isBlank()) "frame[$index]" else relativePath)
-			} else {
-				verified++
+			val frame = frames.optJSONObject(index)
+			val relativePath = frame?.optString("relativePath").orEmpty()
+			val delayMs = frame?.optLong("delayMs", -1L) ?: -1L
+			if (relativePath.isBlank() || delayMs < 0L) {
+				call.reject(
+					"frame[$index] needs a relativePath and a non-negative delayMs",
+					"INVALID_ARGS",
+				)
+				return
 			}
+			refs.add(GifExportPreflight.FrameRef(relativePath, delayMs))
 		}
-		call.resolve(
-			JSObject().apply {
-				put("assetId", assetId)
-				put("ready", missing.isEmpty() && verified > 0)
-				put("frameCount", verified)
-				when {
-					missing.isNotEmpty() ->
-						put("reason", "Missing decoded GIF frame(s): ${missing.joinToString()}")
-					verified == 0 ->
-						put("reason", "No decoded GIF frames were provided for $assetId")
+		try {
+			val report = GifExportPreflight.verify(
+				custodyRoot = context.noBackupFilesDir,
+				frames = refs,
+			)
+			call.resolve(
+				JSObject().apply {
+					put("assetId", assetId)
+					put("ready", true)
+					put("frameCount", report.frameCount)
+					put("width", report.width)
+					put("height", report.height)
+					put("totalDurationMs", report.totalDurationMs)
 				}
-			}
-		)
+			)
+		} catch (e: GifExportPreflight.Refusal) {
+			call.reject(e.message ?: "GIF export preflight failed", e.code)
+		}
 	}
 
 }

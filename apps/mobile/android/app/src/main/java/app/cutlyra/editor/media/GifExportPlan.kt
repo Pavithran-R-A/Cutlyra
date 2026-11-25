@@ -1,13 +1,21 @@
 package app.cutlyra.editor.media
 
 /**
- * Pure-logic plan describing how an imported GIF asset is fed to the MP4
- * export pipeline (M10 sprint).
+ * Timing-summary model for an imported GIF (delays, loop count, dimensions).
  *
- * The web decoder contract (packages/editor-core/src/media/gif-decoder.ts)
- * produces a frame list with per-frame delays and loop metadata; this plan
- * mirrors that contract on the native side so the exporter can be driven
- * without re-decoding on the device.
+ * NOT the export driver, and never was: the real export path is
+ * 1. `GifAssetPreparer` decodes the picked file into one PNG per frame in
+ *    media custody,
+ * 2. the JS EDL carries each frame's custody URI and its own delay
+ *    (`EdlGifAsset` / `EdlGifFrame`), and
+ * 3. `EdlToComposition.buildTimelineItems` feeds those exact frames to Media3,
+ *    with `GifFrameTimeline` mapping the clip's source span onto them.
+ * `GifExportPreflight.verify` re-decodes every referenced frame before that
+ * run starts.
+ *
+ * Kept as the framework-free arithmetic used by unit tests (delay
+ * normalisation, loop duration), and deliberately marked so nobody mistakes a
+ * validated plan for an encoded GIF again.
  *
  * Android-framework-free so it can be unit-tested on the JVM.
  */

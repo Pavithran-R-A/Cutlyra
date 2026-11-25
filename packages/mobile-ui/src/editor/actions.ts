@@ -174,6 +174,90 @@ export function buildNativeEdlAssetResolver(): EdlAssetResolver {
 	};
 }
 
+/**
+ * Minimal bridge surface the GIF export preflight needs. Structural on
+ * purpose: the real `NativeBridge` satisfies it, and tests can pass a fake
+ * without constructing a shell.
+ */
+export interface GifExportPreflightBridge {
+	prepareGifExport?(params: {
+		assetId: string;
+		frames: { relativePath: string; delayMs: number }[];
+	}): Promise<unknown>;
+}
+
+/** A GIF cannot be exported as authored. `message` carries the native
+ *  refusal VERBATIM (including the offending frame path), because that is
+ *  what tells the user which file to re-import. */
+export class GifExportPreflightError extends Error {
+	readonly assetName: string;
+	constructor({ assetName, message, cause }: { assetName: string; message: string; cause?: unknown }) {
+		super(`GIF "${assetName}" can't be exported: ${message}`);
+		this.name = "GifExportPreflightError";
+		this.assetName = assetName;
+		this.cause = cause;
+	}
+}
+
+export interface GifExportPreflightSummary {
+	/** GIF assets whose frames were actually decoded by the native side. */
+	checkedAssets: number;
+	checkedFrames: number;
+	/** True when this platform/build has no native preflight (the exporter then
+	 *  reports any frame problem itself). */
+	skipped: boolean;
+}
+
+/**
+ * Export preflight for animated-GIF assets.
+ *
+ * The exporter feeds the asset's decoded per-frame PNGs into the EDL, so a
+ * missing or corrupt frame used to surface only as a generic Media3 "asset
+ * loader error" after encoding had already started. Here every referenced
+ * frame is decoded by the native side first; a refusal is raised as a typed
+ * [GifExportPreflightError] whose text is the native message verbatim.
+ */
+export async function assertGifFramesExportable({
+	editor,
+	bridge,
+}: {
+	editor: EditorCore;
+	bridge?: GifExportPreflightBridge | null;
+}): Promise<GifExportPreflightSummary> {
+	const gifAssets = editor.media
+		.getAssets()
+		.filter((asset) => (asset.gif?.frames?.length ?? 0) > 0);
+	if (gifAssets.length === 0) {
+		return { checkedAssets: 0, checkedFrames: 0, skipped: false };
+	}
+
+	const resolved = bridge === undefined ? await getNativeBridge() : bridge;
+	const prepare = resolved?.prepareGifExport;
+	if (!prepare) {
+		return { checkedAssets: 0, checkedFrames: 0, skipped: true };
+	}
+
+	let checkedFrames = 0;
+	for (const asset of gifAssets) {
+		const frames = (asset.gif?.frames ?? []).map((frame) => ({
+			relativePath: frame.relativePath,
+			delayMs: frame.delayMs,
+		}));
+		if (frames.length === 0) continue;
+		try {
+			await prepare({ assetId: asset.id, frames });
+			checkedFrames += frames.length;
+		} catch (error) {
+			throw new GifExportPreflightError({
+				assetName: asset.name,
+				message: error instanceof Error ? error.message : String(error),
+				cause: error,
+			});
+		}
+	}
+	return { checkedAssets: gifAssets.length, checkedFrames, skipped: false };
+}
+
 export type NativeImportProgressHandler = (
 	progress: NativeImportProgress,
 ) => void;
