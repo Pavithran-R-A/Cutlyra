@@ -353,7 +353,11 @@ class ExportColorGradeInstrumentedTest {
      */
     @Test
     fun an_unmappable_adjust_param_refuses_the_export_with_a_named_message() {
-        val edl = buildEdl(listOf(effect(ColorGrade.ADJUST_TYPE, mapOf("sharpen" to 40))))
+        // `sharpen` used to be the unmappable example; it now renders (see
+        // ExportSharpenVignetteInstrumentedTest), so use a genuinely unread key.
+        val edl = buildEdl(
+            listOf(effect(ColorGrade.ADJUST_TYPE, mapOf("brightness" to 10, "unmappedSlider" to 40))),
+        )
         val outputFile = File(context.cacheDir, "grade_refused_${System.nanoTime()}.mp4")
         val latch = CountDownLatch(1)
         val events = mutableListOf<Media3Exporter.Event>()
@@ -367,7 +371,30 @@ class ExportColorGradeInstrumentedTest {
         val terminal = events.lastOrNull()
         assertTrue("expected a refusal, got $terminal", terminal is Media3Exporter.Event.Error)
         val message = (terminal as Media3Exporter.Event.Error).message
-        assertTrue("refusal must name the unmappable param, was: $message", message.contains("sharpen"))
+        assertTrue("refusal must name the unmappable param, was: $message", message.contains("unmappedSlider"))
+        outputFile.delete()
+    }
+
+    /** Sharpen/vignette are spatial passes with an identity colour matrix; the
+     *  export must still produce a file instead of refusing the project. */
+    @Test
+    fun spatial_only_adjust_params_export_instead_of_refusing() {
+        val edl = buildEdl(
+            listOf(effect(ColorGrade.ADJUST_TYPE, mapOf("sharpen" to 40, "vignette" to 30))),
+        )
+        val outputFile = File(context.cacheDir, "grade_spatial_${System.nanoTime()}.mp4")
+        val latch = CountDownLatch(1)
+        val events = mutableListOf<Media3Exporter.Event>()
+        Media3Exporter.start(context, edl, outputFile) { event ->
+            events.add(event)
+            if (event is Media3Exporter.Event.Done || event is Media3Exporter.Event.Error) {
+                latch.countDown()
+            }
+        }
+        assertTrue("spatial grade export did not terminate within 120s", latch.await(120, TimeUnit.SECONDS))
+        val terminal = events.lastOrNull()
+        assertTrue("a spatial-only grade must export, got $terminal", terminal is Media3Exporter.Event.Done)
+        assertTrue("export wrote no bytes", outputFile.length() > 1024L)
         outputFile.delete()
     }
 
