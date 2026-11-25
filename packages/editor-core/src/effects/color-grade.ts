@@ -28,11 +28,10 @@
  * shader units — shader units are derived, in one place, below.
  *
  * SCOPE (GitHub #48): brightness, contrast, saturation, temperature, tint and
- * the filter presets are mapped for native export because they are all
- * AFFINE per-channel operations (one 4x4 matrix). `sharpen` (neighbour
- * sampling) and `vignette` (position-varying) are not, and are deliberately
- * NOT faked — `unsupportedNativeColorGradeParams()` names them so the
- * exporter can refuse loudly instead of silently dropping a real edit.
+ * the filter presets are affine per-channel operations and become one 4x4
+ * matrix. `sharpen` (neighbour sampling) and `vignette` (position-varying)
+ * cannot be a matrix, so Android export renders them as their own GL passes
+ * from the SAME shader units below — never folded into the matrix.
  */
 
 /** A grade in panel/slider units. All fields default to 0 (neutral). */
@@ -56,7 +55,7 @@ export const NEUTRAL_COLOR_GRADE: ColorGrade = {
 	vignette: 0,
 };
 
-/** The params Android's native exporter can express (affine, one matrix). */
+/** The params Android's native exporter expresses as ONE affine matrix. */
 export const NATIVE_EXPORT_COLOR_PARAMS = [
 	"brightness",
 	"contrast",
@@ -65,8 +64,13 @@ export const NATIVE_EXPORT_COLOR_PARAMS = [
 	"tint",
 ] as const;
 
-/** The params that need a spatial/neighbour shader pass — NOT mapped yet. */
-export const NATIVE_EXPORT_UNMAPPED_COLOR_PARAMS = ["sharpen", "vignette"] as const;
+/**
+ * The params that need spatial sampling rather than a matrix. Both are mapped
+ * natively as separate GL passes (`ColorGradeSpatialEffect.kt`): sharpen is an
+ * unsharp mask against the 4-neighbour average, vignette a radial falloff —
+ * the same two formulas as `color_adjust.wgsl`, so preview and export agree.
+ */
+export const NATIVE_EXPORT_SPATIAL_COLOR_PARAMS = ["sharpen", "vignette"] as const;
 
 export function isNeutralColorGrade(grade: ColorGrade): boolean {
 	return (
@@ -80,14 +84,6 @@ export function isNeutralColorGrade(grade: ColorGrade): boolean {
 	);
 }
 
-/** Params of this grade Android native export cannot express yet. Empty for
- *  every grade it can. Mirrors `ColorGrade.unsupportedParams()` in Kotlin. */
-export function unsupportedNativeColorGradeParams(grade: ColorGrade): string[] {
-	const unsupported: string[] = [];
-	if (grade.sharpen !== 0) unsupported.push("sharpen");
-	if (grade.vignette !== 0) unsupported.push("vignette");
-	return unsupported;
-}
 
 function numberParam({ params, key }: { params?: Record<string, unknown>; key: string }): number {
 	const raw = params?.[key];
@@ -198,9 +194,9 @@ const LUMA_B = 0.0722;
  *
  * So out = A*c0 + d with  A = k*M  and  d = M*(k*(t+b) + 0.5*(1-k)).
  *
- * `sharpen`/`vignette` have no matrix representation and are ignored here —
- * callers must check `unsupportedNativeColorGradeParams()` FIRST and refuse,
- * which is exactly what `EdlToComposition` does.
+ * `sharpen`/`vignette` have no matrix representation and are ignored here:
+ * they are rendered by `ColorGradeSpatialEffect` from `colorGradeUniforms()`,
+ * which is why `EdlToComposition` adds those passes around this matrix pass.
  */
 export function colorGradeRgbMatrix(grade: ColorGrade): number[] {
 	const { u_brightness, u_contrast, u_saturation, u_temperature, u_tint } =

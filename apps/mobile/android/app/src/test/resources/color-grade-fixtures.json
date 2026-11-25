@@ -11,7 +11,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				1,
 				0,
@@ -128,7 +131,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				1,
 				0,
@@ -245,7 +251,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				1,
 				0,
@@ -362,7 +371,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				1.48,
 				0,
@@ -479,7 +491,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				0.73,
 				0,
@@ -596,7 +611,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				0.2126,
 				0.2126,
@@ -713,7 +731,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				1.47244,
 				-0.12756000000000003,
@@ -830,7 +851,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				1,
 				0,
@@ -947,7 +971,10 @@
 				"sharpen": 0,
 				"vignette": 0
 			},
-			"unsupported": [],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0
+			},
 			"matrix": [
 				0.91968466,
 				-0.051215340000000005,
@@ -1064,9 +1091,10 @@
 				"sharpen": 40,
 				"vignette": 0
 			},
-			"unsupported": [
-				"sharpen"
-			],
+			"spatial": {
+				"sharpen": 0.4,
+				"vignette": 0
+			},
 			"matrix": [
 				1,
 				0,
@@ -1183,9 +1211,10 @@
 				"sharpen": 0,
 				"vignette": 40
 			},
-			"unsupported": [
-				"vignette"
-			],
+			"spatial": {
+				"sharpen": 0,
+				"vignette": 0.4
+			},
 			"matrix": [
 				1,
 				0,

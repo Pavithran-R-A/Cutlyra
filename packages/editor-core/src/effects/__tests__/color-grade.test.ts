@@ -7,7 +7,6 @@ import {
 	colorGradeRgbMatrix,
 	colorGradeUniforms,
 	isNeutralColorGrade,
-	unsupportedNativeColorGradeParams,
 	type ColorGrade,
 } from "@/effects/color-grade";
 
@@ -144,30 +143,17 @@ describe("color-grade ⇄ color_adjust.wgsl parity", () => {
 	});
 });
 
-describe("unsupported native params are named, never silently dropped", () => {
-	test("affine-only grades are fully supported", () => {
-		expect(
-			unsupportedNativeColorGradeParams({
-				...NEUTRAL_COLOR_GRADE,
-				brightness: 40,
-				contrast: -20,
-				saturation: 15,
-				temperature: 30,
-				tint: -5,
-			}),
-		).toEqual([]);
+describe("sharpen and vignette are spatial passes, never folded into the matrix", () => {
+	test("they carry the shader units both renderers apply", () => {
+		const u = colorGradeUniforms({ ...NEUTRAL_COLOR_GRADE, sharpen: 40, vignette: 70 });
+		expect(u.u_sharpen).toBeCloseTo(0.4, 10);
+		expect(u.u_vignette).toBeCloseTo(0.7, 10);
 	});
 
-	test("sharpen and vignette are reported as not-yet-mapped", () => {
-		expect(
-			unsupportedNativeColorGradeParams({ ...NEUTRAL_COLOR_GRADE, sharpen: 40 }),
-		).toEqual(["sharpen"]);
-		expect(
-			unsupportedNativeColorGradeParams({ ...NEUTRAL_COLOR_GRADE, vignette: 40 }),
-		).toEqual(["vignette"]);
-		expect(
-			unsupportedNativeColorGradeParams({ ...NEUTRAL_COLOR_GRADE, sharpen: 1, vignette: 1 }),
-		).toEqual(["sharpen", "vignette"]);
+	test("a grade with only spatial params maps to the identity matrix", () => {
+		const m = colorGradeRgbMatrix({ ...NEUTRAL_COLOR_GRADE, sharpen: 90, vignette: 90 });
+		const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+		for (let i = 0; i < 16; i++) expect(Math.abs(m[i] - identity[i])).toBeLessThan(1e-12);
 	});
 });
 
@@ -183,7 +169,8 @@ describe("filter presets resolve to grades both renderers share", () => {
 			if (value === "none") continue;
 			const grade = colorGradeFromFilter({ preset: value });
 			expect(isNeutralColorGrade(grade)).toBe(false);
-			expect(unsupportedNativeColorGradeParams(grade)).toEqual([]);
+			expect(grade.sharpen).toBe(0);
+			expect(grade.vignette).toBe(0);
 		}
 	});
 

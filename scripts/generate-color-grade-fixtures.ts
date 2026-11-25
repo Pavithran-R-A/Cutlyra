@@ -8,7 +8,7 @@ import {
 	colorGradeFromAdjust,
 	colorGradeFromFilter,
 	colorGradeRgbMatrix,
-	unsupportedNativeColorGradeParams,
+	colorGradeUniforms,
 	type ColorGrade,
 } from "../packages/editor-core/src/effects/color-grade";
 
@@ -56,10 +56,13 @@ function applyMatrix(m: number[], rgb: [number, number, number]): [number, numbe
 
 const cases = GRADES.map(({ name, grade }) => {
 	const matrix = colorGradeRgbMatrix(grade);
+	const uniforms = colorGradeUniforms(grade);
 	return {
 		name,
 		grade,
-		unsupported: unsupportedNativeColorGradeParams(grade),
+		// Spatial params travel as shader units, not matrix entries — Android's
+		// `ColorGradeSpatialEffect` uploads exactly these two numbers.
+		spatial: { sharpen: uniforms.u_sharpen, vignette: uniforms.u_vignette },
 		matrix,
 		samples: COLORS.map((rgb) => ({ rgb, out: applyMatrix(matrix, rgb) })),
 	};
