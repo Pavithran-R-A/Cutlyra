@@ -99,6 +99,11 @@ export {
 	type VoiceoverTakeLimit,
 } from "./media/voiceover";
 export {
+	referencedAssetPaths,
+	referencedAssetPathsOf,
+	referencedCustodyPaths,
+} from "./media/references";
+export {
 	registerNativeMediaPathResolver,
 	resolveNativeMediaPath,
 	resolveNativeMediaRawPath,

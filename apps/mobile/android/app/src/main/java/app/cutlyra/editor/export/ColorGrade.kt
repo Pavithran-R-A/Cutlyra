@@ -61,6 +61,18 @@ data class ColorGrade(
     fun vignetteUniform(): Float = (vignette / 100f).coerceIn(0f, 1f)
 
     /**
+     * True when at least one AFFINE slider is non-zero. A grade carrying only
+     * `sharpen`/`vignette` has the identity as its colour matrix, so emitting
+     * one would be a pointless pass — the spatial passes already do the work.
+     */
+    fun hasAffineColor(): Boolean =
+        brightness != 0f ||
+            contrast != 0f ||
+            saturation != 0f ||
+            temperature != 0f ||
+            tint != 0f
+
+    /**
      * The grade as a 4x4 RGB matrix, column-major `FloatArray(16)`
      * (`index = column * 4 + row`), exactly as media3's
      * `fragment_shader_transformation_es2.glsl` consumes it:
@@ -235,9 +247,47 @@ data class ColorGrade(
             .filter { it > 0f }
 
         /**
+         * The exported pass list for a clip, in PREVIEW order: for each
+         * enabled effect in EDL order, its sharpen pass, its colour-matrix
+         * pass (when it has affine params), then its vignette pass. That is
+         * exactly what `color_adjust.wgsl` does per effect, so stacked
+         * Adjust + Filter grades cannot drift between preview and export.
+         *
+         * This replaces the old "all sharpens, one combined matrix, all
+         * vignettes" shape, which put a Filter's matrix before an Adjust
+         * effect's sharpen even though the preview applied the sharpen second.
+         */
+        fun passesFor(clip: EdlClip): List<ColorGradePass> {
+            val passes = mutableListOf<ColorGradePass>()
+            for (grade in gradesFor(clip)) {
+                val sharpen = grade.sharpenUniform()
+                if (sharpen > 0f) {
+                    passes.add(ColorGradePass(ColorGradePassKind.SHARPEN, amount = sharpen))
+                }
+                if (grade.hasAffineColor()) {
+                    passes.add(
+                        ColorGradePass(
+                            ColorGradePassKind.MATRIX,
+                            matrix = grade.rgbMatrix(),
+                        ),
+                    )
+                }
+                val vignette = grade.vignetteUniform()
+                if (vignette > 0f) {
+                    passes.add(ColorGradePass(ColorGradePassKind.VIGNETTE, amount = vignette))
+                }
+            }
+            return passes
+        }
+
+        /**
          * One combined matrix applying every grade in EDL order (first grade
          * applied first: `out = M_n * ... * M_1 * c`), or `null` when the
          * clip carries no effect the exporter must render.
+         *
+         * Kept as the mathematically-combined view used by the parity tests.
+         * Native export emits [passesFor] instead so per-effect spatial
+         * ordering matches the preview shader.
          */
         fun combinedMatrixFor(clip: EdlClip): FloatArray? {
             val grades = gradesFor(clip)
@@ -284,6 +334,15 @@ data class ColorGrade(
         }
     }
 }
+
+/** One exported colour pass, in the order the preview shader applies it. */
+enum class ColorGradePassKind { SHARPEN, MATRIX, VIGNETTE }
+
+data class ColorGradePass(
+    val kind: ColorGradePassKind,
+    val amount: Float = 0f,
+    val matrix: FloatArray? = null,
+)
 
 /**
  * The single-pass carrier for a [ColorGrade] matrix.

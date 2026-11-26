@@ -266,6 +266,50 @@ class ColorGradeMatrixTest {
     }
 
     @Test
+    fun stacked_grades_interleave_passes_per_effect_like_the_preview() {
+        val stacked = clip(
+            listOf(
+                effect(ColorGrade.ADJUST_TYPE, mapOf("brightness" to 50, "sharpen" to 40, "vignette" to 70)),
+                effect(ColorGrade.FILTER_TYPE, mapOf("preset" to "mono", "intensity" to 100)),
+                effect(ColorGrade.ADJUST_TYPE, mapOf("contrast" to 20, "sharpen" to 10, "vignette" to 5)),
+            ),
+        )
+        val passes = ColorGrade.passesFor(stacked)
+        // Each effect keeps its own sharpen -> matrix -> vignette order: the
+        // Filter's matrix must NOT be hoisted ahead of the third Adjust's
+        // sharpen (the pre-fix behaviour the preview never had).
+        assertEquals(
+            listOf(
+                ColorGradePassKind.SHARPEN,
+                ColorGradePassKind.MATRIX,
+                ColorGradePassKind.VIGNETTE,
+                ColorGradePassKind.MATRIX,
+                ColorGradePassKind.SHARPEN,
+                ColorGradePassKind.MATRIX,
+                ColorGradePassKind.VIGNETTE,
+            ),
+            passes.map { it.kind },
+        )
+        assertEquals(
+            listOf(0.4f, 0.7f, 0.1f, 0.05f),
+            passes.filter { it.kind != ColorGradePassKind.MATRIX }.map { it.amount },
+        )
+
+        // Three matrices, one per effect that has affine params, each the
+        // effect's OWN grade (not a single flattened product).
+        val matrices = passes.mapNotNull { it.matrix }
+        assertEquals(3, matrices.size)
+        val expectedFirst = ColorGrade.fromAdjust(mapOf("brightness" to 50)).rgbMatrix()
+        val expectedSecond = ColorGrade.fromFilter(mapOf("preset" to "mono", "intensity" to 100)).rgbMatrix()
+        val expectedThird = ColorGrade.fromAdjust(mapOf("contrast" to 20)).rgbMatrix()
+        for (i in 0 until 16) {
+            assertClose(expectedFirst[i], matrices[0][i], "first matrix[$i]")
+            assertClose(expectedSecond[i], matrices[1][i], "second matrix[$i]")
+            assertClose(expectedThird[i], matrices[2][i], "third matrix[$i]")
+        }
+    }
+
+    @Test
     fun unread_params_and_unknown_effect_types_refuse_instead_of_dropping() {
         // `filter` only reads preset+intensity; a vignette key on it is a param
         // the exporter never looks at, so it must fail loudly rather than

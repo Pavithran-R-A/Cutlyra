@@ -120,6 +120,21 @@ class NativeBridgePlugin : Plugin() {
 	 * platforms. */
 	private var activeExportId: String? = null
 
+	/**
+	 * Voiceover recording is foreground-only. Capacitor calls this when the
+	 * activity is stopped (app backgrounded, screen locked), which can happen
+	 * after the WebView is already suspended and the JS visibility listener
+	 * can no longer run. Cancel here too so a hidden take can never keep
+	 * capturing audio or leave a partial file behind.
+	 */
+	override fun handleOnStop() {
+		super.handleOnStop()
+		val recorder = voiceoverRecorder ?: return
+		voiceoverRecorder = null
+		voiceoverTakeId = null
+		Thread { recorder.cancel() }.start()
+	}
+
 	/** Native preview-audio router — iOS-only for now: the webview-silence
 	 *  bug is device-verified on iOS, while Android WebView WebAudio is
 	 *  expected functional (untested on hardware). Android reports

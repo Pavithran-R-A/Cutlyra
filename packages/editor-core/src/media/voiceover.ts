@@ -37,6 +37,7 @@
 import { BatchCommand, AddMediaAssetCommand, InsertElementCommand } from "@/commands";
 import type { EditorCore } from "@/core";
 import type { MediaAsset } from "@/media/types";
+import { referencedCustodyPaths } from "@/media/references";
 import { buildElementFromMedia } from "@/timeline/element-utils";
 import { generateUUID } from "@/utils/id";
 import { mediaTimeFromSeconds } from "@/wasm";
@@ -222,7 +223,10 @@ export async function pruneUnusedVoiceoverTakes({
 }): Promise<string[]> {
 	if (!source.pruneVoiceoverTakes) return [];
 	const result = await source.pruneVoiceoverTakes({
-		referencedPaths: referencedVoiceoverPaths(editor.media.getAssets()),
+		referencedPaths: await referencedCustodyPaths({
+			editor,
+			includeAsset: (asset) => asset.voiceoverTakeId !== undefined,
+		}),
 	});
 	return result?.removed ?? [];
 }

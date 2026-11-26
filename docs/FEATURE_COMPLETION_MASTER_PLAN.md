@@ -458,8 +458,10 @@ panel could only insert bundled sounds and import files.
   sweep identifies takes by `generated/voiceover-*` path, surviving
   archive/restore.
 - Take limit = min(remaining timeline, 300 s); a playhead at the end refuses
-  to start. Recording survives backgrounding (native thread) and stops itself
-  at the limit; closing the sheet cancels and deletes.
+  to start. Recording is **foreground-only**: the WebView visibility listener
+  and the native activity lifecycle (`handleOnStop`) both cancel and delete
+  the partial take when the app backgrounds or the screen locks, and the poll
+  reports a recorder that vanished. Closing the sheet cancels and deletes too.
 - **Mix policy (documented, implemented):** unity gain (0 dB, volume 1.0)
   summed with clip audio, `LimitingAudioMixer` capping at full scale, **no
   automatic ducking**. The voiceover is an ordinary audio element, so export
@@ -477,6 +479,30 @@ sweep boundaries).
 **Open limitation.** Live microphone capture has not been exercised (CI and the
 emulator have no real mic input); the tests drive the production recorder with
 a deterministic source, so everything after capture is measured.
+
+## Phase 11 — Remaining-feature repair round (Phase 1 of the master goal)
+
+- **Voiceover lifecycle.** Recording is foreground-only. The hook listens to
+  `visibilitychange` and cancels the take on hide; `NativeBridgePlugin`
+  overrides `handleOnStop()` so a take also stops when the activity is stopped
+  after JS is suspended (screen lock / OS backgrounding). The poll treats a
+  vanished native recorder as "stopped because Cutlyra left the foreground"
+  instead of polling forever. Revoked mic permission reaches the existing
+  `MIC_ERROR` path; disk-full writes surface as `IO_ERROR`; a killed process
+  leaves only an unreferenced `.tmp` the sweep removes.
+- **Stacked Adjust/Filter order.** Export no longer flattens every sharpen /
+  matrix / vignette into three groups. `ColorGrade.passesFor` emits each
+  enabled effect's sharpen -> colour matrix -> vignette in EDL order, matching
+  `color_adjust.wgsl`; pinned by `ColorGradeMatrixTest`.
+- **Generated-media custody.** `referencedCustodyPaths` unions the active
+  project's rows, the undo/redo history (`Command.referencedMediaPaths`, with
+  `AddMediaAssetCommand`/`BatchCommand` implementations) and every other saved
+  project's rows, because custody is app-global. Voiceover, freeze-frame and
+  reverse sweeps use it, so an undone insert can be redone and another
+  project's generated file is never swept.
+- **GIF audit.** Timing, finite/infinite loops, transparency and the decode
+  budget were already covered by `GifFrameTimelineTest`, `GifDecoderBudgetTest`
+  and `gif-decoder.test.ts` (`transparent.gif`); no code change was needed.
 
 ## Next moves (owner-controlled)
 1. Run fingertip checks per `docs/qa/qa3-manual-acceptance-4-steps.md`.

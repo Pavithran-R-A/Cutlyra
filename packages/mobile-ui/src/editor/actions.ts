@@ -8,6 +8,7 @@
  * (see `@cutlyra/editor-core/react`'s own header comment).
  */
 import type { EditorCore, MediaAsset, MediaType, TCanvasSize } from "@cutlyra/editor-core";
+import { referencedCustodyPaths } from "@cutlyra/editor-core";
 import type { CaptionWord, ElementRef, RetimeConfig, TimelineElement } from "@cutlyra/editor-core/timeline";
 import type { ParamValues } from "@cutlyra/editor-core/params";
 import type {
@@ -2177,9 +2178,10 @@ export async function freezeFrameAtPlayhead({
 	const holdDuration = mediaTimeFromSeconds({ seconds: hold });
 	// Stills that are still in the project: native prunes everything else in
 	// its generated-freeze directory as part of this capture.
-	const referencedFreezePaths = assets
-		.filter((asset) => asset.freezeFrame !== undefined && asset.nativeRelativePath)
-		.map((asset) => asset.nativeRelativePath as string);
+	const referencedFreezePaths = await referencedCustodyPaths({
+		editor,
+		includeAsset: (asset) => asset.freezeFrame !== undefined,
+	});
 
 	let capture: Awaited<ReturnType<NonNullable<typeof bridge.captureFreezeFrame>>>;
 	try {
@@ -2463,12 +2465,11 @@ export async function reverseClip({
 	const endMs = Math.round(range.endMicros / 1000);
 	// Generated reversed files still in the project: native prunes the rest of
 	// its own directory as part of this run.
-	const referencedReversePaths = assets
-		.filter(
-			(asset) =>
-				asset.nativeRelativePath?.startsWith(`${REVERSE_SUBDIR}/`) ?? false,
-		)
-		.map((asset) => asset.nativeRelativePath as string);
+	const referencedReversePaths = await referencedCustodyPaths({
+		editor,
+		includeAsset: (asset) =>
+			asset.nativeRelativePath?.startsWith(`${REVERSE_SUBDIR}/`) ?? false,
+	});
 
 	let generated: Awaited<ReturnType<typeof reverseVideo>>;
 	try {
