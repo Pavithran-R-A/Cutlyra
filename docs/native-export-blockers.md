@@ -120,6 +120,71 @@ before all colour matrices and each vignette after them (preview interleaves
 per effect); this only differs when two grades on one clip both use spatial
 params.
 
+## Voiceover recording (IMPLEMENTED 2026-11-25)
+
+Recording is no longer a gap. There is one recorder, one custody rule and one
+mix policy, and the mix is measured from decoded MP4 audio.
+
+**Capture.** `VoiceoverRecorder` (pure Kotlin, JVM-tested) pulls PCM from a
+`PcmSource` on its own thread and streams 44.1 kHz mono 16-bit WAV chunks to
+`<custody>/generated/voiceover-<takeId>.wav.tmp`, renaming to `.wav` only on a
+successful stop. `AudioRecordPcmSource` is the device implementation
+(`MediaRecorder.AudioSource.MIC`); the recorder itself never touches
+`AudioRecord`, which is what lets a deterministic source drive the production
+path in tests. One 4096-sample buffer is reused for the whole take, so a
+five-minute take allocates the same bytes as a one-second take. Takes shorter
+than 250 ms are rejected (`TOO_SHORT`) and deleted; cancel deletes; a killed
+process leaves only an unreferenced `.tmp` that the next sweep removes.
+
+**Permission and lifecycle.** `RECORD_AUDIO` is requested at the point of use
+from the Record button (`requestMicrophonePermission`), never at launch. A
+denial stops before recording starts and the panel distinguishes "ask again"
+from "blocked in Settings". Recording runs on a native thread, not the
+activity, so backgrounding keeps the take alive and the capture thread stops
+itself at the limit; the UI commits it on the next poll. Closing the sheet
+mid-take cancels and deletes it.
+
+**Take length.** `voiceoverTakeLimit` = min(remaining project duration at the
+playhead, 300 s). A playhead at or past the project end refuses to start rather
+than recording something nobody can hear.
+
+**State.** A finished take becomes one audio asset row (custody paths, no JS
+bytes) plus one audio-track element at the record position, inserted as a
+single `BatchCommand` — so undo/redo is one step, save/reopen round-trips it,
+and archive/restore reproduces it because it is ordinary media. Custody is the
+same rule as other generated media: `pruneTakes` deletes only
+`generated/voiceover-*` files that no asset row references (identified by
+path, so archive/restore rewriting the take location cannot orphan it), and
+never library sounds or freeze frames.
+
+**Mix policy — documented, implemented, measured.** Unity gain (0 dB, element
+volume 1.0), summed with the clip's own audio, and **no automatic ducking**.
+`LimitingAudioMixer` caps the sum at full scale, which is the only nonlinearity.
+The policy is intentionally the simple one: ducking is not implemented, so the
+UI and docs must not suggest it. The voiceover is not a special export path —
+it reaches the EDL as an ordinary audio element on an audio track and is mixed
+by the existing Media3 audio lane, at its own element start, after trim and
+retiming.
+
+**Verification.** `ExportVoiceoverInstrumentedTest` (emulator, 3 tests) drives
+`VoiceoverRecorder` with a deterministic tone source, exports, and decodes the
+MP4's audio PCM with `MediaExtractor` + `MediaCodec`: voiceover present at
+0.380 s against an expected 0.400 s (±80 ms tolerance), gain within **0.01 dB**
+of the clip's audio bed (unity), and the bed level changing by only **0.42 dB**
+while the voiceover plays (no ducking). A trimmed take starts at its element
+position (0.180 s measured vs 0.200 s expected), ends at its trimmed end
+(0.600 s, silence after), and a take that survives archive → restore still
+exports its tone (1 kHz amplitude 7994). `VoiceoverRecorderTest` covers the
+recorder and the custody sweep on the JVM; `voiceover.test.ts` covers the take
+limit, the asset+element commit, one-step undo/redo and the sweep boundary.
+
+**Open limitation.** Live microphone capture is not exercised in CI or on the
+emulator: the tests drive the production recorder through `PcmSource`, so
+record → custody → mix → export is proven, but `AudioRecordPcmSource` gaining
+real sound from a physical mic (and the OS permission dialog itself) is a
+device-only check that has not been performed. Nothing else in the path is
+assumed: encode of the take, its timing and its gain are all measured.
+
 ## Invariants preserved
 
 - Static graphics unchanged; transformation/crop/opacity/layer order covered

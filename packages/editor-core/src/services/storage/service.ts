@@ -342,6 +342,10 @@ class StorageService {
 			// The bundled-library fingerprint (GitHub #63) — pass through so the
 			// same sound dedupes to one asset row after reopen/restore.
 			librarySoundId: mediaAsset.librarySoundId,
+			// Voiceover take marker — without it a reopened project's take
+			// would look like an ordinary import and the custody sweep could
+			// never tell which generated WAVs are takes.
+			voiceoverTakeId: mediaAsset.voiceoverTakeId,
 			// Animated-GIF timing + custody-relative frame paths. Without this
 			// a reopened project would treat the GIF as a still: the renderer
 			// would lose its delays/loop count and the exporter its frames.
@@ -486,6 +490,7 @@ class StorageService {
 			thumbnailStrip: metadata.thumbnailStrip,
 			// The bundled-library fingerprint (GitHub #63) — the dedupe key.
 			librarySoundId: metadata.librarySoundId,
+			voiceoverTakeId: metadata.voiceoverTakeId,
 		};
 	}
 

@@ -52,9 +52,17 @@
          and the privacy policy states there is no in-app camera capture.
          Photo/video import uses Android Photo Picker and audio import uses SAF,
          so no READ_MEDIA_* or legacy storage permission is needed.
-         v0.1.0 has no microphone/voiceover recorder, so RECORD_AUDIO is absent. -->
+         RECORD_AUDIO backs the Audio panel's voiceover recorder
+         (NativeBridgePlugin.startVoiceoverRecording). It is requested at the
+         point of use — pressing Record — never at launch, and the app stays
+         fully usable when it is denied (the record button surfaces the
+         refusal and nothing is created). -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature
         android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
         android:required="false" />
 </manifest>

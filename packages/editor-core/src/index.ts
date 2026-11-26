@@ -85,6 +85,20 @@ export {
 	type MaterializedLibraryAudioAsset,
 } from "./media/library-audio";
 export {
+	commitVoiceoverTake,
+	newVoiceoverTakeId,
+	pruneUnusedVoiceoverTakes,
+	referencedVoiceoverPaths,
+	voiceoverTakeLimit,
+	VOICEOVER_MAX_TAKE_SECONDS,
+	VOICEOVER_MIN_TAKE_SECONDS,
+	type CommittedVoiceoverTake,
+	type RecordedVoiceoverTake,
+	type VoiceoverLimitReason,
+	type VoiceoverSource,
+	type VoiceoverTakeLimit,
+} from "./media/voiceover";
+export {
 	registerNativeMediaPathResolver,
 	resolveNativeMediaPath,
 	resolveNativeMediaRawPath,

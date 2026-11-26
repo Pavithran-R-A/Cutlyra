@@ -77,7 +77,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | Bundled sound library audible in export | **SHIP** | Fixed under #63 (closed 2026-11-09): library sounds are materialized into a real asset (`materializeLibraryAudio`/`ensureLibraryAudioAsset`, `library-audio.test.ts`) so they no longer reach `audibleClips` with a null `assetId`. `ExportLibraryAudioInstrumentedTest` decodes the exported MP4 and asserts the synthesized library tone is present at the expected amplitude; it is part of the 58-test suite green on `8b3b878`. |
 | Mute / volume / split / extract | **SHIP** | Edit + audio panels; `channel-layout.test.ts` |
 | Fades | **PARTIAL** | Transition/volume plumbing exists; a fade-in/out audio UI was not found |
-| Voiceover recording | **GAP** | No `RECORD_AUDIO`, no recorder |
+| Voiceover recording | **SHIP** (mic capture device-only) | `RECORD_AUDIO` + `VoiceoverRecorder`/`AudioRecordPcmSource`; take becomes an audio asset + clip at the playhead (`media/voiceover.ts`), mixed at unity gain with no ducking. `ExportVoiceoverInstrumentedTest` decodes the MP4: onset 0.380 s vs 0.400 s, gain 0.01 dB vs the clip bed, no ducking (0.42 dB), trimmed bounds and archive→restore. `VoiceoverRecorderTest` + `voiceover.test.ts`. Live mic input is not exercised on emulator/CI. |
 | Ducking / beat markers / silence detection | **FUTURE** | Needs DSP work; nothing in tree |
 | Equaliser / noise reduction / pitch | **GAP** | Only playback-rate pitch preservation exists |
 | Local royalty-free sound pack | **PARTIAL** | `packages/editor-core/src/sounds/local-sounds.ts` bundles a small offline set |

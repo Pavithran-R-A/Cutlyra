@@ -345,7 +345,11 @@ function PrivacyScreen({ onBack }: { onBack: () => void }) {
 				<h2>Data Cutlyra accesses</h2>
 				<p>When you choose media, Cutlyra accesses only the photos, videos, or audio files you select through Android's system pickers. Selected media is copied into Cutlyra's app-private storage so editing, previews, captions, and export can work locally.</p>
 				<p>The v0.1.0 app offers no camera capture, so no screen lets you record with a camera. Cutlyra's manifest declares the Android CAMERA permission for a code path the interface does not expose; because it is never used, Cutlyra never requests CAMERA at runtime, Android never shows a camera prompt, and no camera data is collected. Media import uses Android's system photo picker and file chooser only.</p>
-				<p>Cutlyra does not request broad photo-library access and does not request microphone access.</p>
+				<p>
+					Cutlyra does not request broad photo-library access. The microphone is used only
+					while you record a voiceover, with permission asked at that moment; recordings
+					stay on your device and are never uploaded.
+				</p>
 				<h2>Collection and sharing</h2>
 				<p>Cutlyra does not transmit your projects, media, captions, usage activity, identifiers, contacts, location, or other personal data off your device. It contains no advertising SDK, analytics SDK, telemetry service, account system, or cloud sync. No user data is sold or shared.</p>
 				<h2>Storage, retention, and deletion</h2>
