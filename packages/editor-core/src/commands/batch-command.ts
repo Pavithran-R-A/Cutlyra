@@ -24,6 +24,10 @@ export class BatchCommand extends Command {
 		}
 	}
 
+	referencedMediaPaths(): string[] {
+		return this.commands.flatMap((command) => command.referencedMediaPaths());
+	}
+
 	redo(): CommandResult | undefined {
 		let latestSelectionResult: CommandResult | undefined;
 

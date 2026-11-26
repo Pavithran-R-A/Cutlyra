@@ -139,6 +139,14 @@ export class AddMediaAssetCommand extends Command {
 		return this.assetId;
 	}
 
+	/** Keeps a generated file alive across an undo so redo can replay it. */
+	referencedMediaPaths(): string[] {
+		const asset = this.createdAsset ?? this.asset;
+		return [asset.nativeRelativePath, asset.sourceNativeRelativePath].filter(
+			(path): path is string => Boolean(path),
+		);
+	}
+
 	private restoreProjectFpsAfterFailedSave({
 		editor,
 	}: {

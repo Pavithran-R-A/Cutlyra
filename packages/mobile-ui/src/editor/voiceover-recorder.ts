@@ -18,9 +18,11 @@
  *    message instead of starting a take nobody can see.
  *  - The take hits its limit: native stops itself, the poll sees
  *    `awaitingTake`, and the take is committed from there.
- *  - The app is backgrounded: native keeps recording (the capture thread is
- *    not tied to the activity) and auto-stops at the limit; the poll resumes
- *    when the sheet is visible again and commits what was captured.
+ *  - The app is backgrounded (or the screen locks): recording is
+ *    foreground-only. A visibility listener cancels the take, the native
+ *    activity lifecycle enforces the same rule when JS is already suspended,
+ *    and the poll reports a recorder that vanished — no hidden capture and no
+ *    orphan file.
  *  - The sheet is closed mid-take: the take is cancelled and deleted, so the
  *    user never gets an orphan file with no clip.
  */
@@ -174,6 +176,18 @@ export function useVoiceoverRecorder({
 						await finishTake();
 						return;
 					}
+					if (!snapshot.recording) {
+						// The native recorder is gone without a take or an error —
+						// the activity lifecycle cancelled it while the app was
+						// backgrounded. Stop claiming to record.
+						stopPolling();
+						setState({
+							...IDLE,
+							error: "Recording stopped because Cutlyra left the foreground.",
+						});
+						setPhase("idle");
+						return;
+					}
 					setState((previous) =>
 						previous.phase === "recording"
 							? { ...previous, elapsedMs: snapshot.elapsedMs }
@@ -258,6 +272,30 @@ export function useVoiceoverRecorder({
 			setState(IDLE);
 			setPhase("idle");
 		}
+	}, [setPhase, stopPolling]);
+
+	// Foreground-only recording. `visibilitychange` fires before the WebView is
+	// suspended, so this cancels the take promptly; the native activity
+	// lifecycle covers the cases where JS never gets to run (screen lock, OS
+	// backgrounding). Cancelling deletes the partial file, so no hidden take
+	// survives.
+	useEffect(() => {
+		if (typeof document === "undefined") return;
+		const onVisibilityChange = () => {
+			if (document.visibilityState !== "hidden") return;
+			if (phaseRef.current !== "recording") return;
+			stopPolling();
+			setPhase("idle");
+			setState({
+				...IDLE,
+				error: "Recording stopped because Cutlyra left the foreground.",
+			});
+			void getNativeBridge()
+				.then((bridge) => bridge.cancelVoiceoverRecording())
+				.catch(() => undefined);
+		};
+		document.addEventListener("visibilitychange", onVisibilityChange);
+		return () => document.removeEventListener("visibilitychange", onVisibilityChange);
 	}, [setPhase, stopPolling]);
 
 	// Leaving the sheet mid-take discards it: a recorded file with no clip is

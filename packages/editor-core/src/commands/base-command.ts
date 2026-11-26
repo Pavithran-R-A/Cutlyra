@@ -28,4 +28,13 @@ export abstract class Command {
 	redo(): CommandResult | undefined {
 		return this.execute();
 	}
+
+	/**
+	 * Custody paths this command still needs after it is undone. Generated-media
+	 * sweeps consult the undo/redo history so a file needed to replay a redo is
+	 * never deleted just because its media row is temporarily gone.
+	 */
+	referencedMediaPaths(): string[] {
+		return [];
+	}
 }

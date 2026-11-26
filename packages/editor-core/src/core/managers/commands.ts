@@ -94,6 +94,21 @@ export class CommandManager {
 		});
 	}
 
+	/**
+	 * Custody paths the current undo/redo history still needs. A generated
+	 * asset inserted by an undone command has no media row, but its file must
+	 * survive so redo can restore the clip.
+	 */
+	referencedMediaPaths(): string[] {
+		const paths = new Set<string>();
+		for (const entry of [...this.history, ...this.redoStack]) {
+			for (const path of entry.command.referencedMediaPaths()) {
+				paths.add(path);
+			}
+		}
+		return [...paths];
+	}
+
 	canUndo(): boolean {
 		return this.history.length > 0;
 	}

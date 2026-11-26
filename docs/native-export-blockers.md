@@ -115,10 +115,12 @@ and sharpen raises edge contrast >10% without moving mean luma by 25 levels,
 while vignette drops the corner band below 60% of the ungraded value and keeps
 the centre within 10 levels. `ColorGradeMatrixTest` covers the JVM mapping.
 
-Remaining limits: stacked Adjust + Filter grades render each sharpen pass
-before all colour matrices and each vignette after them (preview interleaves
-per effect); this only differs when two grades on one clip both use spatial
-params.
+Stacked Adjust + Filter grades now interleave per effect, matching the
+preview: each enabled effect emits its own sharpen -> colour-matrix -> vignette
+passes in EDL order (`ColorGrade.passesFor`), so a Filter's matrix can no
+longer be hoisted ahead of a later Adjust effect's sharpen. Covered by
+`ColorGradeMatrixTest.stacked_grades_interleave_passes_per_effect_like_the_preview`
+and by the decoded-frame grade test.
 
 ## Voiceover recording (IMPLEMENTED 2026-11-25)
 
@@ -139,10 +141,14 @@ process leaves only an unreferenced `.tmp` that the next sweep removes.
 **Permission and lifecycle.** `RECORD_AUDIO` is requested at the point of use
 from the Record button (`requestMicrophonePermission`), never at launch. A
 denial stops before recording starts and the panel distinguishes "ask again"
-from "blocked in Settings". Recording runs on a native thread, not the
-activity, so backgrounding keeps the take alive and the capture thread stops
-itself at the limit; the UI commits it on the next poll. Closing the sheet
-mid-take cancels and deletes it.
+from "blocked in Settings". Recording is **foreground-only**: the WebView
+visibility listener cancels the take when the app is hidden, `NativeBridgePlugin`
+overrides `handleOnStop()` so the same happens when the activity stops after JS
+is suspended (screen lock / backgrounding), and the poll reports a recorder
+that vanished. Cancelling deletes the partial file, so no hidden take survives.
+Closing the sheet mid-take cancels and deletes it too. A revoked permission or
+disk-full write reaches the native failure path (`MIC_ERROR`/`IO_ERROR`), and a
+killed process leaves only an unreferenced `.tmp` for the sweep.
 
 **Take length.** `voiceoverTakeLimit` = min(remaining project duration at the
 playhead, 300 s). A playhead at or past the project end refuses to start rather

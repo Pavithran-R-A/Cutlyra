@@ -238,6 +238,33 @@ describe("voiceover custody sweep", () => {
 		expect(swept).toEqual(removed);
 	});
 
+	it("keeps a take that only the undo history references", async () => {
+		const { editor } = bootstrap();
+		const { source, prunes } = fakeSource();
+		const projectId = editor.project.getActive().metadata.id;
+		await commitVoiceoverTake({ editor, projectId, source, take: TAKE, startSeconds: 0 });
+
+		// Undo removes the media row and the clip, but redo will replay the
+		// same insert — the take file must not be swept in between.
+		editor.command.undo();
+		expect(editor.media.getAssets().length).toBe(0);
+
+		await pruneUnusedVoiceoverTakes({ editor, source });
+		expect(prunes.at(-1)).toEqual([TAKE.relativePath]);
+	});
+
+	it("sweeps a take once it is no longer referenced anywhere", async () => {
+		const { editor } = bootstrap();
+		const { source, prunes } = fakeSource();
+		const projectId = editor.project.getActive().metadata.id;
+		await commitVoiceoverTake({ editor, projectId, source, take: TAKE, startSeconds: 0 });
+
+		editor.command.undo();
+		editor.command.clear();
+		await pruneUnusedVoiceoverTakes({ editor, source });
+		expect(prunes.at(-1)).toEqual([]);
+	});
+
 	it("is a no-op on a platform without the sweep", async () => {
 		const { editor } = bootstrap();
 		const source: VoiceoverSource = {

@@ -52,7 +52,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | Position/scale/rotation/opacity | **SHIP** | Keyframe + transform params on video elements |
 | Canvas 9:16 / 16:9 / 1:1 / 4:5 | **SHIP** | `RATIO_PRESETS` → `setProjectResolution`; `canvas-settings-roundtrip.test.ts` |
 | Fit/fill, background colour | **SHIP** | Background panel; `background.ts` |
-| Background blur | **GAP** | No blur background implementation |
+| Background blur | **SHIP** | `BackgroundBlurEffect` (preview + Android export), `BackgroundBlurMath`; `ExportBackgroundBlurInstrumentedTest` decodes exports |
 | Colour adjust (brightness/contrast/saturation/…) | **SHIP** | `adjust` effect definitions; instrumented `effect_bearing_clip_exports_...matches_preview` |
 | Filters with intensity | **SHIP** | `FILTER_PRESETS`; same export-parity instrumented test |
 | LUT import | **GAP** | No `.cube`/LUT loader found, despite "lut" appearing in effect plumbing |
@@ -65,8 +65,8 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | Multiple overlays | **SHIP** | Placement `newTrack` per duplicate/overlay insert |
 | Crossfade + cut transitions | **SHIP** | Instrumented crossfade geometry/blend/luminance tests, plus `22 fps`/`24 fps` variants |
 | Zoom/slide/blur/whip transitions | **GAP** | Only fade-style transitions are mapped to native |
-| Animated stickers / GIF | **GAP** | Stills only |
-| Editable project templates | **GAP** | Toolbar entry shows the deliberate "not in Cutlyra yet" sheet (`docs/DECISIONS.md`) |
+| Animated stickers / GIF | **SHIP** | Real per-frame GIF decode with delays + loop count, EDL frame feed, decode preflight; `GifFrameTimelineTest`, `gif-decoder.test.ts` |
+| Editable project templates | **SHIP** | 12 offline templates, planner/apply engine, Templates panel (`templates/` tests) |
 
 ## 3. Audio
 
@@ -92,7 +92,7 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | Text animations / karaoke | **PARTIAL** | Param animation channels exist; karaoke word highlight absent |
 | On-device English captions | **SHIP** | `caption-pipeline-integration.test.ts`, `generate-captions-e2e.test.ts`, instrumented caption-window diagnostics |
 | Edit/correct transcript text and timing | **PARTIAL** | Caption track rows are editable; per-word timing UI not found |
-| SRT/VTT import or export | **GAP** | No serialiser; "srt" appears only in a comment |
+| SRT/VTT import or export | **PARTIAL** | SRT export + paste import exist (`buildSrtFromCaptions`); native SAF file picking is still missing |
 | Multilingual captions | **GAP** | Single English model; no optional multilingual pack |
 | Emoji stickers | **SHIP** | Stickers panel; `sticker-id.test.ts` |
 | Sticker packs / animation / transform | **GAP** | Fixed set, still, no transform handles |

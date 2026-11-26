@@ -56,8 +56,9 @@ import app.cutlyra.editor.edl.EdlTrackType
  * inconsistent"): masks, keyframes on anything but `transform.*`/`opacity`
  * (round 47 made those real — `KeyframeEvaluator`), and effect types native
  * export does not implement. Adjust/filter effects are fully mapped now:
- * the affine sliders become one `RgbMatrix` pass and `sharpen`/`vignette`
- * become `ColorGradeSpatialEffect` passes around it (GitHub #48). An asset with `sourceUri == null` is
+ * each effect emits its own `sharpen` -> `RgbMatrix` -> `vignette` passes in
+ * EDL order, so stacked Adjust + Filter grades match the preview (GitHub #48).
+ * An asset with `sourceUri == null` is
  * also a hard error: it means M4's media-custody import never ran for that
  * asset, which is a producer bug the exporter should surface immediately, not
  * paper over.
@@ -745,11 +746,10 @@ object EdlToComposition {
         // still throws for effect types or params it cannot express, so an
         // unsupported edit fails loudly instead of vanishing from the file.
         // `sharpen`/`vignette` are spatial, so they are separate passes rather
-        // than matrix entries; they are collected here and emitted in the
-        // shader's own order further down.
-        val colorGradeSharpen = ColorGrade.sharpenPassesFor(clip)
-        val colorGradeMatrix = ColorGrade.combinedMatrixFor(clip)
-        val colorGradeVignette = ColorGrade.vignettePassesFor(clip)
+        // than matrix entries. Passes are emitted PER EFFECT in EDL order
+        // (sharpen -> matrix -> vignette for each), exactly the order the
+        // preview shader applies them, so stacked grades cannot diverge.
+        val colorGradePasses = ColorGrade.passesFor(clip)
 
         val sourceUri = requireNotNull(asset.sourceUri) // requireAsset() already guaranteed non-null.
         val isImage = clip.kind == "image" || asset.kind == EdlAssetKind.IMAGE
@@ -806,17 +806,21 @@ object EdlToComposition {
                 videoEffects.add(AlphaScale(clip.opacity.toFloat()))
             }
         }
-        // One order, copied from `color_adjust.wgsl`: sharpen works on raw
-        // neighbours, the affine colour matrix runs on the sharpened frame,
-        // and vignette darkens the graded result.
-        for (amount in colorGradeSharpen) {
-            videoEffects.add(ColorGradeSpatialEffect(amount, 0f))
-        }
-        if (colorGradeMatrix != null) {
-            videoEffects.add(ColorGradeMatrixEffect(colorGradeMatrix))
-        }
-        for (amount in colorGradeVignette) {
-            videoEffects.add(ColorGradeSpatialEffect(0f, amount))
+        // One order PER EFFECT, copied from `color_adjust.wgsl`: sharpen works
+        // on raw neighbours, the affine colour matrix runs on the sharpened
+        // frame, and vignette darkens the graded result. Iterating the passes
+        // in EDL order is what makes a stacked Adjust + Filter render exactly
+        // like the preview (previously every sharpen ran before every matrix
+        // and every vignette after them, all effects flattened together).
+        for (pass in colorGradePasses) {
+            when (pass.kind) {
+                ColorGradePassKind.SHARPEN ->
+                    videoEffects.add(ColorGradeSpatialEffect(pass.amount, 0f))
+                ColorGradePassKind.MATRIX ->
+                    videoEffects.add(ColorGradeMatrixEffect(checkNotNull(pass.matrix)))
+                ColorGradePassKind.VIGNETTE ->
+                    videoEffects.add(ColorGradeSpatialEffect(0f, pass.amount))
+            }
         }
 
         // Normalize every visual item to the export resolution HERE, per
