@@ -15,6 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.regex.Pattern
 
 private const val PACKAGE = "app.cutlyra.editor"
 
@@ -124,5 +125,25 @@ class EdgeToEdgeSystemBarInstrumentedTest {
 
 	private fun find(selector: BySelector, timeoutMs: Long): UiObject2 =
 		device.wait(Until.findObject(selector), timeoutMs)
-			?: throw AssertionError("timed out after ${timeoutMs}ms waiting for $selector")
+			?: throw AssertionError(
+				"timed out after ${timeoutMs}ms waiting for $selector; " +
+					"current window: ${describeCurrentWindow()}",
+			)
+
+	/**
+	 * A bare "timed out" cannot distinguish a slow first paint from a screen
+	 * the flow never reached, and CI keeps no screenshot for a UiAutomator
+	 * timeout. Report what the accessibility tree actually shows so the next
+	 * failure is diagnosable from the log alone.
+	 */
+	private fun describeCurrentWindow(): String {
+		val visibleTexts = runCatching {
+			device.findObjects(By.text(Pattern.compile(".+")))
+				.mapNotNull { it.text?.trim() }
+				.filter { it.isNotEmpty() }
+				.distinct()
+				.take(20)
+		}.getOrDefault(emptyList())
+		return "${device.currentPackageName} texts=$visibleTexts"
+	}
 }
