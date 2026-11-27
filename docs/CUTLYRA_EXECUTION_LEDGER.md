@@ -12,13 +12,26 @@ Status legend: `TODO` · `IN PROGRESS` · `DONE` · `BLOCKED` (with reason)
 | 1.3 | Generated-media cleanup audit + undo/redo/projects | DONE | `referencedCustodyPaths`, `Command.referencedMediaPaths`; `voiceover.test.ts` 12/12 |
 | 1.4 | GIF timing/loop/transparency/memory audit | DONE | Existing `GifFrameTimelineTest`, `GifDecoderBudgetTest`, `gif-decoder.test.ts` cover all four |
 | 1.5 | Stale docs / issue checklists | DONE | Master plan Phase 11, native-export-blockers, feature-coverage-matrix corrected |
-| 2 | Chroma key + masks | TODO | |
+| 2a | Masks: preview + EDL + Android export parity | DONE | `edl/validate.ts` real mask validation (no warning); `EdlMaskEffect`/`MaskMath`; decoded-MP4 `ExportMaskInstrumentedTest` 6/6; `MaskMathTest` 16/16; preview harness `mask-*` 6/6 (27/27 overall) |
+| 2b | Chroma key (key colour, eyedropper, similarity, softness, spill) | TODO | |
 | 3 | Advanced transitions | TODO | |
 | 4 | Real subtitle files + transcript editor | TODO | |
 
 ## Verification log
 
-- `bun test` (root): **1055 pass / 0 fail** (126 files).
+- `bun test` (root): **1062 pass / 0 fail** (127 files).
+- Masks (2026-11-27): `:app:testDebugUnitTest --tests MaskMathTest` green;
+  `:app:assembleDebug` +
+  `:app:assembleDebugAndroidTest` pass; on `emulator-5554` (swiftshader)
+  `ExportMaskInstrumentedTest` **6/6 pass** — rectangle, ellipse, circle,
+  linear half-plane, rotated+feathered+inverted rectangle, centre-Y below the
+  frame centre, and mask + crop + 0.5x scale + opacity 0.7 + keyframed
+  position, all read from decoded MP4 pixels (bright overlay 251 over dark
+  base 0, feather midpoint 132).
+- Preview harness (`vite.preview-parity.config.ts`, WebGL2): **27/27 pass**,
+  including `mask-rectangle`, `mask-ellipse`, `mask-linear`,
+  `mask-travels-with-the-element`, `mask-is-relative-to-the-cropped-element`,
+  `mask-rotated-feathered-inverted` (centre blue, corner red, edge rgb(128,0,127)).
 - `editor-core`, `mobile-ui`, `native-bridge` `tsc --noEmit`: clean.
 - `:app:testDebugUnitTest --tests ColorGradeMatrixTest`: 13 tests, 0 failures.
 - `:app:assembleDebug` + `:app:assembleDebugAndroidTest`: pass.

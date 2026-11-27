@@ -24,25 +24,29 @@ import app.cutlyra.editor.edl.EdlClip
  * cut while every structural test still passed.
  *
  * The correct assignment, implemented below:
- *   0                -> the base sequence (primary). Its alpha is ramped
- *                        DOWN inside a transition window so the incoming
- *                        clip's head, painted beneath it, shows through:
+ *   baseInputIndex    -> the base sequence. Its alpha is ramped DOWN inside a
+ *                        transition window so the incoming clip's head,
+ *                        painted beneath it, shows through:
  *                        out = (1-a)*head + a*base, a: 1 -> 0 across the
  *                        window. Fully opaque outside any window.
- *   1..transitions.size -> one short overlay sequence per `EdlTransition`
+ *   after the base     -> one short overlay sequence per `EdlTransition`
  *                        (the incoming clip's head). Painted beneath the
  *                        base at FULL opacity; `windowsByInputIndex[i]`
  *                        holds that sequence's window (used above).
- *   >transitions.size  -> overlay/graphic tracks (PiP-style), driven by a
- *                        clip's static `transform`/`opacity` — see
- *                        `overlayTrackSettingsByInputIndex`. NOTE: these sit
- *                        under the opaque base like every other secondary
- *                        input, so a PiP clip is only visible while some
- *                        window has the base faded — a known, separate
- *                        defect (video-overlay export visibility), not part
- *                        of the cross-fade fix.
+ *   before the base    -> overlay/graphic tracks (PiP-style), painted ABOVE
+ *                        the base, driven by a clip's static
+ *                        `transform`/`opacity` — see
+ *                        `overlayTrackSettingsByInputIndex`. `EdlToComposition`
+ *                        registers these first (highest z first) so a PiP or
+ *                        masked overlay is actually visible over the main
+ *                        video, and its transparent pixels reveal the base.
+ *   after the base     -> cross-fade heads, beneath the base.
  */
 class CrossfadeCompositorSettings(
+    /** Final input index of the opaque main-track sequence. Overlay visuals
+     *  are registered before it (painted above), transition heads after it
+     *  (painted beneath). */
+    private val baseInputIndex: Int = 0,
     private val windowsByInputIndex: Map<Int, TransitionAlphaMath.Window>,
     private val overlayTrackSettingsByInputIndex: Map<Int, StaticOverlaySettings> = emptyMap(),
     /** Round 47: PiP clips with keyframes — per-frame alpha from the
@@ -65,7 +69,7 @@ class CrossfadeCompositorSettings(
     override fun getOutputSize(inputSizes: MutableList<Size>): Size = outputSize
 
     override fun getOverlaySettings(inputIndex: Int, presentationTimeUs: Long): OverlaySettings {
-        if (inputIndex == 0) {
+        if (inputIndex == baseInputIndex) {
             // The primary is painted LAST (on top). Fade it out — strictly
             // inside each transition window, so the head beneath shows
             // through; fully opaque everywhere else (including at/after a

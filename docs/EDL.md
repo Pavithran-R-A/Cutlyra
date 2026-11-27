@@ -254,10 +254,25 @@ rather than a schema break that invalidates both mappers. **Implement it now,
 expect `[]` until the engine grows one.** `validateEdl` already enforces the
 CapCut rule that transitions are main-track only.
 
-**Masks are post-v1 for native export** (plan §2.3 rule 4). They are carried in
-the document so preview and export read the same graph, but `validateEdl` emits
-a warning for every non-empty `masks` array, and a v1 mapper should **refuse the
-export** rather than silently drop them.
+**Masks are v1 for native export** (superseding the old "post-v1" note).
+`clip.masks[]` carries the engine's own parameters, `validateEdl` validates them
+as errors (shape, position/size ranges, rotation, feather, stroke), and both
+mappers render them: the preview through `frame-descriptor` + the WGSL
+compositor, Android through `EdlMaskEffect`/`MaskMath` (a Media3 GL fragment
+pass). Shapes are `rectangle`, `ellipse`, `circle` (an ellipse with equal axes,
+named directly) and `linear` (the engine's `split` half-plane); rotation,
+feather and inversion are shared. Masks the shaders cannot represent (heart,
+diamond, star, text, cinematic-bars, freeform) are **refused** by
+`validateEdl` and by `EdlToComposition`, never silently dropped.
+
+Android places the mask pass after `Crop` (which Media3 runs inline because it
+resizes the frame) and before the element's matrix, so the mask is authored in
+the CROPPED frame's pixels and then moves/rotates/scales with the clip — the
+preview's own model. This is measured, not assumed: `ExportMaskInstrumentedTest`
+decodes real MP4s for every shape, a rotated/feathered/inverted rectangle, an
+offset and a cropped element, and mask + transform + opacity + keyframes;
+`apps/mobile/src/preview-parity/main.ts` renders the same contracts through the
+real compositor.
 
 **Effects are a short list on purpose.** `EDL_V1_SUPPORTED_EFFECT_TYPES` in
 `validate.ts` is what a v1 mapper is expected to implement; anything else

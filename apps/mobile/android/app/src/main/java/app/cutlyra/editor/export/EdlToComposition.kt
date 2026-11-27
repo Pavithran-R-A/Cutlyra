@@ -53,7 +53,8 @@ import app.cutlyra.editor.edl.EdlTrackType
  *
  * WHAT THIS CLASS DELIBERATELY REFUSES (throws `ExportUnsupportedException`
  * rather than silently degrading — plan §2.3 rule 3's "cut, don't ship
- * inconsistent"): masks, keyframes on anything but `transform.*`/`opacity`
+ * inconsistent"): mask shapes the shader cannot represent, keyframes on
+ * anything but `transform.*`/`opacity`
  * (round 47 made those real — `KeyframeEvaluator`), and effect types native
  * export does not implement. Adjust/filter effects are fully mapped now:
  * each effect emits its own `sharpen` -> `RgbMatrix` -> `vignette` passes in
@@ -66,6 +67,9 @@ import app.cutlyra.editor.edl.EdlTrackType
 object EdlToComposition {
     /** Element kinds drawn by the webview into overlay PNGs. */
     private val PRERENDERED_OVERLAY_KINDS = setOf("sticker", "graphic", "text", "caption")
+
+    /** Masks `EdlMaskEffect` can evaluate. Mirrors `EDL_V1_SUPPORTED_MASK_TYPES`. */
+    private val SUPPORTED_MASK_TYPES = setOf("rectangle", "circle", "ellipse", "split", "linear")
 
     fun buildComposition(
         edl: Edl,
@@ -122,6 +126,18 @@ object EdlToComposition {
         ).toInt().coerceAtLeast(1)
 
         val sequences = mutableListOf<EditedMediaItemSequence>()
+        // Media3 paints the FIRST registered input on top and the LAST at the
+        // bottom (see `CrossfadeCompositorSettings`' paint-model note). The
+        // original layout registered the opaque base first, which put every
+        // PiP/video overlay UNDERNEATH it and made video overlays invisible in
+        // every export — a masked overlay could never reveal a lower layer.
+        // These three lists are assembled into `sequences` in paint order:
+        // overlay visuals (top), base, transition heads (bottom).
+        val overlaySequences = mutableListOf<EditedMediaItemSequence>()
+        val headSequences = mutableListOf<EditedMediaItemSequence>()
+        val headWindows = mutableListOf<TransitionAlphaMath.Window>()
+        val overlaySettingsBySequence = mutableListOf<StaticOverlaySettings?>()
+        val overlayAlphaBySequence = mutableListOf<CrossfadeCompositorSettings.AnimatedOverlayAlpha?>()
         // A VIDEO export ends at the last VISUAL thing, not at the last audio
         // sample. Stage 14 POCO QA caught an ordinary 8 s video + 15 s MP3
         // exporting as 15 s with a 7 s black tail because meta.durationTicks
@@ -211,14 +227,13 @@ object EdlToComposition {
         if (mainEndTicks < projectEndTicks) {
             baseSeqBuilder = baseSeqBuilder.addGap(us(projectEndTicks - mainEndTicks))
         }
-        sequences.add(baseSeqBuilder.build())
+        val baseSequence = baseSeqBuilder.build()
 
-        // -- 1..N: one overlay sequence per cross-fade transition ------------
+        // -- transition heads: one per cross-fade, painted BENEATH the base ---
         // Windows come from `placements` (validated above): they sit on the
         // COMPRESSED output timeline, at the tail of the OUTGOING clip's
         // rendered span — exactly where the base's alpha dips and the head
         // beneath it must play.
-        var nextIndex = 1
         for (window in placements.windows) {
             val incomingClip = window.incomingClip
             val windowStartTicks = window.startTicks
@@ -284,16 +299,18 @@ object EdlToComposition {
                 overlaySeqBuilder.addItem(item)
             }
             val overlaySeq = overlaySeqBuilder.build()
-            sequences.add(overlaySeq)
-            transitionWindows[nextIndex] = TransitionAlphaMath.Window(windowStartUs, windowEndUs)
-            nextIndex++
+            headSequences.add(overlaySeq)
+            headWindows.add(TransitionAlphaMath.Window(windowStartUs, windowEndUs))
         }
 
         // -- next..: overlay video/graphic tracks (PiP-style layers) ---------
-        val overlayVisualTracks = edl.tracks.filter {
-            it.kind == EdlTrackKind.OVERLAY &&
-                (it.trackType == EdlTrackType.VIDEO || it.trackType == EdlTrackType.GRAPHIC)
-        }
+        val overlayVisualTracks = edl.tracks
+            .filter {
+                it.kind == EdlTrackKind.OVERLAY &&
+                    (it.trackType == EdlTrackType.VIDEO || it.trackType == EdlTrackType.GRAPHIC)
+            }
+            // Highest z first: the first registered sequence is painted on top.
+            .sortedByDescending { it.zIndex }
         for (track in overlayVisualTracks) {
             for (rawClip in track.clips.sortedBy { it.startTicks }) {
                 // Stickers and graphics are GENERATED content: the webview
@@ -333,7 +350,10 @@ object EdlToComposition {
                     seqBuilder.addItem(item)
                 }
                 val seq = seqBuilder.build()
-                sequences.add(seq)
+                val overlayIndex = overlaySequences.size
+                overlaySequences.add(seq)
+                overlaySettingsBySequence.add(null)
+                overlayAlphaBySequence.add(null)
                 if (animated) {
                     // Round 47: geometry (position/scale/rotation, keyframed)
                     // is applied ONCE, by the item's animated
@@ -344,18 +364,32 @@ object EdlToComposition {
                     // as-is for static clips and needs the emulator golden
                     // frame to settle; animated clips deliberately do not
                     // inherit it.
-                    animatedOverlayAlphaByIndex[nextIndex] =
+                    overlayAlphaBySequence[overlayIndex] =
                         CrossfadeCompositorSettings.AnimatedOverlayAlpha(clip, us(clip.startTicks), tps)
                 } else {
-                    overlaySettingsByIndex[nextIndex] = StaticOverlaySettings.Builder()
+                    overlaySettingsBySequence[overlayIndex] = StaticOverlaySettings.Builder()
                         .setAlphaScale(clip.opacity.toFloat())
                         .setScale(clip.transform.scaleX.toFloat(), clip.transform.scaleY.toFloat())
                         .setRotationDegrees(clip.transform.rotateDegrees.toFloat())
                         .build()
                 }
-                nextIndex++
             }
         }
+
+        // Assemble in Media3 paint order: overlays (top), base, heads
+        // (bottom). Re-key the compositor maps to the final input indices.
+        overlaySequences.forEachIndexed { index, seq ->
+            sequences.add(seq)
+            overlaySettingsBySequence[index]?.let { overlaySettingsByIndex[index] = it }
+            overlayAlphaBySequence[index]?.let { animatedOverlayAlphaByIndex[index] = it }
+        }
+        sequences.add(baseSequence)
+        val baseInputIndex = sequences.size - 1
+        headSequences.forEachIndexed { index, seq ->
+            sequences.add(seq)
+            transitionWindows[sequences.size - 1] = headWindows[index]
+        }
+        var nextIndex = sequences.size
 
         // -- audio sequences ---------------------------------------------------
         // ALL audio — the main track's own clip audio included — travels in
@@ -541,6 +575,7 @@ object EdlToComposition {
         }
 
         val compositorSettings = CrossfadeCompositorSettings(
+            baseInputIndex = baseInputIndex,
             windowsByInputIndex = transitionWindows,
             overlayTrackSettingsByInputIndex = overlaySettingsByIndex,
             animatedOverlayAlphaByInputIndex = animatedOverlayAlphaByIndex,
@@ -727,11 +762,6 @@ object EdlToComposition {
          *  foreground). Overlay sequences pass 0. */
         backgroundBlurIntensity: Float = 0f,
     ): EditedMediaItem {
-        if (clip.hasMasks) {
-            throw ExportUnsupportedException(
-                "clip ${clip.clipId} has masks; masks are explicitly post-v1 for native export (plan §2.3 rule 4)",
-            )
-        }
         val unsupportedKeyframes = KeyframeEvaluator.unsupportedAnimationPaths(clip)
         if (unsupportedKeyframes.isNotEmpty()) {
             throw ExportUnsupportedException(
@@ -776,6 +806,7 @@ object EdlToComposition {
         }
 
         val videoEffects = mutableListOf<Effect>()
+        val itemStartUs = us(itemStartTicks)
         // Crop FIRST: it is a vertex-shader MatrixTransformation whose output
         // frame is the cropped region (`Crop.configure`), so every following
         // effect — transform, opacity, colour grade, framing Presentation —
@@ -783,8 +814,38 @@ object EdlToComposition {
         // samples `sourceRect` out of the full texture.
         if (!removeVideo) {
             EdlCropEffect.create(clip.crop)?.let { videoEffects.add(it) }
+            // Masks are a fragment pass, and the order matters in exactly the
+            // way the preview's does. `Crop` changes the frame size, so Media3
+            // runs it inline and this pass sees the CROPPED frame — the same
+            // canvas the preview draws its mask texture on. `EdlTransformEffect`
+            // (scale/rotate/position/flip) and the Presentation are
+            // size-preserving matrices that Media3 applies to the finished
+            // chain, so the mask must be evaluated BEFORE them: placed after
+            // `EdlTransformEffect`, an overlay offset by (-80,-80) kept its
+            // bright region fixed on the canvas while the clip slid underneath
+            // (measured on decoded frames).
+            if (clip.masks.isNotEmpty()) {
+                for (mask in clip.masks) {
+                    if (mask.type !in SUPPORTED_MASK_TYPES) {
+                        throw ExportUnsupportedException(
+                            "clip \"${clip.name}\" (${clip.clipId}) uses mask type \"${mask.type}\"; " +
+                                "native export maps ${SUPPORTED_MASK_TYPES.joinToString()} and refuses the rest " +
+                                "rather than silently dropping a visible mask",
+                        )
+                    }
+                    videoEffects.add(
+                        EdlMaskEffect(
+                            clip = clip,
+                            mask = mask,
+                            canvasWidth = canvasWidth,
+                            canvasHeight = canvasHeight,
+                            itemStartUs = itemStartUs,
+                            ticksPerSecond = ticksPerSecond,
+                        ),
+                    )
+                }
+            }
         }
-        val itemStartUs = us(itemStartTicks)
         val animated = KeyframeEvaluator.hasVisualAnimations(clip)
         if (animated || !EdlTransformEffect.isIdentity(clip.transform)) {
             videoEffects.add(

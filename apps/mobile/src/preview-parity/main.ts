@@ -23,6 +23,8 @@ import { ImageNode } from "@cutlyra/editor-core/services/renderer/nodes/image-no
 import { RootNode } from "@cutlyra/editor-core/services/renderer/nodes/root-node";
 import type { ResolvedVisualSourceNodeState } from "@cutlyra/editor-core/services/renderer/nodes/visual-node";
 import type { CropRect } from "@cutlyra/editor-core/rendering";
+import type { Mask } from "@/masks/types";
+import { registerDefaultMasks } from "@/masks";
 import { initializeGpu } from "opencut-wasm";
 
 /**
@@ -143,6 +145,7 @@ function imageNode({
 	rotate,
 	position,
 	sourceRevision,
+	masks,
 }: {
 	fixture: Fixture;
 	crop?: CropRect;
@@ -152,6 +155,7 @@ function imageNode({
 	rotate?: number;
 	position?: { x: number; y: number };
 	sourceRevision?: string;
+	masks?: Mask[];
 }): ImageNode {
 	const node = new ImageNode({
 		url: "preview-parity-fixture.png",
@@ -168,6 +172,7 @@ function imageNode({
 		opacity: 1,
 		...(framing ? { framing } : {}),
 		...(crop ? { crop } : {}),
+		...(masks ? { masks } : {}),
 	});
 	node.resolved = resolvedState({
 		fixture,
@@ -178,6 +183,17 @@ function imageNode({
 		sourceRevision,
 	});
 	return node;
+}
+
+function createSolidFixture(color: string): Fixture {
+	const canvas = document.createElement("canvas");
+	canvas.width = 320;
+	canvas.height = 240;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("2d fixture context unavailable");
+	ctx.fillStyle = color;
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+	return { canvas, width: canvas.width, height: canvas.height };
 }
 
 // ------------------------------------------------------------ pixel reading
@@ -324,6 +340,11 @@ async function run(): Promise<void> {
 		row.textContent = line;
 		host.appendChild(row);
 	};
+
+	// The editor bootstraps the mask registry; a bare harness must too, or
+	// every mask descriptor throws "Unknown mask: <type>" before it can be
+	// rendered.
+	registerDefaultMasks();
 
 	await initializeGpu();
 	console.log("initializeGpu() resolved");
@@ -595,6 +616,172 @@ async function run(): Promise<void> {
 			],
 		});
 		log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+	}
+
+	// --- masks: the same shape/position/feather contract the export shader
+	// --- evaluates (ExportMaskInstrumentedTest) ----------------------------
+	{
+		const red = createSolidFixture("#ff0000");
+		const blue = createSolidFixture("#0000ff");
+		const base = {
+			feather: 0,
+			inverted: false,
+			strokeColor: "#ffffff",
+			strokeWidth: 0,
+			strokeAlign: "center" as const,
+		};
+		const rectangle: Mask = {
+			id: "mask-rect",
+			type: "rectangle",
+			params: {
+				...base,
+				centerX: 0,
+				centerY: 0,
+				width: 0.5,
+				height: 0.5,
+				rotation: 0,
+				scale: 1,
+			},
+		};
+		const ellipse: Mask = {
+			id: "mask-ellipse",
+			type: "ellipse",
+			params: {
+				...base,
+				centerX: 0,
+				centerY: 0,
+				width: 0.5,
+				height: 0.5,
+				rotation: 0,
+				scale: 1,
+			},
+		};
+		const linear: Mask = {
+			id: "mask-linear",
+			type: "split",
+			params: { ...base, centerX: 0, centerY: 0, rotation: 0 },
+		};
+		const inverted: Mask = {
+			id: "mask-inverted",
+			type: "rectangle",
+			params: {
+				...base,
+				feather: 40,
+				inverted: true,
+				centerX: 0,
+				centerY: 0,
+				width: 0.6,
+				height: 0.4,
+				rotation: 30,
+				scale: 1,
+			},
+		};
+
+		async function renderMask(mask: Mask): Promise<ImageData> {
+			const background = imageNode({ fixture: blue });
+			const overlay = imageNode({ fixture: red, masks: [mask] });
+			const root = new RootNode({ duration: 10_000 });
+			root.children.push(background, overlay);
+			return renderNode(root);
+		}
+
+		for (const [name, mask, samples] of [
+			[
+				"mask-rectangle",
+				rectangle,
+				[
+					{ x: 0.5, y: 0.5, expected: "red" as Channel },
+					{ x: 0.08, y: 0.08, expected: "blue" as Channel },
+				],
+			],
+			[
+				"mask-ellipse",
+				ellipse,
+				[
+					{ x: 0.5, y: 0.5, expected: "red" as Channel },
+					{ x: 0.08, y: 0.08, expected: "blue" as Channel },
+				],
+			],
+			[
+				"mask-linear",
+				linear,
+				[
+					{ x: 0.2, y: 0.5, expected: "blue" as Channel },
+					{ x: 0.8, y: 0.5, expected: "red" as Channel },
+				],
+			],
+		] as const) {
+			const result = check({ name, pixels: await renderMask(mask), samples: [...samples] });
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
+
+		// The mask is authored against the ELEMENT, not the canvas: moving the
+		// element (-80px) must move the cut with it. This is the fixture that
+		// caught the Android exporter evaluating masks after the element
+		// matrix, where the mask stayed fixed while the clip slid underneath.
+		{
+			const background = imageNode({ fixture: blue });
+			const overlay = imageNode({
+				fixture: red,
+				position: { x: -80, y: 0 },
+				masks: [rectangle],
+			});
+			const root = new RootNode({ duration: 10_000 });
+			root.children.push(background, overlay);
+			const result = check({
+				name: "mask-travels-with-the-element",
+				pixels: await renderNode(root),
+				samples: [
+					// Element spans x -80..240; its mask covers 0..160.
+					{ x: 0.25, y: 0.5, expected: "red" },
+					{ x: 0.75, y: 0.5, expected: "blue" },
+					{ x: 0.25, y: 0.08, expected: "blue" },
+				],
+			});
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
+
+		// Crop re-frames the element, so the same mask fractions are relative
+		// to the CROPPED frame — the space the Android mask shader receives.
+		{
+			const background = imageNode({ fixture: blue });
+			const overlay = imageNode({
+				fixture: red,
+				crop: { x: 0, y: 0, width: 0.5, height: 1 },
+				masks: [rectangle],
+			});
+			const root = new RootNode({ duration: 10_000 });
+			root.children.push(background, overlay);
+			const result = check({
+				name: "mask-is-relative-to-the-cropped-element",
+				pixels: await renderNode(root),
+				samples: [
+					// Kept 160x240 fitted into 320x240 -> element x 80..240.
+					{ x: 0.5, y: 0.5, expected: "red" },
+					{ x: 0.5, y: 0.2, expected: "blue" },
+					{ x: 0.33, y: 0.5, expected: "blue" },
+				],
+			});
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
+
+		// Rotated + feathered + inverted: centre is cut away (blue), the
+		// corners stay red, and the 40px ramp is neither pure red nor pure
+		// blue at the rotated long edge (96px along 30°).
+		{
+			const pixels = await renderMask(inverted);
+			const centre = dominantAt(pixels, 0.5, 0.5);
+			const corner = dominantAt(pixels, 0.04, 0.04);
+			const edge = dominantAt(pixels, 0.759, 0.700);
+			const edgeIsRamp = edge.rgb[0] > 60 && edge.rgb[0] < 200 && edge.rgb[2] > 60;
+			const result = {
+				name: "mask-rotated-feathered-inverted",
+				ok: centre.channel === "blue" && corner.channel === "red" && edgeIsRamp,
+				detail: `centre=${centre.channel} corner=${corner.channel} edge=rgb(${edge.rgb.join(",")})`,
+			};
+			results.push(result);
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
 	}
 
 	// --- dynamic frames: same source object, new pixels --------------------
