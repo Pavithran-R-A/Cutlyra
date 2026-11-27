@@ -50,6 +50,20 @@ Status legend: `TODO` · `IN PROGRESS` · `DONE` · `BLOCKED` (with reason)
 - `:app:assembleDebug` + `:app:assembleDebugAndroidTest`: pass.
 - `scripts/invariants.sh`: see run log.
 
+### 2b follow-up — the editor crashed on open (found by CI, fixed)
+
+The chroma eyedropper's `useState` sat *below* the editor's `if (!ready)`
+bootstrap return, so the second render (project loaded) ran one more hook than
+the first and React threw error #310 the moment a project opened. The app
+painted its own `Cutlyra crashed` boundary instead of the editor. Local runs
+missed it because the installed APK still carried a stale web payload from
+before the feature (`apps/mobile/www` had no `chroma-key` string), so the
+editor under test never included the new code; rebuilding the payload with
+`bun run build && bunx cap sync android` reproduced the crash locally in one
+run. The state is now declared with the other editor state, above the early
+return, and the EdgeToEdge UI test — the only instrumented test that actually
+opens the editor — passes on a fresh install with the current payload.
+
 ## Notes
 
 - Mission prompt was truncated mid-Phase 4; `END_OF_COMPLETE_MISSION` absent.
