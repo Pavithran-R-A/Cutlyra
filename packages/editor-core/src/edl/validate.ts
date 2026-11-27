@@ -54,7 +54,11 @@ export interface ValidateEdlOptions {
  * warn: a mapper is expected to REFUSE it, never to export as if it were
  * absent.
  */
-export const EDL_V1_SUPPORTED_EFFECT_TYPES: readonly string[] = ["adjust", "filter"];
+export const EDL_V1_SUPPORTED_EFFECT_TYPES: readonly string[] = [
+	"adjust",
+	"filter",
+	"chroma-key",
+];
 
 /**
  * Mask shapes the native exporters map. The preview registry also has heart,
@@ -273,13 +277,36 @@ function validateClip({
 	}
 
 	for (const [i, effect] of clip.effects.entries()) {
+		const effectPath = `${path}.effects[${i}]`;
 		if (!EDL_V1_SUPPORTED_EFFECT_TYPES.includes(effect.type)) {
 			issues.warn({
-				path: `${path}.effects[${i}]`,
+				path: effectPath,
 				message:
 					`effect "${effect.type}" is not on the v1 native list. Plan §2.3 rule 3 requires a ` +
 					"golden-frame test per effect; anything that cannot pass is cut from v1 rather than shipped inconsistent.",
 			});
+			continue;
+		}
+		if (effect.type === "chroma-key") {
+			// The key colour and the three distances are the whole shader input on
+			// both renderers, so an out-of-range or mistyped value is an ERROR: the
+			// exporter would otherwise key with a different colour than the preview.
+			const params = effect.params ?? {};
+			if (typeof params.keyColor !== "string" || !/^#[0-9a-f]{6}$/i.test(params.keyColor)) {
+				issues.error({
+					path: `${effectPath}.params.keyColor`,
+					message: `expected "#rrggbb", got ${JSON.stringify(params.keyColor)}`,
+				});
+			}
+			for (const key of ["similarity", "softness", "spill"] as const) {
+				const value = params[key];
+				if (!isFiniteNumber(value) || value < 0 || value > 100) {
+					issues.error({
+						path: `${effectPath}.params.${key}`,
+						message: `expected 0..100, got ${JSON.stringify(value)}`,
+					});
+				}
+			}
 		}
 	}
 

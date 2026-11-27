@@ -57,8 +57,8 @@ This is a checklist, not a promise list. No unchecked item is production-ready.
 | Filters with intensity | **SHIP** | `FILTER_PRESETS`; same export-parity instrumented test |
 | LUT import | **GAP** | No `.cube`/LUT loader found, despite "lut" appearing in effect plumbing |
 | Keyframes with easing | **SHIP** | `keyframe-eval-parity.test.ts`, `keyframe-graph-sheet.tsx` |
-| Masks / tracking | **GAP** | "mask" appears only as an RGBA/alpha concept in the renderer, not as a user mask tool |
-| Background removal / green screen | **GAP** | No chroma-key effect; "blur" exists as an effect, keying does not |
+| Masks | **SHIP** (no tracking) | rectangle/circle/ellipse/linear with position/size/rotation/feather/inversion; `EdlMaskEffect` + `MaskMath` in export; `ExportMaskInstrumentedTest` decodes MP4s (6 cases) and the preview parity harness covers the same masks. Object tracking is still absent. |
+| Background removal / green screen | **SHIP** | `chroma-key` effect: key colour + preview eyedropper, similarity, edge softness, spill; `chroma_key.wgsl` in preview and `EdlChromaKeyEffect` in Android export share one Cb/Cr model; `ExportChromaKeyInstrumentedTest` decodes exports over a lower layer |
 | Blur / pixelate region | **PARTIAL** | `effects/definitions/blur.ts` exists; a region/pixelate UI was not found |
 | Stabilisation | **GAP** | No stabiliser |
 | Overlay / PiP layers | **SHIP** | Overlay panel (opacity/blend), overlay track on duplicate; export covered by the crossfade+overlay instrumented tests |

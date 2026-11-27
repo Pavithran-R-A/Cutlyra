@@ -2,6 +2,7 @@ import { effectsRegistry } from "../registry";
 import { blurEffectDefinition } from "./blur";
 import { adjustEffectDefinition } from "./adjust";
 import { filterEffectDefinition } from "./filter";
+import { chromaKeyEffectDefinition } from "./chroma-key";
 
 // M8: adjust + filter registered alongside blur. See each definition's own
 // header for the honest scope note (real params/state, no Rust WGSL pass
@@ -10,6 +11,7 @@ const defaultEffects = [
 	blurEffectDefinition,
 	adjustEffectDefinition,
 	filterEffectDefinition,
+	chromaKeyEffectDefinition,
 ];
 
 export function registerDefaultEffects(): void {

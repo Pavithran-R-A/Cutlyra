@@ -13,6 +13,7 @@ import {
 	Wand2,
 } from "lucide-react";
 import type { ToolbarItemDef } from "../toolbar-row";
+import { ChromaKeyIcon } from "../../icons";
 
 /**
  * M8 primary toolbar — order MEASURED from the founder's live-CapCut capture
@@ -41,6 +42,9 @@ export const PRIMARY_TOOLBAR_ITEMS: ToolbarItemDef[] = [
 	{ id: "overlay", label: "Overlay", icon: Layers },
 	{ id: "filters", label: "Filters", icon: Wand2 },
 	{ id: "adjust", label: "Adjust", icon: SlidersHorizontal },
+	// Chroma key is export-safe like Adjust/Filters: Android applies the same
+	// key (EdlChromaKeyEffect) the preview's WGSL pass does.
+	{ id: "chroma", label: "Chroma key", icon: ChromaKeyIcon },
 	{ id: "captions", label: "Captions", icon: Captions },
 	{ id: "stickers", label: "Stickers", icon: Sticker },
 	{ id: "transcript", label: "Transcript", icon: FileText },

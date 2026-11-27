@@ -124,6 +124,13 @@ data class ColorGrade(
         const val FILTER_TYPE = "filter"
 
         /**
+         * Alpha-only effect rendered by [EdlChromaKeyEffect]. It is excluded
+         * from [gradesFor] because it contributes no colour matrix; export
+         * still renders it, in EDL order, from `EdlToComposition`.
+         */
+        const val CHROMA_KEY_TYPE = ChromaKeyMath.CHROMA_KEY_TYPE
+
+        /**
          * Filter presets as grade units, authored locally (NOT copied from
          * any proprietary app's LUTs) and shared verbatim with
          * `FILTER_PRESET_GRADES` in TypeScript. Affine-only by construction,
@@ -204,9 +211,24 @@ data class ColorGrade(
          *   is a silent data-loss bug.
          */
         fun gradesFor(clip: EdlClip): List<ColorGrade> = clip.effects
-            .filter { it.enabled }
+            .filter { it.enabled && it.type != CHROMA_KEY_TYPE }
             .map { effect -> gradeFor(clip, effect) }
             .filterNot { it.isNeutral() }
+
+        /**
+         * The colour passes ONE effect contributes, in the order the preview
+         * shader applies them (sharpen -> colour matrix -> vignette).
+         *
+         * `EdlToComposition` walks a clip's enabled effects in EDL order and
+         * calls this per effect — that is what keeps a stacked Adjust + chroma
+         * key + Filter in the SAME order on both renderers. An effect with no
+         * visible contribution (neutral grade) returns an empty list.
+         *
+         * @throws ExportUnsupportedException for an unmapped effect type or an
+         *   unread param, exactly like [passesFor].
+         */
+        fun passesForEffect(clip: EdlClip, effect: EdlEffect): List<ColorGradePass> =
+            passesForGrade(gradeFor(clip, effect))
 
         private fun gradeFor(clip: EdlClip, effect: EdlEffect): ColorGrade {
             val consumed = CONSUMED_PARAMS[effect.type]
@@ -257,25 +279,26 @@ data class ColorGrade(
          * vignettes" shape, which put a Filter's matrix before an Adjust
          * effect's sharpen even though the preview applied the sharpen second.
          */
-        fun passesFor(clip: EdlClip): List<ColorGradePass> {
+        fun passesFor(clip: EdlClip): List<ColorGradePass> =
+            gradesFor(clip).flatMap { passesForGrade(it) }
+
+        private fun passesForGrade(grade: ColorGrade): List<ColorGradePass> {
             val passes = mutableListOf<ColorGradePass>()
-            for (grade in gradesFor(clip)) {
-                val sharpen = grade.sharpenUniform()
-                if (sharpen > 0f) {
-                    passes.add(ColorGradePass(ColorGradePassKind.SHARPEN, amount = sharpen))
-                }
-                if (grade.hasAffineColor()) {
-                    passes.add(
-                        ColorGradePass(
-                            ColorGradePassKind.MATRIX,
-                            matrix = grade.rgbMatrix(),
-                        ),
-                    )
-                }
-                val vignette = grade.vignetteUniform()
-                if (vignette > 0f) {
-                    passes.add(ColorGradePass(ColorGradePassKind.VIGNETTE, amount = vignette))
-                }
+            val sharpen = grade.sharpenUniform()
+            if (sharpen > 0f) {
+                passes.add(ColorGradePass(ColorGradePassKind.SHARPEN, amount = sharpen))
+            }
+            if (grade.hasAffineColor()) {
+                passes.add(
+                    ColorGradePass(
+                        ColorGradePassKind.MATRIX,
+                        matrix = grade.rgbMatrix(),
+                    ),
+                )
+            }
+            val vignette = grade.vignetteUniform()
+            if (vignette > 0f) {
+                passes.add(ColorGradePass(ColorGradePassKind.VIGNETTE, amount = vignette))
             }
             return passes
         }

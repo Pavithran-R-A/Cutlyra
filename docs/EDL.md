@@ -283,6 +283,27 @@ shipped inconsistent**. We cannot share shader code across WGSL-in-WASM, Metal
 and GLSL ES the way Media3 shares `GlShaderProgram` between its own preview and
 export paths, so parity has to be measured rather than assumed.
 
+`clip.effects[]` today carries `adjust`, `filter` and `chroma-key`. All three
+render in both preview and export, in **EDL order, one effect at a time**:
+the preview walks `element.effects` in that order
+(`resolveEffectPassGroups`), and `EdlToComposition` emits the same passes in
+the same order, so a chroma key added between an Adjust and a Filter keys the
+adjusted frame and is then itself graded.
+
+`chroma-key` is the only effect that writes ALPHA. Its params are `keyColor`
+(`#rrggbb`), `similarity`, `softness` and `spill` (0..100 each), and both
+renderers use one formula: Rec.709 Cb/Cr distance from the key colour,
+`smoothstep(similarity, similarity + softness, distance)`, then green-excess
+removal on the kept pixels. The parameters are deliberately not keyframable —
+a threshold that animates in preview but not in the MP4 would be a
+preview-only control. `validateEdl` treats a malformed colour or an
+out-of-range value as an ERROR (the exporter would key differently from the
+preview); `ColorGrade.passesForEffect` / `EdlChromaKeyEffect` refuse any param
+they do not read. Proven on decoded MP4s by `ExportChromaKeyInstrumentedTest`
+(keyed screen reveals a lower video layer, the subject survives, and a
+wrong-colour key is a control) and in the preview parity harness
+(`chroma-key-removes-the-screen-over-a-lower-layer`).
+
 **Multi-scene.** One EDL, one scene. Concatenating scenes is a host concern.
 
 ---

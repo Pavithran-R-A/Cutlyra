@@ -26,6 +26,8 @@ import { OverlayPanel } from "../panels/overlay-panel";
 import { CaptionsPanel } from "../panels/captions-panel";
 import { FiltersPanel } from "../panels/filters-panel";
 import { AdjustPanel } from "../panels/adjust-panel";
+import { ChromaKeyPanel } from "../panels/chroma-key-panel";
+import { CHROMA_KEY_EFFECT_TYPE } from "@cutlyra/editor-core/effects/chroma-key";
 import { ExportSheet } from "../panels/export-sheet";
 import { KeyframeGraphSheet } from "../panels/keyframe-graph-sheet";
 import { KeyframeControl } from "../timeline/keyframe-control";
@@ -79,6 +81,8 @@ import {
 	setFreezeFrameHold,
 	removeFreezeFrame,
 	freezeFrameStateFor,
+	ensureSingleEffect,
+	updateEffectParam,
 	type DeadSpaceCutOutcome,
 } from "../../editor/actions";
 import { Scissors, ScissorsLineDashed, Trash2, CopyPlus, SlidersHorizontal, Spline, Type } from "lucide-react";
@@ -317,6 +321,12 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 	const [reverseBusy, setReverseBusy] = useState(false);
 	const [reverseError, setReverseError] = useState<string | null>(null);
 	const [reverseProgress, setReverseProgress] = useState<number | null>(null);
+	/** Eyedropper arming for the chroma panel. Declared with the other state —
+	 *  ABOVE the `if (!ready)` early return below, because a hook after that
+	 *  return would only run on the post-bootstrap render and React would throw
+	 *  "rendered more hooks than during the previous render" (error #310) the
+	 *  moment the editor finishes loading. */
+	const [chromaPickArmed, setChromaPickArmed] = useState(false);
 
 	const runCutDeadSpace = ({ ref }: { ref: ElementRef }) => {
 		if (deadSpaceProgress) return; // one analysis at a time
@@ -565,7 +575,32 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 		return `${formatKeyframeTime(keyframeState.segmentTime)} → ${formatKeyframeTime(next)}`;
 	})();
 
-	const closeSheet = () => setActiveSheet(null);
+	const closeSheet = () => {
+		setChromaPickArmed(false);
+		setActiveSheet(null);
+	};
+
+	/** Eyedropper result: write the sampled colour onto the selected clip's
+	 *  chroma key and bring its panel back. The colour came from the
+	 *  compositor's own presented frame, so it is exactly what the user saw. */
+	const handleKeyColorSampled = (color: string) => {
+		setChromaPickArmed(false);
+		if (!selectedRef || !visualElement) return;
+		const effectId = ensureSingleEffect({
+			editor,
+			ref: selectedRef,
+			effectType: CHROMA_KEY_EFFECT_TYPE,
+		});
+		if (!effectId) return;
+		updateEffectParam({
+			editor,
+			ref: selectedRef,
+			effectId,
+			key: "keyColor",
+			value: color,
+		});
+		setActiveSheet("chroma");
+	};
 
 	/** The clamp decision only belongs to the clip that raised it: switching
 	 *  selection hides the prompt instead of applying it to another clip. */
@@ -604,7 +639,9 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 				    draws text/sticker/overlay/video elements with their actual
 				    params (opacity/blendMode included), so the span's partial
 				    re-implementation of that is gone with it. */}
-				<PreviewRenderer />
+				<PreviewRenderer
+					onSampleColor={chromaPickArmed ? handleKeyColorSampled : undefined}
+				/>
 			</PreviewStage>
 			<PlaybackBar
 				isPlaying={isPlaying}
@@ -747,7 +784,14 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 				/>
 			)}
 
-			<BottomToolbar items={PRIMARY_TOOLBAR_ITEMS} activeId={activeSheet} onSelect={(id) => setActiveSheet(id as SheetId)} />
+			<BottomToolbar
+				items={PRIMARY_TOOLBAR_ITEMS}
+				activeId={activeSheet}
+				onSelect={(id) => {
+					setChromaPickArmed(false);
+					setActiveSheet(id as SheetId);
+				}}
+			/>
 
 			{activeSheet === "edit" && selectedRef && selectedElement && (
 				<EditPanel
@@ -972,7 +1016,24 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 				/>
 			)}
 
-			{(activeSheet === "filters" || activeSheet === "adjust") &&
+			{activeSheet === "chroma" && selectedRef && visualElement && (
+				<ChromaKeyPanel
+					editor={editor}
+					elementRef={selectedRef}
+					element={visualElement}
+					onClose={closeSheet}
+					pickArmed={chromaPickArmed}
+					onPickFromPreview={() => {
+						// The sheet's scrim covers the preview, so arming the eyedropper
+						// closes it; the next tap on the frame samples and reopens it.
+						setChromaPickArmed(true);
+						setActiveSheet(null);
+						setChromeNotice("Tap the preview to pick the key colour");
+					}}
+				/>
+			)}
+
+			{(activeSheet === "filters" || activeSheet === "adjust" || activeSheet === "chroma") &&
 				!(selectedRef && visualElement) && (
 					<PanelSelectPrompt onClose={closeSheet} message="Select a clip on the timeline first." />
 				)}

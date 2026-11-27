@@ -65,7 +65,8 @@ Source-truth check performed:
 | Animated stickers (procedural graphics) | IMPLEMENTED + TESTED (6 animated graphic definitions; time-aware GraphicNode; preview+export via existing overlay pipeline; 21 unit tests pin time-dependence, determinism, static invariance and loop boundaries) | device/native export verification pending | |
 | Templates | IMPLEMENTED (12 offline templates + schema/planner/apply engine, UI wired) | No on-device Android UI-automation or exported-MP4 parity run yet |
 | Emoji / non-shape sticker categories | IMPLEMENTED (procedural data-URL SVG provider, 20 emoji tiles) | device/UI verification pending; no bundled binary assets (offline by construction) |
-| Masks/chroma key | GAP | heavy engine work |
+| Masks | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-27) | rectangle/circle/ellipse/linear with position, size, rotation, feather and inversion; preview + Android GL parity; `ExportMaskInstrumentedTest` 6/6, `MaskMathTest` 16/16, preview harness 28/28 |
+| Chroma key | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-27) | key colour + preview eyedropper, similarity, edge softness, spill reduction; `chroma-key.wgsl` (preview) and `EdlChromaKeyEffect` (export) share one Rec.709 Cb/Cr model; `ExportChromaKeyInstrumentedTest` 3/3 incl. a wrong-colour control |
 | New transition types | GAP | native compositor |
 | 4K export verification | BLOCKED | device/encoder |
 | Multi-select import | BLOCKED | device Photo Picker |

@@ -772,15 +772,16 @@ object EdlToComposition {
         // GitHub #48 / PAV-142: effects are MAPPED, not refused. This used
         // to throw for any non-empty `clip.effects`, which made every export
         // of a project with a single Adjust slider change fail (the Adjust and
-        // Filters panels write exactly these effects). `combinedMatrixFor`
-        // still throws for effect types or params it cannot express, so an
+        // Filters panels write exactly these effects). `ColorGrade` still
+        // throws for effect types or params it cannot express, so an
         // unsupported edit fails loudly instead of vanishing from the file.
         // `sharpen`/`vignette` are spatial, so they are separate passes rather
-        // than matrix entries. Passes are emitted PER EFFECT in EDL order
-        // (sharpen -> matrix -> vignette for each), exactly the order the
-        // preview shader applies them, so stacked grades cannot diverge.
-        val colorGradePasses = ColorGrade.passesFor(clip)
-
+        // than matrix entries.
+        //
+        // EFFECT ORDER IS EDL ORDER, one effect at a time. The preview's
+        // `resolveEffectPassGroups` walks `element.effects` in the same order,
+        // so a chroma key added between an Adjust and a Filter keys the ADJUSTED
+        // frame and is then itself graded — not "all grades, then all keys".
         val sourceUri = requireNotNull(asset.sourceUri) // requireAsset() already guaranteed non-null.
         val isImage = clip.kind == "image" || asset.kind == EdlAssetKind.IMAGE
 
@@ -867,20 +868,33 @@ object EdlToComposition {
                 videoEffects.add(AlphaScale(clip.opacity.toFloat()))
             }
         }
-        // One order PER EFFECT, copied from `color_adjust.wgsl`: sharpen works
-        // on raw neighbours, the affine colour matrix runs on the sharpened
-        // frame, and vignette darkens the graded result. Iterating the passes
-        // in EDL order is what makes a stacked Adjust + Filter render exactly
-        // like the preview (previously every sharpen ran before every matrix
-        // and every vignette after them, all effects flattened together).
-        for (pass in colorGradePasses) {
-            when (pass.kind) {
-                ColorGradePassKind.SHARPEN ->
-                    videoEffects.add(ColorGradeSpatialEffect(pass.amount, 0f))
-                ColorGradePassKind.MATRIX ->
-                    videoEffects.add(ColorGradeMatrixEffect(checkNotNull(pass.matrix)))
-                ColorGradePassKind.VIGNETTE ->
-                    videoEffects.add(ColorGradeSpatialEffect(0f, pass.amount))
+        // EFFECT ORDER IS EDL ORDER, one effect at a time. The preview's
+        // `resolveEffectPassGroups` walks `element.effects` in the same order,
+        // so a chroma key added between an Adjust and a Filter keys the ADJUSTED
+        // frame and is then itself graded — not "all grades, then all keys".
+        for (effect in clip.effects) {
+            if (!effect.enabled) continue
+            if (effect.type == ChromaKeyMath.CHROMA_KEY_TYPE) {
+                val unread = effect.params.keys.filterNot { it in ChromaKeyMath.SUPPORTED_PARAMS }
+                if (unread.isNotEmpty()) {
+                    throw ExportUnsupportedException(
+                        "clip ${clip.clipId} has ${unread.joinToString()} on its \"${effect.type}\" " +
+                            "effect; native export does not read those params and refuses them " +
+                            "rather than silently dropping a visual edit",
+                    )
+                }
+                videoEffects.add(EdlChromaKeyEffect(clip = clip, effect = effect))
+                continue
+            }
+            for (pass in ColorGrade.passesForEffect(clip, effect)) {
+                when (pass.kind) {
+                    ColorGradePassKind.SHARPEN ->
+                        videoEffects.add(ColorGradeSpatialEffect(pass.amount, 0f))
+                    ColorGradePassKind.MATRIX ->
+                        videoEffects.add(ColorGradeMatrixEffect(checkNotNull(pass.matrix)))
+                    ColorGradePassKind.VIGNETTE ->
+                        videoEffects.add(ColorGradeSpatialEffect(0f, pass.amount))
+                }
             }
         }
 
