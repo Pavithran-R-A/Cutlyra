@@ -67,7 +67,7 @@ Source-truth check performed:
 | Emoji / non-shape sticker categories | IMPLEMENTED (procedural data-URL SVG provider, 20 emoji tiles) | device/UI verification pending; no bundled binary assets (offline by construction) |
 | Masks | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-27) | rectangle/circle/ellipse/linear with position, size, rotation, feather and inversion; preview + Android GL parity; `ExportMaskInstrumentedTest` 6/6, `MaskMathTest` 16/16, preview harness 28/28 |
 | Chroma key | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-27) | key colour + preview eyedropper, similarity, edge softness, spill reduction; `chroma-key.wgsl` (preview) and `EdlChromaKeyEffect` (export) share one Rec.709 Cb/Cr model; `ExportChromaKeyInstrumentedTest` 3/3 incl. a wrong-colour control |
-| New transition types | GAP | native compositor |
+| New transition types | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-27) | `fade`/`slide`/`push`/`zoom` from one shared definition layer (`timeline/transition-definitions.ts`) used by preview, EDL validation, persistence and Media3 export, with per-kind layer order, `direction`, duration and audio policy; wipe, dip-to-black/white and blur dropped because neither renderer can draw them identically (docs/EDL.md §8). `ExportMotionTransitionInstrumentedTest` 4/4 on decoded frames, cross-fade gates unchanged, preview harness 32/32 |
 | 4K export verification | BLOCKED | device/encoder |
 | Multi-select import | BLOCKED | device Photo Picker |
 | Physical-device parity | BLOCKED | owner device session |

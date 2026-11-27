@@ -20,6 +20,14 @@ import type {
 import { TICKS_PER_SECOND, mediaTimeFromSeconds } from "@/wasm";
 import { clampRetimeRate } from "@/retime/rate";
 import { buildAudioFadeEnvelope } from "@/timeline/audio-fades";
+import { computeMainTrackPlacements } from "@/timeline/transitions";
+import {
+	deriveTransitionIncomingChannels,
+	deriveTransitionOutgoingChannels,
+	normalizeTransitionDirection,
+	normalizeTransitionKind,
+	TRANSITION_DEFINITIONS,
+} from "@/timeline/transition-definitions";
 import {
 	buildTransformFromParams,
 	isFullCrop,
@@ -455,6 +463,71 @@ export function buildEdl({
 	const frameRate = toRational(project.settings.fps);
 	const canvas = project.settings.canvasSize;
 
+	// One derivation, two renderers: every kind is expressed as element-local
+	// animation channels, so slide/push/zoom move identically in the preview
+	// and in the exported MP4. Which SIDE gets which channel is dictated by
+	// the exporter's sequence layout:
+	//   - OUTGOING (`push` only) stays on the base-sequence clip: the clip's
+	//     last `d` ticks ARE the window, the same span the preview ramps.
+	//   - INCOMING rides the transition HEAD sequence, which starts at the
+	//     window (like the preview's compressed element). The base-sequence
+	//     copy of that clip starts at the window END, so putting the ramp on
+	//     the clip would replay the transition a second time after the seam.
+	// Hence the split: outgoing merged into the clip, incoming per transition.
+	const { transitionOutgoing, transitionIncomingByAfterClipId } = (() => {
+		const empty = {
+			transitionOutgoing: new Map<string, ElementAnimations>(),
+			transitionIncomingByAfterClipId: new Map<string, EdlAnimationChannel[]>(),
+		};
+		const transitions = scene.transitions ?? [];
+		if (transitions.length === 0) return empty;
+		const visible = scene.tracks.main.elements.filter(
+			(element) => !("hidden" in element && element.hidden),
+		);
+		const byId = new Map(visible.map((element) => [element.id, element]));
+		const { windows } = computeMainTrackPlacements({ elements: visible, transitions });
+		const outgoing = new Map<string, ElementAnimations>();
+		const incoming = new Map<string, EdlAnimationChannel[]>();
+		for (const window of windows) {
+			const outgoingElement = byId.get(window.outgoingElementId);
+			const incomingElement = byId.get(window.incomingElementId);
+			if (!outgoingElement || !incomingElement) continue;
+			const outgoingChannels = deriveTransitionOutgoingChannels({
+				window,
+				element: outgoingElement,
+				canvasSize: canvas,
+			});
+			if (outgoingChannels) outgoing.set(outgoingElement.id, outgoingChannels);
+			const incomingChannels = deriveTransitionIncomingChannels({
+				window,
+				element: incomingElement,
+				canvasSize: canvas,
+			});
+			if (!incomingChannels) continue;
+			// Alpha kinds blend with the compositor's base ramp (base alpha
+			// 1 -> 0 over the head), which IS their opacity channel on the
+			// preview side. Sending it again would double-fade the head, so the
+			// export copy of an alpha kind carries only its transform channels
+			// (zoom scale). Cross-fade therefore emits nothing at all and its
+			// descriptors stay byte-identical.
+			const exportChannels =
+				TRANSITION_DEFINITIONS[normalizeTransitionKind(window.kind)].layerOrder ===
+				"incoming-below"
+					? Object.fromEntries(
+							Object.entries(incomingChannels).filter(([path]) => path !== "opacity"),
+						)
+					: incomingChannels;
+			const animations = buildAnimations({
+				animations: exportChannels as ElementAnimations,
+			});
+			if (animations.length > 0) incoming.set(window.outgoingElementId, animations);
+		}
+		return {
+			transitionOutgoing: outgoing,
+			transitionIncomingByAfterClipId: incoming,
+		};
+	})();
+
 	const tracks: EdlTrack[] = orderTracks({ tracks: scene.tracks }).map(
 		({ track, kind, zIndex }) => {
 			const flags = trackFlags({ track });
@@ -464,7 +537,12 @@ export function buildEdl({
 						? a.startTime - b.startTime
 						: a.id.localeCompare(b.id),
 				)
-				.map((element) => buildClip({ element }));
+				.map((element) => {
+					const outgoing = transitionOutgoing.get(element.id);
+					if (!outgoing) return buildClip({ element });
+					const animations = { ...element.animations, ...outgoing };
+					return buildClip({ element: { ...element, animations } });
+				});
 
 			return {
 				trackId: track.id,
@@ -541,7 +619,10 @@ export function buildEdl({
 		},
 		assets: buildAssets({ mediaAssets, resolveAsset }),
 		tracks,
-		transitions: buildTransitions({ scene }),
+		transitions: buildTransitions({
+			scene,
+			incomingAnimationsByAfterClipId: transitionIncomingByAfterClipId,
+		}),
 		overlays,
 		output: edlOutput,
 	};
@@ -552,13 +633,21 @@ export function buildEdl({
  * native mapper (MainTrackPlacement.swift) THROWS on a transition whose
  * afterClipId is unknown or not immediately followed by another main-track
  * clip, so the producer drops those defensively here — a transition whose
- * neighbor was deleted goes dormant instead of failing the export. Kinds
- * pass through as authored: "fade" maps to the compositor's canonical
- * "cross_fade"; every other kind is carried verbatim and falls back to the
- * same dissolve on the native side (its documented behavior) — matching the
- * preview, which also renders every kind as a cross-fade in v1.
+ * neighbor was deleted goes dormant instead of failing the export.
+ *
+ * Kinds go through `normalizeTransitionKind` — the SAME normaliser the
+ * preview and the derived animation channels use — so the EDL never carries
+ * a kind one renderer understands and the other silently turns into a cut.
+ * "fade" is emitted as the compositor's historical "cross_fade" token;
+ * directional kinds carry their normalised direction.
  */
-function buildTransitions({ scene }: { scene: TScene }): EdlTransition[] {
+function buildTransitions({
+	scene,
+	incomingAnimationsByAfterClipId,
+}: {
+	scene: TScene;
+	incomingAnimationsByAfterClipId: Map<string, EdlAnimationChannel[]>;
+}): EdlTransition[] {
 	const transitions = scene.transitions ?? [];
 	if (transitions.length === 0) return [];
 
@@ -577,10 +666,22 @@ function buildTransitions({ scene }: { scene: TScene }): EdlTransition[] {
 		const index = indexById.get(transition.afterElementId);
 		if (index === undefined || index + 1 >= mainElements.length) continue;
 		if (!Number.isInteger(transition.duration) || transition.duration <= 0) continue;
+		const kind = normalizeTransitionKind(transition.kind);
+		const direction = normalizeTransitionDirection({ kind, raw: transition.direction });
+		const incomingAnimations = incomingAnimationsByAfterClipId.get(transition.afterElementId);
 		out.push({
 			transitionId: transition.id,
 			afterClipId: transition.afterElementId,
-			kind: transition.kind === "fade" ? "cross_fade" : transition.kind,
+			kind: kind === "fade" ? "cross_fade" : kind,
+			// Only directional kinds carry it — keeps every existing fade EDL
+			// descriptor byte-identical.
+			...(TRANSITION_DEFINITIONS[kind].supportsDirection ? { direction } : {}),
+			// The head's channels (see the transition-animation comment in
+			// `buildEdl`). Fade emits nothing here, so old descriptors stay
+			// byte-identical.
+			...(incomingAnimations && incomingAnimations.length > 0
+				? { incomingAnimations }
+				: {}),
 			durationTicks: transition.duration,
 		});
 	}

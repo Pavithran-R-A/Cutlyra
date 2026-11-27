@@ -219,6 +219,7 @@ export class TimelineManager {
 			tracks: applyTransitionsToSceneTracks({
 				tracks: activeScene.tracks,
 				transitions: activeScene.transitions,
+				canvasSize: this.editor.project.getActive()?.settings.canvasSize,
 			}),
 		});
 	}
@@ -248,6 +249,8 @@ export class TimelineManager {
 		const output = applyTransitionsToSceneTracks({
 			tracks: nominal,
 			transitions,
+			// Slide/push offsets are canvas-sized; the preview MUST render them.
+			canvasSize: this.editor.project.getActive()?.settings.canvasSize,
 		});
 		this.renderTracksMemo = { input: nominal, transitions, output };
 		return output;

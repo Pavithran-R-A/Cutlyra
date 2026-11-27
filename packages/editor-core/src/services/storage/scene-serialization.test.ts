@@ -56,6 +56,27 @@ describe("scene persistence: POCO transition regression", () => {
 		expect(reopened.updatedAt.toISOString()).toBe("2026-10-08T11:00:00.000Z");
 	});
 
+	test("a slide's kind, duration and direction survive save -> JSON clone -> reopen", () => {
+		const scene = fixtureScene();
+		scene.transitions = [{
+			id: "slide-1",
+			afterElementId: "video-a",
+			kind: "slide",
+			direction: "up",
+			duration: t(90_000),
+		}];
+		const saved = serializeScene({ scene });
+		const cloned = JSON.parse(JSON.stringify(saved)) as typeof saved;
+		const reopened = deserializeScene({ scene: cloned });
+		expect(reopened.transitions).toEqual([{
+			id: "slide-1",
+			afterElementId: "video-a",
+			kind: "slide",
+			direction: "up",
+			duration: t(90_000),
+		}]);
+	});
+
 	test("audio fade params survive save -> JSON clone -> reopen", () => {
 		const scene = fixtureScene();
 		scene.tracks.audio.push({

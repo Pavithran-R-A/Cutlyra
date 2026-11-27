@@ -1,7 +1,9 @@
 package app.cutlyra.editor.export
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -69,10 +71,35 @@ class TransitionAlphaMathTest {
     }
 
     @Test
+    fun `classify recognizes the Phase 3 motion kinds`() {
+        assertEquals(TransitionAlphaMath.TransitionKind.SLIDE, TransitionAlphaMath.classify("slide"))
+        assertEquals(TransitionAlphaMath.TransitionKind.PUSH, TransitionAlphaMath.classify("push"))
+        assertEquals(TransitionAlphaMath.TransitionKind.ZOOM, TransitionAlphaMath.classify("zoom"))
+        assertEquals(TransitionAlphaMath.TransitionKind.CROSSFADE, TransitionAlphaMath.classify("fade"))
+    }
+
+    @Test
     fun `classify degrades unknown kinds to a hard cut, not a crash`() {
         assertEquals(TransitionAlphaMath.TransitionKind.UNSUPPORTED_HARD_CUT, TransitionAlphaMath.classify("wipe"))
-        assertEquals(TransitionAlphaMath.TransitionKind.UNSUPPORTED_HARD_CUT, TransitionAlphaMath.classify("slide"))
+        assertEquals(TransitionAlphaMath.TransitionKind.UNSUPPORTED_HARD_CUT, TransitionAlphaMath.classify("dip_to_black"))
         assertEquals(TransitionAlphaMath.TransitionKind.UNSUPPORTED_HARD_CUT, TransitionAlphaMath.classify(""))
         assertEquals(TransitionAlphaMath.TransitionKind.UNSUPPORTED_HARD_CUT, TransitionAlphaMath.classify("nonsense"))
+    }
+
+    @Test
+    fun `only crossfade and zoom ramp the base alpha`() {
+        assertTrue(TransitionAlphaMath.usesAlpha("cross_fade"))
+        assertTrue(TransitionAlphaMath.usesAlpha("fade"))
+        assertTrue(TransitionAlphaMath.usesAlpha("zoom"))
+        assertFalse(TransitionAlphaMath.usesAlpha("slide"))
+        assertFalse(TransitionAlphaMath.usesAlpha("push"))
+    }
+
+    @Test
+    fun `slide and push paint their incoming head above the base`() {
+        assertTrue(TransitionAlphaMath.paintsHeadAboveBase("slide"))
+        assertTrue(TransitionAlphaMath.paintsHeadAboveBase("push"))
+        assertFalse(TransitionAlphaMath.paintsHeadAboveBase("cross_fade"))
+        assertFalse(TransitionAlphaMath.paintsHeadAboveBase("zoom"))
     }
 }

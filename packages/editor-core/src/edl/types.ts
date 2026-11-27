@@ -363,7 +363,24 @@ export interface EdlTransition {
 	transitionId: string;
 	/** The clip the transition follows. Must be a clip on the `main` track. */
 	afterClipId: string;
+	/** Canonical kind: "cross_fade" | "slide" | "push" | "zoom". The derived
+	 *  animation channels that actually render the motion ride the clips; this
+	 *  field tells the exporter how to stack its incoming head layer and where
+	 *  the window sits. */
 	kind: string;
+	/** Slide/push travel direction ("left" | "right" | "up" | "down").
+	 *  Omitted for non-directional kinds so their descriptors stay unchanged. */
+	direction?: string;
+	/**
+	 * Element-local channels for the INCOMING clip's transition head, anchored
+	 * at 0 (the window start) — the same channels the preview applies to the
+	 * compressed incoming element. They belong to the transition rather than
+	 * the clip because the exporter's base-sequence copy of that clip starts
+	 * at the window END and must play steady; only its head moves/dips.
+	 * Omitted when the kind derives nothing (cross-fade: the compositor's
+	 * alpha ramp does the work) or when the user keyframed the property.
+	 */
+	incomingAnimations?: EdlAnimationChannel[];
 	durationTicks: number;
 }
 

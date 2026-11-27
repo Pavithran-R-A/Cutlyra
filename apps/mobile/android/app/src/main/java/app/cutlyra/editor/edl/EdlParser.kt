@@ -231,6 +231,9 @@ object EdlParser {
             afterClipId = o.getString("afterClipId"),
             kind = o.getString("kind"),
             durationTicks = o.getLong("durationTicks"),
+            incomingAnimations = (o.optJSONArray("incomingAnimations") ?: JSONArray())
+                .map(::parseAnimationChannel),
+            direction = o.optString("direction", "").takeIf { it.isNotEmpty() },
         )
 
     private fun parseOverlay(o: JSONObject): EdlOverlay =

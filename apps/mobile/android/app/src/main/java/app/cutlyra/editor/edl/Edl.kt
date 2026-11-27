@@ -241,6 +241,21 @@ data class EdlTransition(
     val afterClipId: String,
     val kind: String,
     val durationTicks: Long,
+    /**
+     * Channels for the incoming clip's transition HEAD, anchored at 0 = the
+     * window start (same clock the preview's compressed element uses). The
+     * base sequence's copy of the clip starts at the window end and must NOT
+     * inherit them, which is why they live on the transition, not the clip.
+     */
+    val incomingAnimations: List<EdlAnimationChannel> = emptyList(),
+    /**
+     * Travel direction of a directional kind (`slide`/`push`): `left`,
+     * `right`, `up` or `down`. Null for kinds that do not take one. The export
+     * itself rides on [incomingAnimations]; this is kept so the exporter can
+     * cross-check the derived channels against the authored intent and so a
+     * future native transition does not have to re-derive it.
+     */
+    val direction: String? = null,
 )
 
 enum class EdlOverlayKind { TEXT, STICKER, GRAPHIC, CAPTION }

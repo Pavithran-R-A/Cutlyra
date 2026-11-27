@@ -30,6 +30,11 @@ import {
 } from "@cutlyra/editor-core/effects/chroma-key";
 import type { Mask } from "@/masks/types";
 import { registerDefaultMasks } from "@/masks";
+import {
+	deriveTransitionIncomingChannels,
+	type TransitionWindowLike,
+} from "@cutlyra/editor-core/timeline";
+import { resolveAnimationPathValueAtTime } from "@cutlyra/editor-core/animation";
 import { initializeGpu } from "opencut-wasm";
 
 /**
@@ -120,6 +125,7 @@ function resolvedState({
 	scaleY = 1,
 	rotate = 0,
 	position = { x: 0, y: 0 },
+	opacity = 1,
 	sourceRevision,
 	effectPasses = [],
 }: {
@@ -128,12 +134,13 @@ function resolvedState({
 	scaleY?: number;
 	rotate?: number;
 	position?: { x: number; y: number };
+	opacity?: number;
 	sourceRevision?: string;
 	effectPasses?: EffectPass[][];
 }): ResolvedVisualSourceNodeState {
 	return {
 		localTime: 0,
-		opacity: 1,
+		opacity,
 		effectPasses,
 		transform: { scaleX, scaleY, rotate, position },
 		source: fixture.canvas,
@@ -151,6 +158,7 @@ function imageNode({
 	scaleY,
 	rotate,
 	position,
+	opacity,
 	sourceRevision,
 	masks,
 	effectPasses,
@@ -162,6 +170,7 @@ function imageNode({
 	scaleY?: number;
 	rotate?: number;
 	position?: { x: number; y: number };
+	opacity?: number;
 	sourceRevision?: string;
 	masks?: Mask[];
 	effectPasses?: EffectPass[][];
@@ -178,7 +187,7 @@ function imageNode({
 			rotate: rotate ?? 0,
 			position: position ?? { x: 0, y: 0 },
 		},
-		opacity: 1,
+		opacity: opacity ?? 1,
 		...(framing ? { framing } : {}),
 		...(crop ? { crop } : {}),
 		...(masks ? { masks } : {}),
@@ -189,6 +198,7 @@ function imageNode({
 		scaleY,
 		rotate,
 		position,
+		opacity,
 		sourceRevision,
 		effectPasses,
 	});
@@ -988,6 +998,158 @@ async function run(): Promise<void> {
 		};
 		results.push(result);
 		log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+	}
+
+	// --- Phase 3 transitions: the preview half of the parity contract ------
+	//
+	// The exported file is decoded at p = 0.2 / 0.5 / 0.9 of the window by
+	// `ExportMotionTransitionInstrumentedTest`. Here the SAME progress values
+	// are rendered through the real preview compositor, from the SAME derived
+	// channels (`deriveTransitionAnimations`) the exporter feeds the head, so
+	// preview and export are compared at identical frame positions.
+	{
+		const canvasWidth = CANVAS_WIDTH;
+		const duration = 60_000;
+		const base = createSolidFixture("#d81e1e");
+		const incoming = createSolidFixture("#1e28d8");
+		const element = (id: string, animations: Record<string, unknown> = {}) =>
+			({
+				id,
+				type: "video",
+				name: id,
+				mediaId: id,
+				startTime: 0,
+				duration,
+				trimStart: 0,
+				trimEnd: duration,
+				params: {},
+				animations,
+			}) as never;
+
+		const progressSamples = [0.2, 0.5, 0.9];
+
+		for (const [kind, direction] of [
+			["slide", "left"],
+			["slide", "right"],
+			["push", "left"],
+		] as const) {
+			const head = element("b");
+			const headAnimations = deriveTransitionIncomingChannels({
+				window: {
+					kind,
+					direction,
+					outgoingElementId: "a",
+					incomingElementId: "b",
+					durationTicks: duration,
+				} as TransitionWindowLike,
+				element: head,
+				canvasSize: { width: canvasWidth, height: CANVAS_HEIGHT },
+			});
+			const details: string[] = [];
+			let ok = true;
+			for (const p of progressSamples) {
+				const localTime = p * duration;
+				const positionX = resolveAnimationPathValueAtTime({
+					animations: headAnimations,
+					propertyPath: "transform.positionX",
+					localTime,
+					fallbackValue: 0,
+				});
+				const opacity = resolveAnimationPathValueAtTime({
+					animations: headAnimations,
+					propertyPath: "opacity",
+					localTime,
+					fallbackValue: 1,
+				});
+				const root = new RootNode({ duration });
+				root.children.push(
+					imageNode({ fixture: base }),
+					imageNode({
+						fixture: incoming,
+						position: { x: positionX, y: 0 },
+						opacity,
+					}),
+				);
+				const pixels = await renderNode(root);
+				// Head painted ABOVE the base and opaque: a FLAT blue region that
+				// covers exactly `p` of the frame, anchored on the right (left) or
+				// on the left (right). Coverage is the direction-independent measure
+				// of travel; the anchor proves the direction.
+				let blueColumns = 0;
+				for (let x = 0; x < CANVAS_WIDTH; x += 1) {
+					if (dominantAt(pixels, x / CANVAS_WIDTH, 0.5).channel === "blue") {
+						blueColumns += 1;
+					}
+				}
+				const coverage = blueColumns / CANVAS_WIDTH;
+				const anchoredAt = direction === "left" ? 1 : 0;
+				const anchor = dominantAt(pixels, anchoredAt, 0.5).channel;
+				if (Math.abs(coverage - p) > 0.1 || anchor !== "blue") ok = false;
+				details.push(
+					`p=${p} posX=${positionX.toFixed(1)} coverage=${coverage.toFixed(2)} anchor(${anchoredAt})=${anchor}`,
+				);
+			}
+			const result = {
+				name: `transition-${kind}-${direction}-preview-boundary`,
+				ok,
+				detail: details.join(" | "),
+			};
+			results.push(result);
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
+
+		// zoom: head arrives scaled (1.25 -> 1) under a base whose alpha ramps
+		// out; the composited centre must be the p-weighted mix of the two
+		// clips, exactly what the decoded export frame is asserted to be.
+		{
+			const headAnimations = deriveTransitionIncomingChannels({
+				window: {
+					kind: "zoom",
+					outgoingElementId: "a",
+					incomingElementId: "b",
+					durationTicks: duration,
+				},
+				element: element("b"),
+				canvasSize: { width: canvasWidth, height: CANVAS_HEIGHT },
+			});
+			const details: string[] = [];
+			let ok = true;
+			for (const p of progressSamples) {
+				const localTime = p * duration;
+				const scaleX = resolveAnimationPathValueAtTime({
+					animations: headAnimations,
+					propertyPath: "transform.scaleX",
+					localTime,
+					fallbackValue: 1,
+				});
+				const opacity = resolveAnimationPathValueAtTime({
+					animations: headAnimations,
+					propertyPath: "opacity",
+					localTime,
+					fallbackValue: 1,
+				});
+				const root = new RootNode({ duration });
+				root.children.push(
+					imageNode({ fixture: base }),
+					imageNode({ fixture: incoming, scaleX, scaleY: scaleX, opacity }),
+				);
+				const pixels = await renderNode(root);
+				const { rgb } = dominantAt(pixels, 0.5, 0.5);
+				const expectedBlue = p * 255;
+				const deviation = Math.abs(rgb[2] - expectedBlue);
+				if (deviation > 60) ok = false;
+				details.push(
+					`p=${p} scale=${scaleX.toFixed(3)} alpha=${opacity.toFixed(2)} centre=rgb(${rgb.join(",")}) expectedBlue~${Math.round(expectedBlue)}`,
+				);
+			}
+			const result = {
+				name: "transition-zoom-preview-blend",
+				ok,
+				detail: details.join(" | "),
+			};
+			results.push(result);
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
 	}
 
 	// --- output ------------------------------------------------------------

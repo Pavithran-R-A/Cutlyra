@@ -6,10 +6,35 @@ import { CcSlider } from "../slider";
 import { SegmentedControl } from "../segmented-control";
 import { formatClipDuration } from "./timeline-clip";
 
-const TRANSITION_KINDS = [
+import {
+	normalizeTransitionDirection,
+	normalizeTransitionKind,
+	TRANSITION_DEFINITIONS,
+	TRANSITION_DIRECTIONS,
+	type TransitionDirection,
+} from "@cutlyra/editor-core/timeline";
+
+/**
+ * Only kinds BOTH renderers implement are offered (Phase 3). Each entry comes
+ * from the shared definition layer, so a kind cannot appear here before the
+ * preview and the Android exporter agree on it. Wipe/dip/blur are absent on
+ * purpose: they need an animated mask/wipe pass and a full-frame colour
+ * layer respectively — offering them would mean a preview-only control.
+ */
+const TRANSITION_KINDS: Array<{ id: string; label: string }> = [
 	{ id: "none", label: "None" },
-	{ id: "fade", label: "Fade" },
+	...Object.values(TRANSITION_DEFINITIONS).map((definition) => ({
+		id: definition.kind,
+		label: definition.label,
+	})),
 ];
+
+const DIRECTION_LABELS: Record<TransitionDirection, string> = {
+	left: "Left",
+	right: "Right",
+	up: "Up",
+	down: "Down",
+};
 
 /**
  * The transition picker sheet (plan M7 item 6). Duration slider is bounded
@@ -32,6 +57,7 @@ const TRANSITION_KINDS = [
 export function TransitionSheet({
 	afterClipId,
 	initialKind,
+	initialDirection,
 	initialDurationSec,
 	maxDurationSec,
 	onConfirm,
@@ -39,11 +65,13 @@ export function TransitionSheet({
 }: {
 	afterClipId: string;
 	initialKind?: string;
+	initialDirection?: string;
 	initialDurationSec: number;
 	maxDurationSec: number;
 	onConfirm: (params: {
 		afterClipId: string;
 		kind: string;
+		direction: TransitionDirection;
 		durationSec: number;
 		applyToAll: boolean;
 	}) => void;
@@ -54,6 +82,15 @@ export function TransitionSheet({
 			? initialKind
 			: TRANSITION_KINDS[0].id,
 	);
+	const [direction, setDirection] = useState<TransitionDirection>(() =>
+		normalizeTransitionDirection({
+			kind: normalizeTransitionKind(initialKind),
+			raw: initialDirection,
+		}),
+	);
+	const supportsDirection =
+		kind !== "none" &&
+		TRANSITION_DEFINITIONS[normalizeTransitionKind(kind)].supportsDirection;
 	const [durationSec, setDurationSec] = useState(
 		Math.min(initialDurationSec, maxDurationSec),
 	);
@@ -71,7 +108,7 @@ export function TransitionSheet({
 						className="cc-sheet-header__icon-btn"
 						aria-label="Confirm transition"
 						onClick={() =>
-							onConfirm({ afterClipId, kind, durationSec, applyToAll })
+							onConfirm({ afterClipId, kind, direction, durationSec, applyToAll })
 						}
 					>
 						<Check size={22} strokeWidth={CC_ICON_STROKE} />
@@ -86,6 +123,23 @@ export function TransitionSheet({
 					aria-label="Transition style"
 				/>
 			</div>
+			{supportsDirection && (
+				<div style={{ display: "flex", gap: "var(--cc-space-3)", padding: "var(--cc-space-3) var(--cc-space-4) 0" }}>
+					<SegmentedControl
+						segments={TRANSITION_DIRECTIONS.map((id) => ({
+							id,
+							label: DIRECTION_LABELS[id],
+						}))}
+						activeId={direction}
+						onSelect={(id) =>
+							setDirection(
+								normalizeTransitionDirection({ kind: normalizeTransitionKind(kind), raw: id }),
+							)
+						}
+						aria-label="Transition direction"
+					/>
+				</div>
+			)}
 			<div style={{ padding: "var(--cc-space-4)", display: "flex", flexDirection: "column", gap: "var(--cc-space-2)" }}>
 				<span style={{ fontSize: "var(--cc-text-label)", color: "var(--cc-text-secondary)" }}>
 					Duration — {formatClipDuration({ durationSec })}

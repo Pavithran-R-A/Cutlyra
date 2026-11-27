@@ -97,7 +97,8 @@ Edl
 │                 speed{num,den}, maintainPitch, volumeDb, muted, hidden,
 │                 transform, opacity, blendMode, effects[], masks[],
 │                 animations[], params }
-├─ transitions[] main-track only; always [] in v1 (see §8)
+├─ transitions[] main-track only; { transitionId, afterClipId, kind,
+│                 direction?, durationTicks, incomingAnimations[] } (see §8)
 ├─ overlays[]   DERIVED index of the non-media visual clips (see §7)
 └─ output       { container, videoCodec, audioCodec, bitrate,
                   fps{num,den}, resolution, includeAudio }
@@ -246,13 +247,66 @@ find yourself wanting to change a clip, change it in `tracks[]`.
 
 ## 8. What v1 deliberately does not do
 
-**Transitions: the slot is frozen, the producer is empty.** `transitions[]` is
-always `[]` today, because the inherited engine has no transition model —
-there is no `transitions` field anywhere in `timeline/types.ts`. The field is
-frozen into v1 anyway so that adding transitions later is a producer change
-rather than a schema break that invalidates both mappers. **Implement it now,
-expect `[]` until the engine grows one.** `validateEdl` already enforces the
-CapCut rule that transitions are main-track only.
+**Transitions are produced (Phase 3).** `transitions[]` carries one entry per
+junction where a transition is authored; `validateEdl` rejects a transition on
+a non-main-track clip and any unsupported `kind` or `direction`.
+
+Kinds are declared once in `packages/editor-core/src/timeline/transition-definitions.ts`
+(`TRANSITION_DEFINITIONS`): `fade` (cross-fade, unchanged since v1 and still
+emitted as `cross_fade` for byte-identical golden fixtures), `slide`, `push`
+and `zoom`. Each definition declares which animation channels it uses, its
+layer order (`incoming-above` for slide/push, `incoming-below` for fade/zoom),
+whether it has a `direction`, and its audio policy.
+
+Dropped, deliberately, because neither renderer can implement them without
+diverging: **wipe** (needs an animated mask pass in the preview compositor and
+the Media3 GL path), **dip to black/white** (needs a full-frame colour layer on
+both sides plus a non-additive divide), and **blur** (needs an animated GL blur
+radius). No enum value, EDL kind or UI control exists for them.
+
+`direction` (`left` | `right` | `up` | `down`) is emitted only by directional
+kinds, so existing descriptors and the golden fixture stay byte-identical.
+
+**Head anchoring.** A transition window's incoming channels are anchored at
+`0` = the WINDOW START, but the base sequence's copy of that clip starts at the
+window END. Writing them onto the clip would therefore replay the transition
+after the seam. `EdlTransition.incomingAnimations` carries them instead, and
+`EdlToComposition` applies them to a transition HEAD clip registered over the
+window. Channels for the outgoing clip stay on the clip itself (its last
+`duration` ticks are the window). For alpha kinds (`fade`, `zoom`) the head's
+own `opacity` channel is dropped from the EDL because the compositor's base
+alpha ramp already supplies it — a second ramp would make the blend
+`a(1-t) + b·t²`. The preview never needs this split: its scene tracks carry one
+copy of each element, so `applyTransitionsToSceneTracks` applies the derived
+channels directly to both neighbours.
+
+**Export wiring: primary sequence and paint order.** Media3 paints the FIRST
+registered input on top and takes the export's clock and length from the
+lowest-indexed video sequence (the "primary"). Alpha kinds are therefore cheap:
+the head is registered after the base (beneath it) and the base's own alpha
+ramps down. Motion kinds must instead paint the incoming head ABOVE the opaque
+base, which makes the head the primary — so `EdlToComposition` pads that head's
+sequence with gaps out to the project end (without it a 1.5 s timeline exported
+as 1.0 s, the head's own length) and `CrossfadeCompositorSettings` keeps the
+whole motion head at `alphaScale = 0` outside its window, because those gaps
+composite as opaque black (`androidx/media#3505`). `EdlTransition.direction` is
+carried through the parser for the exporter's cross-check; the motion itself
+rides on `incomingAnimations`.
+
+One media3 item-boundary frame at the last frame of a head sequence composites
+from the base only; the decoded gates sample 0.6 s / 0.75 s / 0.92 s inside the
+0.5 s window (and outside it on both sides) rather than that single frame. The
+same one-frame artifact class is documented for cross-fade sequence starts.
+
+**Audio policy (declared per kind, implemented in export).** Every kind is a
+`cut`: media3 1.11.0 offers no per-input gain ramp inside a transition, so no
+kind claims a cross-fade it cannot deliver. `fade` fades the IMAGE only; the
+audio cut at the seam is unchanged from v1.
+
+Decoded evidence: `ExportMotionTransitionInstrumentedTest` (slide/push/zoom),
+`ExportCrossfadeLuminanceInstrumentedTest` + `ExportCrossfadeBlendInstrumentedTest`
+(cross-fade), and the preview parity harness's `transition-*` cases at the same
+window progress values.
 
 **Masks are v1 for native export** (superseding the old "post-v1" note).
 `clip.masks[]` carries the engine's own parameters, `validateEdl` validates them

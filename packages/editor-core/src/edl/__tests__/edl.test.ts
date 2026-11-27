@@ -260,6 +260,71 @@ describe("buildEdl", () => {
 		]);
 	});
 
+	test("slide carries its direction and the incoming head's channels, never on the clip", () => {
+		const scene = {
+			...buildFixtureScene(),
+			transitions: [
+				{
+					id: "tr-slide",
+					afterElementId: "clip-a",
+					kind: "slide",
+					direction: "up",
+					duration: 24_000 as never,
+				},
+			],
+		};
+		const edl = buildEdl({
+			project: buildFixtureProject(),
+			scene,
+			mediaAssets: buildFixtureMediaAssets(),
+			output: FIXTURE_OUTPUT,
+			resolveAsset: fixtureAssetResolver,
+		});
+		expect(edl.transitions).toHaveLength(1);
+		const transition = edl.transitions[0];
+		expect(transition).toMatchObject({ kind: "slide", direction: "up" });
+		const channels = transition.incomingAnimations ?? [];
+		expect(channels.map((c) => c.propertyPath)).toEqual([
+			"transform.positionX",
+			"transform.positionY",
+		]);
+		const y = channels[1];
+		expect(y.keyframes.map((k) => k.timeTicks)).toEqual([0, 24_000]);
+		// "up" = the clip enters from BELOW the frame.
+		expect(y.keyframes.map((k) => k.value)).toEqual([
+			buildFixtureProject().settings.canvasSize.height,
+			0,
+		]);
+		// The base-sequence copies of the MAIN track stay clean: the head is the
+		// animated one (its clock starts at the window; the base copy starts at
+		// the window end). Overlay clips keep their own authored keyframes.
+		for (const track of edl.tracks.filter((t) => t.kind === "main")) {
+			for (const clip of track.clips) expect(clip.animations).toEqual([]);
+		}
+	});
+
+	test("zoom emits its scale ramp but not the opacity the compositor already ramps", () => {
+		const scene = {
+			...buildFixtureScene(),
+			transitions: [
+				{ id: "tr-zoom", afterElementId: "clip-a", kind: "zoom", duration: 24_000 as never },
+			],
+		};
+		const edl = buildEdl({
+			project: buildFixtureProject(),
+			scene,
+			mediaAssets: buildFixtureMediaAssets(),
+			output: FIXTURE_OUTPUT,
+			resolveAsset: fixtureAssetResolver,
+		});
+		const channels = edl.transitions[0].incomingAnimations ?? [];
+		expect(channels.map((c) => c.propertyPath)).toEqual([
+			"transform.scaleX",
+			"transform.scaleY",
+		]);
+		expect(channels[0].keyframes.map((k) => k.value)).toEqual([1.25, 1]);
+	});
+
 	test("is deterministic: two builds of the same graph are byte-identical", () => {
 		const a = serializeEdl({ edl: buildFixtureEdl() });
 		const b = serializeEdl({ edl: buildFixtureEdl() });

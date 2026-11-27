@@ -789,6 +789,22 @@
 				"kind": {
 					"type": "string"
 				},
+				"direction": {
+					"description": "Slide/push travel direction. Omitted by non-directional kinds (cross-fade, zoom), so their descriptors are unchanged.",
+					"enum": [
+						"left",
+						"right",
+						"up",
+						"down"
+					]
+				},
+				"incomingAnimations": {
+					"description": "Channels for the incoming clip's transition HEAD, anchored at 0 = the window start. Beta-quality consumers may ignore them and render a cross-fade.",
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/animationChannel"
+					}
+				},
 				"durationTicks": {
 					"type": "integer",
 					"exclusiveMinimum": 0

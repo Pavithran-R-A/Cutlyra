@@ -72,6 +72,11 @@ import {
 } from "@cutlyra/editor-core/wasm";
 import { registerDefaultGraphics } from "@cutlyra/editor-core/graphics";
 import { buildElementFromMedia } from "@cutlyra/editor-core/timeline";
+import {
+	normalizeTransitionDirection,
+	normalizeTransitionKind,
+	TRANSITION_DEFINITIONS,
+} from "@cutlyra/editor-core/timeline";
 import { rewriteCaptionWords } from "./caption-text";
 import { DEFAULT_TEXT_SHADOW } from "@cutlyra/editor-core/text/typography";
 import { buildAudioFadeParamsPatch } from "@cutlyra/editor-core/timeline/audio-fades";
@@ -873,12 +878,15 @@ export function setMainTrackTransition({
 	editor,
 	afterElementId,
 	kind,
+	direction,
 	durationSec,
 	applyToAll,
 }: {
 	editor: EditorCore;
 	afterElementId: string;
 	kind: string;
+	/** Slide/push travel direction; ignored by other kinds. */
+	direction?: string;
 	durationSec: number;
 	applyToAll: boolean;
 }): void {
@@ -898,6 +906,14 @@ export function setMainTrackTransition({
 	const durationTicks = mediaTimeFromSeconds({
 		seconds: Math.max(1 / TICKS_PER_SECOND, durationSec),
 	});
+	// Persist the CANONICAL kind + direction from the shared definition layer,
+	// so an unknown/renamed kind can never be stored as an enum value no
+	// renderer implements ("no dead enum values").
+	const normalizedKind = normalizeTransitionKind(kind);
+	const normalizedDirection = normalizeTransitionDirection({
+		kind: normalizedKind,
+		raw: direction,
+	});
 	for (const id of targets) {
 		if (kind === "none") {
 			byAfterId.delete(id);
@@ -905,7 +921,10 @@ export function setMainTrackTransition({
 			byAfterId.set(id, {
 				id: byAfterId.get(id)?.id ?? `transition-${id}`,
 				afterElementId: id,
-				kind,
+				kind: normalizedKind,
+				...(TRANSITION_DEFINITIONS[normalizedKind].supportsDirection
+					? { direction: normalizedDirection }
+					: {}),
 				duration: durationTicks,
 			});
 		}

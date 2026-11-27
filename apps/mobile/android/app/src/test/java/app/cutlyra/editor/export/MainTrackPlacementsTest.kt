@@ -150,6 +150,29 @@ class MainTrackPlacementsTest {
     }
 
     @Test
+    fun motion_kinds_take_part_like_a_crossfade_and_keep_their_kind() {
+        for (kind in listOf("slide", "push", "zoom")) {
+            val result = MainTrackPlacements.build(
+                listOf(clipA, clipB),
+                listOf(
+                    EdlTransition(
+                        transitionId = "tr-$kind",
+                        afterClipId = "clip-a",
+                        kind = kind,
+                        durationTicks = t(0.2),
+                    ),
+                ),
+            )
+            assertEquals(1, result.windows.size)
+            assertEquals(kind, result.windows.single().kind)
+            assertEquals(t(0.2), result.windows.single().durationTicks)
+            // The base still front-trims the incoming clip: its head is drawn
+            // by the transition sequence, exactly as for a cross-fade.
+            assertEquals(t(0.2), result.placedClips[1].leadingOverlapTicks)
+        }
+    }
+
+    @Test
     fun remap_shifts_nominal_starts_by_the_cumulative_overlap() {
         val clipC = clip("clip-c", 2.0 + 2.0 / 1.5, 2.0)
         val result = MainTrackPlacements.build(

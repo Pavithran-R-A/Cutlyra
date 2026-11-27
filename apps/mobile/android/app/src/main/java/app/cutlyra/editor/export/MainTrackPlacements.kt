@@ -1,5 +1,6 @@
 package app.cutlyra.editor.export
 
+import app.cutlyra.editor.edl.EdlAnimationChannel
 import app.cutlyra.editor.edl.EdlClip
 import app.cutlyra.editor.edl.EdlTransition
 
@@ -67,6 +68,10 @@ data class MainTrackPlacements(
         val incomingClip: EdlClip,
         val startTicks: Long,
         val durationTicks: Long,
+        /** Authored kind token; decides head stacking + whether alpha ramps. */
+        val kind: String = "cross_fade",
+        /** Channels the head plays, anchored at 0 = this window's start. */
+        val incomingAnimations: List<EdlAnimationChannel> = emptyList(),
     )
 
     data class RemapBreakpoint(val nominalStartTicks: Long, val shiftTicks: Long)
@@ -95,16 +100,18 @@ data class MainTrackPlacements(
                 return MainTrackPlacements(emptyList(), emptyList(), emptyList())
             }
 
-            // Cross-fade transitions by the index of the clip they FOLLOW.
-            // Unknown targets and transitions after the last clip are dormant
-            // (dropped, no throw) — same rule as the TS side.
+            // Transitions by the index of the clip they FOLLOW. Every kind the
+            // compositor implements takes part (crossfade/slide/push/zoom — the
+            // motion itself rides the clips' derived animation channels).
+            // Unknown targets, transitions after the last clip and unknown
+            // kinds are dormant (dropped, no throw) — same rule as the TS side.
             val crossfadeAfterIndex = HashMap<Int, EdlTransition>()
             val sortedIds = sorted.map { it.clipId }.toSet()
             for (transition in transitions) {
-                if (TransitionAlphaMath.classify(transition.kind) !=
-                    TransitionAlphaMath.TransitionKind.CROSSFADE
+                if (TransitionAlphaMath.classify(transition.kind) ==
+                    TransitionAlphaMath.TransitionKind.UNSUPPORTED_HARD_CUT
                 ) {
-                    continue // v1: other kinds degrade to a hard cut.
+                    continue // unknown kind: hard cut, never a half-render.
                 }
                 val index = sorted.indexOfFirst { it.clipId == transition.afterClipId }
                 if (index < 0 || !sortedIds.contains(transition.afterClipId)) continue
@@ -174,6 +181,8 @@ data class MainTrackPlacements(
                             incomingClip = sorted[index + 1],
                             startTicks = renderedEnd - windowDuration,
                             durationTicks = windowDuration,
+                            kind = transitionAfter.kind,
+                            incomingAnimations = transitionAfter.incomingAnimations,
                         ),
                     )
                 }
