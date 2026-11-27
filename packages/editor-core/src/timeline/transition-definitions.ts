@@ -31,7 +31,7 @@
  * instead of an accident of the compositor.
  */
 import type { ElementAnimations, ScalarAnimationKey, ScalarChannel } from "@/animation/types";
-import type { MediaTime } from "@/wasm";
+import { roundMediaTime } from "@/wasm";
 import type { TimelineElement } from "./types";
 
 export const SUPPORTED_TRANSITION_KINDS = ["fade", "slide", "push", "zoom"] as const;
@@ -118,9 +118,8 @@ const LEGACY_ALIASES: Readonly<Record<string, TransitionKind>> = {
 export function normalizeTransitionKind(raw: unknown): TransitionKind {
 	if (typeof raw !== "string") return "fade";
 	const key = raw.trim().toLowerCase();
-	if ((SUPPORTED_TRANSITION_KINDS as readonly string[]).includes(key)) {
-		return key as TransitionKind;
-	}
+	const supported = SUPPORTED_TRANSITION_KINDS.find((kind) => kind === key);
+	if (supported) return supported;
 	return LEGACY_ALIASES[key] ?? "fade";
 }
 
@@ -143,9 +142,8 @@ export function normalizeTransitionDirection({
 	if (!definition.supportsDirection) return definition.defaultDirection;
 	if (typeof raw === "string") {
 		const key = raw.trim().toLowerCase();
-		if ((TRANSITION_DIRECTIONS as readonly string[]).includes(key)) {
-			return key as TransitionDirection;
-		}
+		const match = TRANSITION_DIRECTIONS.find((candidate) => candidate === key);
+		if (match) return match;
 	}
 	return definition.defaultDirection;
 }
@@ -158,6 +156,9 @@ export interface TransitionCanvasSize {
 /** A window as produced by `computeMainTrackPlacements` (both renderers agree). */
 export interface TransitionWindowLike {
 	kind: string;
+	/** Normalised `TransitionDirection` on a real window; `unknown` so both
+	 *  renderers can hand over the raw persisted value and get it normalised. */
+	direction?: unknown;
 	outgoingElementId: string;
 	incomingElementId: string;
 	durationTicks: number;
@@ -184,16 +185,16 @@ interface BaseVisuals {
 }
 
 function readStaticVisuals(element: TimelineElement): BaseVisuals {
-	const params = (element as { params?: Record<string, unknown> }).params ?? {};
-	const read = (key: string, fallback: number): number => {
+	const params: Record<string, unknown> = element.params ?? {};
+	const read = ({ key, fallback }: { key: string; fallback: number }): number => {
 		const value = params[key];
 		return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 	};
 	return {
-		positionX: read("transform.positionX", 0),
-		positionY: read("transform.positionY", 0),
-		scaleX: read("transform.scaleX", 1),
-		scaleY: read("transform.scaleY", 1),
+		positionX: read({ key: "transform.positionX", fallback: 0 }),
+		positionY: read({ key: "transform.positionY", fallback: 0 }),
+		scaleX: read({ key: "transform.scaleX", fallback: 1 }),
+		scaleY: read({ key: "transform.scaleY", fallback: 1 }),
 	};
 }
 
@@ -283,7 +284,7 @@ function key({
 }): ScalarAnimationKey {
 	return {
 		id,
-		time: time as MediaTime,
+		time: roundMediaTime({ time }),
 		value,
 		segmentToNext: "linear",
 		tangentMode: "auto",
@@ -488,6 +489,8 @@ export function deriveTransitionAnimations({
 
 /** Windows carry their own normalised direction (`TransitionWindow` field). */
 function incomingDirection(window: TransitionWindowLike): TransitionDirection {
-	const raw = (window as { direction?: unknown }).direction;
-	return normalizeTransitionDirection({ kind: normalizeTransitionKind(window.kind), raw });
+	return normalizeTransitionDirection({
+		kind: normalizeTransitionKind(window.kind),
+		raw: window.direction,
+	});
 }

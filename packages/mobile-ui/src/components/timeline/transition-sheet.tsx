@@ -12,7 +12,6 @@ import {
 	TRANSITION_DEFINITIONS,
 	TRANSITION_DIRECTIONS,
 	type TransitionDirection,
-	type TransitionKind,
 } from "@cutlyra/editor-core/timeline";
 
 /**
@@ -91,7 +90,7 @@ export function TransitionSheet({
 	);
 	const supportsDirection =
 		kind !== "none" &&
-		TRANSITION_DEFINITIONS[kind as TransitionKind]?.supportsDirection === true;
+		TRANSITION_DEFINITIONS[normalizeTransitionKind(kind)].supportsDirection;
 	const [durationSec, setDurationSec] = useState(
 		Math.min(initialDurationSec, maxDurationSec),
 	);
@@ -132,7 +131,11 @@ export function TransitionSheet({
 							label: DIRECTION_LABELS[id],
 						}))}
 						activeId={direction}
-						onSelect={(id) => setDirection(id as TransitionDirection)}
+						onSelect={(id) =>
+							setDirection(
+								normalizeTransitionDirection({ kind: normalizeTransitionKind(kind), raw: id }),
+							)
+						}
 						aria-label="Transition direction"
 					/>
 				</div>

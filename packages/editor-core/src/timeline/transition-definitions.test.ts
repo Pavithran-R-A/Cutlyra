@@ -40,7 +40,15 @@ function element({
 
 const CANVAS = { width: 1080, height: 1920 };
 
-function window(kind: string, direction?: string, durationSec = 0.6): TransitionWindowLike {
+function window({
+	kind,
+	direction,
+	durationSec = 0.6,
+}: {
+	kind: string;
+	direction?: string;
+	durationSec?: number;
+}): TransitionWindowLike {
 	return {
 		kind,
 		...(direction ? { direction } : {}),
@@ -51,23 +59,27 @@ function window(kind: string, direction?: string, durationSec = 0.6): Transition
 }
 
 /** Scalar keyframes of one derived channel, or a hard failure. */
-function scalarKeys(
-	derived: ReturnType<typeof deriveTransitionAnimations>,
-	id: string,
-	path: string,
-): Array<{ time: number; value: number }> {
+function scalarKeys({
+	derived,
+	id,
+	path,
+}: {
+	derived: ReturnType<typeof deriveTransitionAnimations>;
+	id: string;
+	path: string;
+}): Array<{ time: number; value: number }> {
 	const channel = derived.get(id)?.[path];
 	if (!channel || !("keys" in channel)) throw new Error(`no scalar channel ${id}.${path}`);
 	const keys = channel.keys as Array<{ time: number; value: number }>;
 	return keys;
 }
 
-function channelValues(
-	derived: ReturnType<typeof deriveTransitionAnimations>,
-	id: string,
-	path: string,
-): number[] {
-	return scalarKeys(derived, id, path).map((key) => key.value);
+function channelValues(args: {
+	derived: ReturnType<typeof deriveTransitionAnimations>;
+	id: string;
+	path: string;
+}): number[] {
+	return scalarKeys(args).map((key) => key.value);
 }
 
 describe("normalizeTransitionKind", () => {
@@ -124,47 +136,47 @@ describe("transition definitions", () => {
 describe("deriveTransitionAnimations", () => {
 	it("keeps the cross-fade exactly as before: incoming opacity 0 -> 1 over the window", () => {
 		const derived = deriveTransitionAnimations({
-			windows: [window("fade")],
+			windows: [window({ kind: "fade" })],
 			elements: [element({ id: "out" }), element({ id: "in" })],
 			canvasSize: CANVAS,
 		});
-		expect(channelValues(derived, "in", "opacity")).toEqual([0, 1]);
+		expect(channelValues({ derived, id: "in", path: "opacity" })).toEqual([0, 1]);
 		expect(derived.get("out")).toBeUndefined();
 	});
 
 	it("slide brings the incoming clip in from the direction's opposite side", () => {
 		const derived = deriveTransitionAnimations({
-			windows: [window("slide", "left")],
+			windows: [window({ kind: "slide", direction: "left" })],
 			elements: [element({ id: "out" }), element({ id: "in" })],
 			canvasSize: CANVAS,
 		});
-		expect(channelValues(derived, "in", "transform.positionX")).toEqual([CANVAS.width, 0]);
+		expect(channelValues({ derived, id: "in", path: "transform.positionX" })).toEqual([CANVAS.width, 0]);
 		expect(derived.get("in")?.["opacity"]).toBeUndefined();
 		expect(derived.get("out")).toBeUndefined();
 	});
 
 	it("slide honours vertical directions", () => {
 		const derived = deriveTransitionAnimations({
-			windows: [window("slide", "down")],
+			windows: [window({ kind: "slide", direction: "down" })],
 			elements: [element({ id: "out" }), element({ id: "in" })],
 			canvasSize: CANVAS,
 		});
-		expect(channelValues(derived, "in", "transform.positionY")).toEqual([-CANVAS.height, 0]);
+		expect(channelValues({ derived, id: "in", path: "transform.positionY" })).toEqual([-CANVAS.height, 0]);
 	});
 
 	it("push moves BOTH clips in the same direction", () => {
 		const derived = deriveTransitionAnimations({
-			windows: [window("push", "right")],
+			windows: [window({ kind: "push", direction: "right" })],
 			elements: [
 				element({ id: "out", durationSec: 3 }),
 				element({ id: "in", durationSec: 2 }),
 			],
 			canvasSize: CANVAS,
 		});
-		expect(channelValues(derived, "in", "transform.positionX")).toEqual([-CANVAS.width, 0]);
-		expect(channelValues(derived, "out", "transform.positionX")).toEqual([0, CANVAS.width]);
+		expect(channelValues({ derived, id: "in", path: "transform.positionX" })).toEqual([-CANVAS.width, 0]);
+		expect(channelValues({ derived, id: "out", path: "transform.positionX" })).toEqual([0, CANVAS.width]);
 		// Outgoing ramps over its own tail, not from its start.
-		expect(scalarKeys(derived, "out", "transform.positionX").map((key) => key.time)).toEqual([
+		expect(scalarKeys({ derived, id: "out", path: "transform.positionX" }).map((key) => key.time)).toEqual([
 			t(3) - t(0.6),
 			t(3),
 		]);
@@ -172,25 +184,25 @@ describe("deriveTransitionAnimations", () => {
 
 	it("zoom scales the incoming clip down into place while it fades in", () => {
 		const derived = deriveTransitionAnimations({
-			windows: [window("zoom")],
+			windows: [window({ kind: "zoom" })],
 			elements: [element({ id: "out" }), element({ id: "in" })],
 			canvasSize: CANVAS,
 		});
-		expect(channelValues(derived, "in", "opacity")).toEqual([0, 1]);
-		expect(channelValues(derived, "in", "transform.scaleX")).toEqual([1.25, 1]);
-		expect(channelValues(derived, "in", "transform.scaleY")).toEqual([1.25, 1]);
+		expect(channelValues({ derived, id: "in", path: "opacity" })).toEqual([0, 1]);
+		expect(channelValues({ derived, id: "in", path: "transform.scaleX" })).toEqual([1.25, 1]);
+		expect(channelValues({ derived, id: "in", path: "transform.scaleY" })).toEqual([1.25, 1]);
 	});
 
 	it("offsets ride on top of authored static transforms", () => {
 		const derived = deriveTransitionAnimations({
-			windows: [window("slide", "left")],
+			windows: [window({ kind: "slide", direction: "left" })],
 			elements: [
 				element({ id: "out" }),
 				element({ id: "in", params: { "transform.positionX": 40 } }),
 			],
 			canvasSize: CANVAS,
 		});
-		expect(channelValues(derived, "in", "transform.positionX")).toEqual([
+		expect(channelValues({ derived, id: "in", path: "transform.positionX" })).toEqual([
 			CANVAS.width + 40,
 			40,
 		]);
@@ -204,7 +216,7 @@ describe("deriveTransitionAnimations", () => {
 			extrapolation: { before: "hold", after: "hold" },
 		} as NonNullable<TimelineElement["animations"]>[string];
 		const derived = deriveTransitionAnimations({
-			windows: [window("fade")],
+			windows: [window({ kind: "fade" })],
 			elements: [element({ id: "out" }), element({ id: "in", animations: { opacity: userChannel } })],
 			canvasSize: CANVAS,
 		});
@@ -212,7 +224,7 @@ describe("deriveTransitionAnimations", () => {
 	});
 
 	it("needs zero-length windows to be skipped and missing neighbours to be tolerated", () => {
-		const zero = window("fade");
+		const zero = window({ kind: "fade" });
 		zero.durationTicks = t(0);
 		expect(
 			deriveTransitionAnimations({
@@ -223,7 +235,7 @@ describe("deriveTransitionAnimations", () => {
 		).toBe(0);
 		expect(
 			deriveTransitionAnimations({
-				windows: [window("slide")],
+				windows: [window({ kind: "slide" })],
 				elements: [element({ id: "in" })],
 				canvasSize: CANVAS,
 			}).size,
