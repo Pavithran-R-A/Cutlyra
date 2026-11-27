@@ -19,6 +19,8 @@ Status legend: `TODO` · `IN PROGRESS` · `DONE` · `BLOCKED` (with reason)
 
 ## Verification log
 
+- Advanced transitions (Phase 3, 2026-11-27) — **merged PR #110 @ `197f74c75de4279313c3deafcb3024c7b51deb15` (squash)**. All 7 PR checks green (Android instrumentation API 35 + R8, Android debug APK, iOS unsigned, invariants ubuntu/macos/windows).
+
 - Advanced transitions (Phase 3, 2026-11-27):
   - `bun test packages/editor-core/src/edl`: **63 pass / 0 fail** (kind
     canonicality, `direction`, `incomingAnimations`).
