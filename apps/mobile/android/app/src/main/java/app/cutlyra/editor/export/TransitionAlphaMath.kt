@@ -47,7 +47,14 @@ object TransitionAlphaMath {
      * sequence is actually producing frames, which by construction is
      * exactly that window (see the gap+trim math in
      * `EdlToComposition.buildTransitionOverlaySequence`). */
-    data class Window(val startUs: Long, val endUs: Long) {
+    data class Window(
+        val startUs: Long,
+        val endUs: Long,
+        /** Canonical EDL kind ("cross_fade" | "slide" | "push" | "zoom").
+         *  Alpha is driven only for `usesAlpha` kinds; motion rides the clips'
+         *  own derived animation channels (see the TS transition-definitions). */
+        val kind: String = "cross_fade",
+    ) {
         init {
             require(endUs > startUs) { "transition window must have endUs > startUs, got [$startUs, $endUs)" }
         }
@@ -69,17 +76,48 @@ object TransitionAlphaMath {
         return (elapsed / window.durationUs.toDouble()).toFloat()
     }
 
-    /** v1 scope (plan §2.3 rule 4): cross-fade is the only transition kind
-     * with a real alpha curve. Everything else maps to a hard cut (the base
-     * sequence's own natural behavior) rather than shipping a transition
-     * that only half-works — same "cut, don't ship inconsistent" posture as
-     * the golden-frame gate (plan §2.3 rule 3). Wipe/slide are listed in the
-     * plan's v1 effect surface but need a position-ramp, not an alpha-ramp;
-     * out of scope for this pass (see `not_done`). */
-    enum class TransitionKind { CROSSFADE, UNSUPPORTED_HARD_CUT }
+    /**
+     * The kinds BOTH renderers implement (Phase 3). Each one's motion is
+     * carried by the clips' derived animation channels, which the exporter
+     * already evaluates per frame; what this class decides is only how the
+     * compositor stacks the incoming head and whether the base's alpha dips:
+     *
+     *  - CROSSFADE / ZOOM: head painted BENEATH the base, base alpha 1 -> 0
+     *    (`usesAlpha`). Identical maths to the preview, where the incoming
+     *    clip ramps its own opacity over the outgoing one.
+     *  - SLIDE / PUSH: head painted ABOVE the base, both opaque; the motion
+     *    (translated clips) does the reveal. Preview paints the incoming clip
+     *    on top for exactly the same reason, so the two agree.
+     *
+     * Unknown kinds are dropped (hard cut) rather than half-rendered; the TS
+     * producer normalises every kind it emits, so this only guards
+     * hand-authored/legacy EDLs.
+     *
+     * Deliberately NOT here: "wipe" needs an animated mask/wipe fragment pass
+     * and "dip" needs a full-frame colour layer in both renderers. Shipping
+     * either as a look-alike would make the preview and the file disagree.
+     */
+    enum class TransitionKind { CROSSFADE, SLIDE, PUSH, ZOOM, UNSUPPORTED_HARD_CUT }
 
     fun classify(rawKind: String): TransitionKind = when (rawKind.lowercase()) {
-        "crossfade", "cross-fade", "cross_fade", "dissolve" -> TransitionKind.CROSSFADE
+        "fade", "crossfade", "cross-fade", "cross_fade", "dissolve" -> TransitionKind.CROSSFADE
+        "slide" -> TransitionKind.SLIDE
+        "push" -> TransitionKind.PUSH
+        "zoom" -> TransitionKind.ZOOM
         else -> TransitionKind.UNSUPPORTED_HARD_CUT
     }
+
+    /** Base-alpha ramp (crossfade / zoom); the others reveal by motion alone. */
+    fun usesAlpha(rawKind: String): Boolean =
+        when (classify(rawKind)) {
+            TransitionKind.CROSSFADE, TransitionKind.ZOOM -> true
+            else -> false
+        }
+
+    /** Slide/push paint the incoming head OVER the base, like the preview. */
+    fun paintsHeadAboveBase(rawKind: String): Boolean =
+        when (classify(rawKind)) {
+            TransitionKind.SLIDE, TransitionKind.PUSH -> true
+            else -> false
+        }
 }

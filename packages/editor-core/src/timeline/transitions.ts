@@ -32,7 +32,6 @@ import type { MediaTime } from "@/wasm";
 function ticks(value: number): MediaTime {
 	return value as MediaTime;
 }
-import type { ScalarChannel } from "@/animation/types";
 import type {
 	OverlayTrack,
 	SceneTracks,
@@ -40,6 +39,12 @@ import type {
 	TSceneTransition,
 	VideoTrack,
 } from "./types";
+import {
+	deriveTransitionAnimations,
+	normalizeTransitionDirection,
+	normalizeTransitionKind,
+	type TransitionCanvasSize,
+} from "./transition-definitions";
 
 export interface ClipPlacement {
 	elementId: string;
@@ -56,6 +61,8 @@ export interface ClipPlacement {
 
 export interface TransitionWindow {
 	kind: string;
+	/** Only meaningful for directional kinds (slide/push); "left" otherwise. */
+	direction: string;
 	outgoingElementId: string;
 	incomingElementId: string;
 	startTicks: MediaTime;
@@ -137,6 +144,10 @@ export function computeMainTrackPlacements({
 				placements[i - 1].trailingOverlapTicks = d;
 				windows.push({
 					kind: prevTransition.kind,
+					direction: normalizeTransitionDirection({
+						kind: normalizeTransitionKind(prevTransition.kind),
+						raw: prevTransition.direction,
+					}),
 					outgoingElementId: sorted[i - 1].id,
 					incomingElementId: element.id,
 					startTicks: insertStart,
@@ -201,27 +212,29 @@ export function remapNominalTick({
 	return ticks(Math.max(0, nominalTick - shift));
 }
 
-const FADE_CHANNEL_KEY = "opacity";
-
 /**
  * Derive render-ready tracks from the authored ones: main-track clips move
- * to their compressed placements (incoming clips gaining a fade-in opacity
- * channel over the overlap window), and every overlay/audio element's start
- * is remapped through the step function. Returns the input unchanged (same
- * reference) when there are no applicable transitions, so preview code can
- * cheaply detect "nothing derived".
+ * to their compressed placements and gain the transition's derived animation
+ * channels over the overlap window (see `transition-definitions.ts` — the
+ * SAME derivation `buildEdl` applies to the exported clips), and every
+ * overlay/audio element's start is remapped through the step function.
+ * Returns the input unchanged (same reference) when there are no applicable
+ * transitions, so preview code can cheaply detect "nothing derived".
  *
- * An element that already carries a user-authored opacity channel keeps it
- * untouched (documented v1 limitation: the transition fade does not compose
- * with hand-keyframed opacity — rare, and clobbering user keyframes would
- * be worse).
+ * An element that already carries a user-authored channel for a property the
+ * transition would drive keeps it untouched (documented limitation: the
+ * transition ramp does not compose with hand-keyframed values — rare, and
+ * clobbering user keyframes would be worse).
  */
 export function applyTransitionsToSceneTracks({
 	tracks,
 	transitions,
+	canvasSize,
 }: {
 	tracks: SceneTracks;
 	transitions: readonly TSceneTransition[] | undefined;
+	/** Canvas in pixels — slide/push offsets are canvas-sized. */
+	canvasSize?: TransitionCanvasSize;
 }): SceneTracks {
 	if (!transitions || transitions.length === 0) return tracks;
 
@@ -235,37 +248,13 @@ export function applyTransitionsToSceneTracks({
 	if (windows.length === 0) return tracks;
 
 	const placementById = new Map(placements.map((p) => [p.elementId, p]));
-	const fadeInById = new Map<string, MediaTime>();
-	for (const window of windows) {
-		fadeInById.set(window.incomingElementId, window.durationTicks);
-	}
+	const derived = deriveTransitionAnimations({ windows, elements: visible, canvasSize });
 
 	const mainElements = tracks.main.elements.map((element) => {
 		const placement = placementById.get(element.id);
-		if (!placement) return element;
-		const fadeIn = fadeInById.get(element.id);
-		let animations = element.animations;
-		if (fadeIn && fadeIn > 0 && !element.animations?.[FADE_CHANNEL_KEY]) {
-			const channel: ScalarChannel = {
-				keys: [
-					{
-						id: `${element.id}:transition-fade-in:0`,
-						time: ticks(0),
-						value: 0,
-						segmentToNext: "linear",
-						tangentMode: "auto",
-					},
-					{
-						id: `${element.id}:transition-fade-in:1`,
-						time: fadeIn,
-						value: 1,
-						segmentToNext: "linear",
-						tangentMode: "auto",
-					},
-				],
-				extrapolation: { before: "hold", after: "hold" },
-			};
-			animations = { ...element.animations, [FADE_CHANNEL_KEY]: channel };
+		const animations = derived.get(element.id) ?? element.animations;
+		if (!placement) {
+			return animations === element.animations ? element : { ...element, animations };
 		}
 		if (placement.insertStartTicks === element.startTime && animations === element.animations) {
 			return element;

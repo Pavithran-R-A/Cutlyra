@@ -14,10 +14,42 @@ Status legend: `TODO` · `IN PROGRESS` · `DONE` · `BLOCKED` (with reason)
 | 1.5 | Stale docs / issue checklists | DONE | Master plan Phase 11, native-export-blockers, feature-coverage-matrix corrected |
 | 2a | Masks: preview + EDL + Android export parity | DONE | `edl/validate.ts` real mask validation (no warning); `EdlMaskEffect`/`MaskMath`; decoded-MP4 `ExportMaskInstrumentedTest` 6/6; `MaskMathTest` 16/16; preview harness `mask-*` 6/6 (27/27 overall) |
 | 2b | Chroma key (key colour, eyedropper, similarity, softness, spill) | DONE | `effects/chroma-key.ts` + `chroma_key.wgsl` (preview), `ChromaKeyMath.kt` + `EdlChromaKeyEffect.kt` (export), `chroma-key-panel.tsx` with preview eyedropper; `ChromaKeyMathTest`, `ExportChromaKeyInstrumentedTest`, preview harness case |
-| 3 | Advanced transitions | TODO | |
+| 3 | Advanced transitions | DONE | `timeline/transition-definitions.ts` (one registry for kind/duration/direction/audio/layer order/channels); `fade`+`slide`+`push`+`zoom` in preview, EDL and Media3 export; wipe/dip/blur dropped with reasons (docs/EDL.md §8); `ExportMotionTransitionInstrumentedTest` 4/4 + cross-fade gates unchanged; preview harness `transition-*` 32/32 |
 | 4 | Real subtitle files + transcript editor | TODO | |
 
 ## Verification log
+
+- Advanced transitions (Phase 3, 2026-11-27):
+  - `bun test packages/editor-core/src/edl`: **63 pass / 0 fail** (kind
+    canonicality, `direction`, `incomingAnimations`).
+  - `bun test` (root): **1060 pass / 0 fail** (127 files), including
+    `transition-definitions.test.ts` (14) and a save -> JSON clone -> reopen
+    case that keeps kind/duration/direction.
+  - Payload rebuilt and synced before the device runs: `bun run build &&
+    bunx cap sync android` (the `incomingAnimations` / `slide` strings are in
+    `apps/mobile/www/assets/editor-shell-*.js`), so the APKs under test carry
+    the current code.
+  - On `emulator-5554`: `ExportMotionTransitionInstrumentedTest` **4/4** from
+    DECODED MP4 frames -- slide/left and slide/right advance the incoming
+    clip's coverage 0.20 -> 0.53 -> 0.86 with the correct anchor side, push
+    shows the same motion with the outgoing layer leaving, zoom blends
+    1.25 -> 1 behind the base's alpha ramp, and every output is 1.50 s.
+  - Cross-fade regression unchanged on the same build:
+    `ExportCrossfadeBlendInstrumentedTest` **2/2**,
+    `ExportCrossfadeLuminanceInstrumentedTest` 1/1,
+    `ExportCrossfadeGeometryProbeInstrumentedTest`, `ExportGoldenFrameInstrumentedTest`
+    and `ExportAudioFadeInstrumentedTest` green.
+  - Preview harness (`vite.preview-parity.config.ts`): **32/32**, the four new
+    `transition-*` cases built from `deriveTransitionIncomingChannels` at
+    p = 0.2 / 0.5 / 0.9 (slide coverage 0.20/0.50/0.90, zoom scale
+    1.200/1.125/1.025 with the matching alpha), i.e. the same frame positions
+    the decoded gate samples.
+  - Decisions: motion heads are registered ABOVE the base, which makes them
+    media3's primary sequence -- so they are padded with gaps to the project
+    end (otherwise a 1.5 s timeline exported as 1.0 s) and their compositor
+    alpha is 0 outside the window (gaps composite black). Audio policy is
+    `cut` for every kind: media3 1.11.0 has no per-input gain ramp.
+
 
 - `bun test` (root): **1062 pass / 0 fail** (127 files).
 - Masks (2026-11-27): `:app:testDebugUnitTest --tests MaskMathTest` green;

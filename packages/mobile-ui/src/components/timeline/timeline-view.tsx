@@ -45,6 +45,8 @@ export interface TimelineViewHandle {
 
 export interface Transition {
 	kind: string;
+	/** Slide/push travel direction; absent on non-directional kinds. */
+	direction?: string;
 	durationSec: number;
 }
 
@@ -115,6 +117,7 @@ export const TimelineView = forwardRef<TimelineViewHandle, {
 	onTransitionCommit?: (params: {
 		afterClipId: string;
 		kind: string;
+		direction: string;
 		durationSec: number;
 		applyToAll: boolean;
 	}) => void;
@@ -807,6 +810,7 @@ export const TimelineView = forwardRef<TimelineViewHandle, {
 				<TransitionSheet
 					afterClipId={openTransitionAfterClipId}
 					initialKind={transitions[openTransitionAfterClipId]?.kind}
+					initialDirection={transitions[openTransitionAfterClipId]?.direction}
 					initialDurationSec={
 						transitions[openTransitionAfterClipId]?.durationSec ??
 						DEFAULT_TRANSITION_DURATION_SEC
@@ -815,10 +819,10 @@ export const TimelineView = forwardRef<TimelineViewHandle, {
 						openTransitionNeighbors.before.durationSec,
 						openTransitionNeighbors.after.durationSec,
 					)}
-					onConfirm={({ afterClipId, kind, durationSec, applyToAll }) => {
+					onConfirm={({ afterClipId, kind, direction, durationSec, applyToAll }) => {
 						hapticTick();
 						if (onTransitionCommit) {
-							onTransitionCommit({ afterClipId, kind, durationSec, applyToAll });
+							onTransitionCommit({ afterClipId, kind, direction, durationSec, applyToAll });
 						} else {
 							setLocalTransitions((prev) => {
 								const applyOne = (
@@ -826,7 +830,7 @@ export const TimelineView = forwardRef<TimelineViewHandle, {
 									id: string,
 								) => {
 									if (kind === "none") delete next[id];
-									else next[id] = { kind, durationSec };
+									else next[id] = { kind, direction, durationSec };
 								};
 								const next = { ...prev };
 								if (!applyToAll || !mainTrack) {

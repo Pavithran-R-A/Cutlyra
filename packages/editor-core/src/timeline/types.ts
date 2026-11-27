@@ -39,10 +39,16 @@ export interface TSceneTransition {
 	id: string;
 	/** The main-track element this transition follows. */
 	afterElementId: string;
-	/** "fade" | "slide" | "zoom" — v1 renders every kind as a cross-fade in
-	 *  both preview and native export (the Swift compositor's documented
-	 *  fallback); the kind is carried so richer renders slot in later. */
+	/** One of `SUPPORTED_TRANSITION_KINDS` (timeline/transition-definitions.ts):
+	 *  "fade" | "slide" | "push" | "zoom". Every kind is ONE derivation of
+	 *  element-local animation channels consumed identically by the preview and
+	 *  the EDL/Android exporter; a kind this app does not render falls back to
+	 *  "fade" at both ends rather than rendering differently in each. */
 	kind: string;
+	/** Slide/push travel direction ("left" | "right" | "up" | "down");
+	 *  ignored by non-directional kinds. Optional so projects saved before
+	 *  Phase 3 load unchanged and normalise to "left". */
+	direction?: string;
 	/** Overlap duration in ticks (MediaTime). */
 	duration: MediaTime;
 }

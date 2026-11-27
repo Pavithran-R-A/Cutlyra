@@ -40,7 +40,13 @@ import app.cutlyra.editor.edl.EdlClip
  *                        registers these first (highest z first) so a PiP or
  *                        masked overlay is actually visible over the main
  *                        video, and its transparent pixels reveal the base.
- *   after the base     -> cross-fade heads, beneath the base.
+ *   after the base     -> alpha heads (crossfade/zoom), beneath the base.
+ *   before the base    -> motion heads (slide/push), above it; opaque inside
+ *                        their window, transparent outside it (their sequence
+ *                        is the PRIMARY, so it is also padded with gaps to the
+ *                        project end — see `aboveBaseWindowsByInputIndex`).
+ *                        `usesAlpha` gates each window, so a motion window
+ *                        never dips the base.
  */
 class CrossfadeCompositorSettings(
     /** Final input index of the opaque main-track sequence. Overlay visuals
@@ -53,6 +59,9 @@ class CrossfadeCompositorSettings(
      *  evaluated opacity; geometry rides the item's own animated
      *  `EdlTransformEffect`, so no scale/rotation is applied here. */
     private val animatedOverlayAlphaByInputIndex: Map<Int, AnimatedOverlayAlpha> = emptyMap(),
+    /** Motion heads (slide/push) painted ABOVE the base: opaque strictly
+     *  INSIDE their window and fully transparent outside it. */
+    private val aboveBaseWindowsByInputIndex: Map<Int, TransitionAlphaMath.Window> = emptyMap(),
     private val outputSize: Size,
 ) : VideoCompositorSettings {
 
@@ -77,12 +86,29 @@ class CrossfadeCompositorSettings(
             // clip and the head sequence has ended).
             var alphaScale = 1f
             for (window in windowsByInputIndex.values) {
+                // Only alpha kinds (crossfade/zoom) dip the base. Slide/push
+                // heads are painted ABOVE the base and reveal by motion, so
+                // their windows must not touch the base's alpha at all.
+                if (!TransitionAlphaMath.usesAlpha(window.kind)) continue
                 if (presentationTimeUs >= window.startUs && presentationTimeUs < window.endUs) {
                     val faded = 1f - TransitionAlphaMath.alphaAt(window, presentationTimeUs)
                     if (faded < alphaScale) alphaScale = faded
                 }
             }
             return StaticOverlaySettings.Builder().setAlphaScale(alphaScale).build()
+        }
+        // A motion head is the PRIMARY sequence (the export's clock comes
+        // from the lowest-indexed video sequence, and it must paint on top of
+        // the base) yet its sequence also carries the padding gaps that reach
+        // the project end — the leading one before the window and the trailing
+        // one after it. Gaps composite as opaque black, so the head input must
+        // be transparent outside its window or it would black out the footage
+        // either side of the transition.
+        aboveBaseWindowsByInputIndex[inputIndex]?.let { window ->
+            val inside = presentationTimeUs >= window.startUs && presentationTimeUs < window.endUs
+            return StaticOverlaySettings.Builder()
+                .setAlphaScale(if (inside) 1f else 0f)
+                .build()
         }
         // Secondary inputs paint BENEATH the primary: transition heads must be
         // fully opaque (the primary's ramp does the blending), PiP/animated

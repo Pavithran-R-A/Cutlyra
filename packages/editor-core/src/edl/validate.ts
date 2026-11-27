@@ -1,5 +1,10 @@
 import { rationalToNumber, scaleTicks } from "./rational";
 import {
+	normalizeTransitionKind,
+	TRANSITION_DEFINITIONS,
+	TRANSITION_DIRECTIONS,
+} from "@/timeline/transition-definitions";
+import {
 	EDL_VERSION,
 	type Edl,
 	type EdlClip,
@@ -600,6 +605,34 @@ export function validateEdl({
 			path: `transitions[${i}].durationTicks`,
 			value: transition.durationTicks,
 		});
+		// Kinds are the export contract: both renderers implement exactly these.
+		// An unknown token would be dropped by the compositor (hard cut) while
+		// the preview falls back to a fade, so the mismatch is reported here
+		// instead of shipping a cut where the editor showed a transition.
+		const canonicalKind =
+			normalizeTransitionKind(transition.kind) === "fade"
+				? "cross_fade"
+				: normalizeTransitionKind(transition.kind);
+		if (transition.kind !== canonicalKind) {
+			issues.warn({
+				path: `transitions[${i}].kind`,
+				message: `non-canonical kind ${JSON.stringify(transition.kind)} — renders as "${canonicalKind}" in both the preview and the exported file`,
+			});
+		}
+		const definition = TRANSITION_DEFINITIONS[normalizeTransitionKind(transition.kind)];
+		if (transition.direction !== undefined) {
+			if (!(TRANSITION_DIRECTIONS as readonly string[]).includes(transition.direction)) {
+				issues.error({
+					path: `transitions[${i}].direction`,
+					message: `expected one of ${TRANSITION_DIRECTIONS.join(", ")}, got ${JSON.stringify(transition.direction)}`,
+				});
+			} else if (!definition.supportsDirection) {
+				issues.warn({
+					path: `transitions[${i}].direction`,
+					message: `"${definition.kind}" is not directional; the direction is ignored by both renderers`,
+				});
+			}
+		}
 		const found = clipIndex.get(transition.afterClipId);
 		if (!found) {
 			issues.error({

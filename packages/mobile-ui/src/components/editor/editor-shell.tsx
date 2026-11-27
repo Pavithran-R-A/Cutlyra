@@ -279,10 +279,11 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 	// shape (ticks -> seconds). Memoized on the stable engine array.
 	const sceneTransitions = useSceneTransitions();
 	const transitionsVM = useMemo(() => {
-		const vm: Record<string, { kind: string; durationSec: number }> = {};
+		const vm: Record<string, { kind: string; direction?: string; durationSec: number }> = {};
 		for (const transition of sceneTransitions) {
 			vm[transition.afterElementId] = {
 				kind: transition.kind,
+				...(transition.direction ? { direction: transition.direction } : {}),
 				durationSec: transition.duration / TICKS_PER_SECOND,
 			};
 		}
@@ -700,11 +701,12 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 							) : null
 						}
 						transitions={transitionsVM}
-						onTransitionCommit={({ afterClipId, kind, durationSec, applyToAll }) =>
+						onTransitionCommit={({ afterClipId, kind, direction, durationSec, applyToAll }) =>
 							setMainTrackTransition({
 								editor,
 								afterElementId: afterClipId,
 								kind,
+								direction,
 								durationSec,
 								applyToAll,
 							})

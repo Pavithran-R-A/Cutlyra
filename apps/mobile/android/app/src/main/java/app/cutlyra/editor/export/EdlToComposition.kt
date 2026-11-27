@@ -17,6 +17,7 @@ import app.cutlyra.editor.media.gif.GifFrameTimeline
 import app.cutlyra.editor.media.gif.GifFrameTimelineArgs
 import androidx.media3.transformer.Effects
 import app.cutlyra.editor.edl.Edl
+import app.cutlyra.editor.edl.EdlAnimationChannel
 import app.cutlyra.editor.edl.EdlAsset
 import app.cutlyra.editor.edl.EdlAssetKind
 import app.cutlyra.editor.edl.EdlClip
@@ -39,10 +40,18 @@ import app.cutlyra.editor.edl.EdlTrackType
  *                           Fades out inside a transition window: media3
  *                           paints the primary last (on top), so the base's
  *                           own alpha is what makes the cross-fade visible.
- *   1..transitions.size  -> one short overlay sequence per CROSS-FADE
- *                           transition (non-crossfade `EdlTransition.kind`s
- *                           degrade to a hard cut, i.e. contribute NO
- *                           sequence — plan §2.3 rule 3/4).
+ *   heads-above, base, heads-below
+ *                        -> one sequence per transition carrying the incoming
+ *                           clip's head. Kinds whose definition says
+ *                           `incoming-above` (slide/push) are registered
+ *                           BEFORE the base (painted over it, both opaque)
+ *                           and padded with gaps to the project end, because
+ *                           being first also makes them the primary sequence
+ *                           media3 takes the export clock from;
+ *                           alpha kinds (crossfade/zoom) after it, beneath,
+ *                           with the base's alpha ramping 1 -> 0. A kind the
+ *                           compositor does not implement contributes no
+ *                           sequence (hard cut, plan §2.3 rule 3/4).
  *   next..               -> one sequence per clip on an `overlay` track of
  *                           `trackType` video/graphic (PiP-style layers).
  *   last N                -> one sequence per `audio`-kind track
@@ -65,6 +74,38 @@ import app.cutlyra.editor.edl.EdlTrackType
  * paper over.
  */
 object EdlToComposition {
+
+    /**
+     * Channels the incoming clip's transition head plays: its authored
+     * keyframes plus the transition's derived ones (which reference the same
+     * head-local clock). Alpha kinds (crossfade/zoom) drop the derived opacity
+     * channel: their blend comes from the base's compositor alpha ramp, and a
+     * second ramp on the head would double-fade (`out = a(1-t) + b·t` becomes
+     * `a(1-t) + b·t²`).
+     */
+    private fun headAnimations(
+        window: MainTrackPlacements.TransitionWindow,
+        incoming: EdlClip,
+    ): List<EdlAnimationChannel> {
+        if (window.incomingAnimations.isEmpty()) return incoming.animations
+        val authored = incoming.animations
+            .map { it.propertyPath to it.componentKey }
+            .toSet()
+        val derived = window.incomingAnimations.filter { channel ->
+            val shadowed = (channel.propertyPath to channel.componentKey) in authored
+            val alphaKindOpacity =
+                channel.propertyPath == "opacity" && TransitionAlphaMath.usesAlpha(window.kind)
+            !shadowed && !alphaKindOpacity
+        }
+        return incoming.animations + derived
+    }
+
+    /** One transition's incoming "head" sequence plus where it paints. */
+    private data class TransitionHead(
+        val sequence: EditedMediaItemSequence,
+        val window: TransitionAlphaMath.Window,
+        val aboveBase: Boolean,
+    )
     /** Element kinds drawn by the webview into overlay PNGs. */
     private val PRERENDERED_OVERLAY_KINDS = setOf("sticker", "graphic", "text", "caption")
 
@@ -134,8 +175,11 @@ object EdlToComposition {
         // These three lists are assembled into `sequences` in paint order:
         // overlay visuals (top), base, transition heads (bottom).
         val overlaySequences = mutableListOf<EditedMediaItemSequence>()
-        val headSequences = mutableListOf<EditedMediaItemSequence>()
-        val headWindows = mutableListOf<TransitionAlphaMath.Window>()
+        // One head per transition window. `aboveBase` comes from the kind's
+        // definition: slide/push reveal by motion and must paint OVER the
+        // opaque base (exactly like the preview's painter order), everything
+        // else nests UNDER it while the base's alpha dips.
+        val headSequences = mutableListOf<TransitionHead>()
         val overlaySettingsBySequence = mutableListOf<StaticOverlaySettings?>()
         val overlayAlphaBySequence = mutableListOf<CrossfadeCompositorSettings.AnimatedOverlayAlpha?>()
         // A VIDEO export ends at the last VISUAL thing, not at the last audio
@@ -244,6 +288,11 @@ object EdlToComposition {
                 durationTicks = window.durationTicks,
                 sourceEndTicks = incomingClip.sourceStartTicks +
                     Math.round(window.durationTicks * incomingClip.speed.toDouble()),
+                // The transition's own channels ride the HEAD (its clock starts
+                // at the window, like the preview's compressed element). The
+                // base sequence's copy of this clip starts at the window END
+                // and deliberately carries none of them.
+                animations = headAnimations(window = window, incoming = incomingClip),
             )
             val overlayItems = buildTimelineItems(
                 clip = headClip,
@@ -298,9 +347,28 @@ object EdlToComposition {
             for (item in overlayItems) {
                 overlaySeqBuilder.addItem(item)
             }
+            // Media3 takes the export's CLOCK and output format from the
+            // lowest-indexed video sequence ("primary", see
+            // `AssetLoaderInputTracker.getIndexForPrimarySequence`). Motion
+            // heads are registered before the base so they paint above it —
+            // which makes them primary, so without this tail gap the file
+            // ended when the head did (a 1.5 s timeline exported as 1.0 s).
+            // The gap composites black; `CrossfadeCompositorSettings` keeps
+            // the whole motion head transparent outside its window.
+            if (TransitionAlphaMath.paintsHeadAboveBase(window.kind)) {
+                val tailTicks = projectEndTicks - (window.startTicks + window.durationTicks)
+                if (tailTicks > 0) {
+                    overlaySeqBuilder.addGap(us(tailTicks))
+                }
+            }
             val overlaySeq = overlaySeqBuilder.build()
-            headSequences.add(overlaySeq)
-            headWindows.add(TransitionAlphaMath.Window(windowStartUs, windowEndUs))
+            headSequences.add(
+                TransitionHead(
+                    sequence = overlaySeq,
+                    window = TransitionAlphaMath.Window(windowStartUs, windowEndUs, window.kind),
+                    aboveBase = TransitionAlphaMath.paintsHeadAboveBase(window.kind),
+                ),
+            )
         }
 
         // -- next..: overlay video/graphic tracks (PiP-style layers) ---------
@@ -376,8 +444,15 @@ object EdlToComposition {
             }
         }
 
-        // Assemble in Media3 paint order: overlays (top), base, heads
-        // (bottom). Re-key the compositor maps to the final input indices.
+        // Assemble in Media3 paint order (first registered paints on TOP):
+        // motion heads (slide/push, above the base), overlay visuals, base,
+        // alpha heads (crossfade/zoom, beneath the base). Re-key the compositor
+        // maps to the final input indices.
+        val aboveBaseWindows = mutableMapOf<Int, TransitionAlphaMath.Window>()
+        headSequences.filter { it.aboveBase }.forEach {
+            aboveBaseWindows[sequences.size] = it.window
+            sequences.add(it.sequence)
+        }
         overlaySequences.forEachIndexed { index, seq ->
             sequences.add(seq)
             overlaySettingsBySequence[index]?.let { overlaySettingsByIndex[index] = it }
@@ -385,9 +460,9 @@ object EdlToComposition {
         }
         sequences.add(baseSequence)
         val baseInputIndex = sequences.size - 1
-        headSequences.forEachIndexed { index, seq ->
-            sequences.add(seq)
-            transitionWindows[sequences.size - 1] = headWindows[index]
+        headSequences.filterNot { it.aboveBase }.forEach { head ->
+            sequences.add(head.sequence)
+            transitionWindows[sequences.size - 1] = head.window
         }
         var nextIndex = sequences.size
 
@@ -579,6 +654,7 @@ object EdlToComposition {
             windowsByInputIndex = transitionWindows,
             overlayTrackSettingsByInputIndex = overlaySettingsByIndex,
             animatedOverlayAlphaByInputIndex = animatedOverlayAlphaByIndex,
+            aboveBaseWindowsByInputIndex = aboveBaseWindows,
             outputSize = Size(edl.output.resolutionWidth, edl.output.resolutionHeight),
         )
 
