@@ -321,6 +321,12 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 	const [reverseBusy, setReverseBusy] = useState(false);
 	const [reverseError, setReverseError] = useState<string | null>(null);
 	const [reverseProgress, setReverseProgress] = useState<number | null>(null);
+	/** Eyedropper arming for the chroma panel. Declared with the other state —
+	 *  ABOVE the `if (!ready)` early return below, because a hook after that
+	 *  return would only run on the post-bootstrap render and React would throw
+	 *  "rendered more hooks than during the previous render" (error #310) the
+	 *  moment the editor finishes loading. */
+	const [chromaPickArmed, setChromaPickArmed] = useState(false);
 
 	const runCutDeadSpace = ({ ref }: { ref: ElementRef }) => {
 		if (deadSpaceProgress) return; // one analysis at a time
@@ -569,7 +575,6 @@ export function EditorShell({ className, onBack, bootstrap }: EditorShellProps) 
 		return `${formatKeyframeTime(keyframeState.segmentTime)} → ${formatKeyframeTime(next)}`;
 	})();
 
-	const [chromaPickArmed, setChromaPickArmed] = useState(false);
 	const closeSheet = () => {
 		setChromaPickArmed(false);
 		setActiveSheet(null);
