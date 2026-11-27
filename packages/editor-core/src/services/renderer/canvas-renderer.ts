@@ -10,6 +10,34 @@ import {
 	onRenderPerfFrameComplete,
 } from "@/diagnostics/render-perf";
 
+/**
+ * Reads one pixel out of the compositor's present canvas, as `#rrggbb`.
+ *
+ * The chroma-key eyedropper uses exactly this: the user taps the preview, and
+ * the colour under the finger becomes the key. It reads the SAME canvas the
+ * preview presents (a WebGL2 readback through a 2D probe, the path the
+ * preview-parity harness already measures), never the element's source frame —
+ * so what is picked is what the user sees.
+ *
+ * `x`/`y` are normalised 0..1 across the canvas. Returns `null` when there is
+ * no canvas or no readable context (a degraded/GPU-less preview).
+ */
+export function sampleCompositorColor({ x, y }: { x: number; y: number }): string | null {
+	const canvas = wasmCompositor.getCanvas();
+	if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
+	const probe = createCanvasSurface({ width: canvas.width, height: canvas.height });
+	try {
+		probe.context.drawImage(canvas, 0, 0);
+	} catch {
+		return null;
+	}
+	const px = Math.min(canvas.width - 1, Math.max(0, Math.round(x * canvas.width)));
+	const py = Math.min(canvas.height - 1, Math.max(0, Math.round(y * canvas.height)));
+	const data = probe.context.getImageData(px, py, 1, 1).data;
+	const hex = (value: number) => value.toString(16).padStart(2, "0");
+	return `#${hex(data[0])}${hex(data[1])}${hex(data[2])}`;
+}
+
 export type CanvasRendererParams = {
 	width: number;
 	height: number;

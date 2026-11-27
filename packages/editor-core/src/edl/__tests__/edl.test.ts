@@ -398,6 +398,37 @@ describe("validateEdl", () => {
 		expect(result.errors[0].path).toBe("meta.edlVersion");
 	});
 
+	test("accepts a valid chroma key and rejects a malformed one", () => {
+		const edl = buildFixtureEdl();
+		edl.tracks[0].clips[0].effects.push({
+			effectId: "fx-chroma",
+			type: "chroma-key",
+			enabled: true,
+			params: { keyColor: "#00b140", similarity: 30, softness: 8, spill: 60 },
+		});
+		const accepted = validateEdl({ edl });
+		expect(accepted.errors).toEqual([]);
+		// The fixture already carries an unrelated legacy effect, so only this
+		// effect's own warning matters: a mapped type must not add one.
+		expect(accepted.warnings.some((w) => w.message.includes("chroma-key"))).toBe(false);
+
+		const broken = buildFixtureEdl();
+		broken.tracks[0].clips[0].effects.push({
+			effectId: "fx-chroma",
+			type: "chroma-key",
+			enabled: true,
+			params: { keyColor: "green", similarity: 150, softness: -1, spill: "high" },
+		});
+		const rejected = validateEdl({ edl: broken });
+		expect(rejected.ok).toBe(false);
+		for (const key of ["keyColor", "similarity", "softness", "spill"]) {
+			expect(
+				rejected.errors.some((e) => e.path.endsWith(`.params.${key}`)),
+				`${key} should be rejected`,
+			).toBe(true);
+		}
+	});
+
 	test("accepts the mapped mask shapes and warns on post-v1 effects", () => {
 		const edl = buildFixtureEdl();
 		edl.tracks[0].clips[0].masks.push({

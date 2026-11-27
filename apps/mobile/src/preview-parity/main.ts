@@ -23,6 +23,11 @@ import { ImageNode } from "@cutlyra/editor-core/services/renderer/nodes/image-no
 import { RootNode } from "@cutlyra/editor-core/services/renderer/nodes/root-node";
 import type { ResolvedVisualSourceNodeState } from "@cutlyra/editor-core/services/renderer/nodes/visual-node";
 import type { CropRect } from "@cutlyra/editor-core/rendering";
+import type { EffectPass } from "@cutlyra/editor-core/effects/types";
+import {
+	chromaKeyFromParams,
+	chromaKeyUniforms,
+} from "@cutlyra/editor-core/effects/chroma-key";
 import type { Mask } from "@/masks/types";
 import { registerDefaultMasks } from "@/masks";
 import { initializeGpu } from "opencut-wasm";
@@ -116,6 +121,7 @@ function resolvedState({
 	rotate = 0,
 	position = { x: 0, y: 0 },
 	sourceRevision,
+	effectPasses = [],
 }: {
 	fixture: Fixture;
 	scaleX?: number;
@@ -123,11 +129,12 @@ function resolvedState({
 	rotate?: number;
 	position?: { x: number; y: number };
 	sourceRevision?: string;
+	effectPasses?: EffectPass[][];
 }): ResolvedVisualSourceNodeState {
 	return {
 		localTime: 0,
 		opacity: 1,
-		effectPasses: [],
+		effectPasses,
 		transform: { scaleX, scaleY, rotate, position },
 		source: fixture.canvas,
 		sourceWidth: fixture.width,
@@ -146,6 +153,7 @@ function imageNode({
 	position,
 	sourceRevision,
 	masks,
+	effectPasses,
 }: {
 	fixture: Fixture;
 	crop?: CropRect;
@@ -156,6 +164,7 @@ function imageNode({
 	position?: { x: number; y: number };
 	sourceRevision?: string;
 	masks?: Mask[];
+	effectPasses?: EffectPass[][];
 }): ImageNode {
 	const node = new ImageNode({
 		url: "preview-parity-fixture.png",
@@ -181,8 +190,24 @@ function imageNode({
 		rotate,
 		position,
 		sourceRevision,
+		effectPasses,
 	});
 	return node;
+}
+
+/** Green screen with one solid red rectangle in the middle — the same
+ *  two-region fixture `ExportChromaKeyInstrumentedTest` encodes to H.264. */
+function createChromaFixture(): Fixture {
+	const canvas = document.createElement("canvas");
+	canvas.width = 320;
+	canvas.height = 240;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("2d fixture context unavailable");
+	ctx.fillStyle = "#00ff00";
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+	ctx.fillStyle = "#ff0000";
+	ctx.fillRect(96, 72, 128, 96);
+	return { canvas, width: canvas.width, height: canvas.height };
 }
 
 function createSolidFixture(color: string): Fixture {
@@ -782,6 +807,43 @@ async function run(): Promise<void> {
 			results.push(result);
 			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
 		}
+	}
+
+	// --- chroma key: transparent overlay over a lower video layer ----------
+	{
+		const background = imageNode({ fixture: createSolidFixture("#0000ff") });
+		const overlay = imageNode({
+			fixture: createChromaFixture(),
+			effectPasses: [
+				[
+					{
+						shader: "chroma-key",
+						uniforms: {
+							...chromaKeyUniforms(
+								chromaKeyFromParams({
+									keyColor: "#00ff00",
+									similarity: 45,
+									softness: 10,
+									spill: 60,
+								}),
+							),
+						},
+					},
+				],
+			],
+		});
+		const root = new RootNode({ duration: 10_000 });
+		root.children.push(background, overlay);
+		const result = check({
+			name: "chroma-key-removes-the-screen-over-a-lower-layer",
+			pixels: await renderNode(root),
+			samples: [
+				{ x: 0.2, y: 0.2, expected: "blue" },
+				{ x: 0.5, y: 0.5, expected: "red" },
+				{ x: 0.9, y: 0.85, expected: "blue" },
+			],
+		});
+		log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
 	}
 
 	// --- dynamic frames: same source object, new pixels --------------------

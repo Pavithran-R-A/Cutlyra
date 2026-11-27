@@ -42,7 +42,10 @@ import {
 	snapLocalTimeToFrame,
 } from "../../editor/keyframes";
 import { useSelectedElement } from "../../editor/use-live-editor";
-import { CanvasRenderer } from "@cutlyra/editor-core/services/renderer/canvas-renderer";
+import {
+	CanvasRenderer,
+	sampleCompositorColor,
+} from "@cutlyra/editor-core/services/renderer/canvas-renderer";
 import { buildScene } from "@cutlyra/editor-core/services/renderer/scene-builder";
 import type { RootNode } from "@cutlyra/editor-core/services/renderer/nodes/root-node";
 import { initializeGpu } from "opencut-wasm";
@@ -201,7 +204,17 @@ function ensureGpu(): Promise<boolean> {
 	return gpuInitPromise;
 }
 
-export function PreviewRenderer() {
+export function PreviewRenderer({
+	onSampleColor,
+}: {
+	/**
+	 * Eyedropper hook: called with `#rrggbb` when the user taps the preview
+	 * while no drag is in progress. The chroma-key panel arms it; the sampled
+	 * colour comes from the compositor's own present canvas
+	 * (`sampleCompositorColor`), i.e. the pixels the user can see.
+	 */
+	onSampleColor?: (color: string) => void;
+} = {}) {
 	const editor = useEditor();
 	const [gpuReady, setGpuReady] = useState(false);
 
@@ -219,10 +232,14 @@ export function PreviewRenderer() {
 	}, []);
 
 	if (!gpuReady) return null;
-	return <PreviewRendererInner />;
+	return <PreviewRendererInner onSampleColor={onSampleColor} />;
 }
 
-function PreviewRendererInner() {
+function PreviewRendererInner({
+	onSampleColor,
+}: {
+	onSampleColor?: (color: string) => void;
+}) {
 	const editor = useEditor();
 	const activeProject = useEditor((e) => e.project.getActive());
 	// Render tracks = preview-overlay tracks + main-track transitions applied
@@ -317,6 +334,7 @@ function PreviewRendererInner() {
 	const gestureHandlers = usePreviewTransformGesture({
 		mountRef,
 		canvasWidth: width,
+		onSampleColor,
 	});
 
 	const { snapGuides, ...pointerHandlers } = gestureHandlers;
@@ -385,9 +403,11 @@ function PreviewRendererInner() {
 function usePreviewTransformGesture({
 	mountRef,
 	canvasWidth,
+	onSampleColor,
 }: {
 	mountRef: RefObject<HTMLDivElement | null>;
 	canvasWidth: number;
+	onSampleColor?: (color: string) => void;
 }) {
 	const editor = useEditor();
 	const [selectedRef, selectedElement] = useSelectedElement();
@@ -412,12 +432,24 @@ function usePreviewTransformGesture({
 		| null
 	>(null);
 
-	const pxToCanvas = () => {
-		const rect = mountRef.current?.getBoundingClientRect();
-		// The mount is rendered at the canvas's own aspect ratio (PreviewStage
-		// sizes it), so one uniform factor maps CSS px -> canvas units.
-		return rect && rect.width > 0 ? canvasWidth / rect.width : 0;
-	};
+			const pxToCanvas = () => {
+			const rect = mountRef.current?.getBoundingClientRect();
+			// The mount is rendered at the canvas's own aspect ratio (PreviewStage
+			// sizes it), so one uniform factor maps CSS px -> canvas units.
+			return rect && rect.width > 0 ? canvasWidth / rect.width : 0;
+		};
+
+		/** Eyedropper: read the pixel under a tap off the presented frame. */
+		const sampleColorAt = (event: ReactPointerEvent<HTMLDivElement>) => {
+			if (!onSampleColor) return;
+			const rect = mountRef.current?.getBoundingClientRect();
+			if (!rect || rect.width <= 0 || rect.height <= 0) return;
+			const color = sampleCompositorColor({
+				x: (event.clientX - rect.left) / rect.width,
+				y: (event.clientY - rect.top) / rect.height,
+			});
+			if (color) onSampleColor(color);
+		};
 
 	type Session = NonNullable<typeof sessionRef.current>;
 
@@ -585,9 +617,13 @@ function usePreviewTransformGesture({
 			}
 			applySessionUpdate();
 		},
-		onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => {
+					onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => {
 			const session = sessionRef.current;
 			const last = session?.pointers.get(event.pointerId);
+			// A tap (no drag) is the eyedropper's gesture. Sampling happens before
+			// the session is folded so a plain tap on an element that opened a
+			// session still reads the frame instead of being swallowed.
+			if (!session || !session.dragging) sampleColorAt(event);
 			if (!session || !last) return;
 			// Fold the release coordinates into the preview before committing:
 			// the last pointermove can lag the up event by a few px, and the
