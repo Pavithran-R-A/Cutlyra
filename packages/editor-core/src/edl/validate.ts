@@ -56,6 +56,40 @@ export interface ValidateEdlOptions {
  */
 export const EDL_V1_SUPPORTED_EFFECT_TYPES: readonly string[] = ["adjust", "filter"];
 
+/**
+ * Mask shapes the native exporters map. The preview registry also has heart,
+ * diamond, star, text, cinematic-bars and freeform masks; those are NOT
+ * silently dropped on export — they are rejected below so a project never
+ * ships with a mask the preview shows and the MP4 does not.
+ *
+ * `linear` is the user-facing name for the engine's `split` mask; both parse
+ * to the same half-plane math (`mask.wgsl` / `EdlMaskEffect`). A `circle` is
+ * an ellipse whose two axes are equal, accepted as its own type so the UI and
+ * fixtures can name it directly.
+ */
+export const EDL_V1_SUPPORTED_MASK_TYPES: readonly string[] = [
+	"rectangle",
+	"circle",
+	"ellipse",
+	"split",
+	"linear",
+];
+
+/** Mirrors `MAX_FEATHER` in `masks/feather.ts`. */
+const MAX_MASK_FEATHER = 1000;
+
+function maskNumber({
+	params,
+	key,
+}: {
+	params: Record<string, unknown>;
+	key: string;
+}): number | null {
+	const value = params[key];
+	if (value === undefined) return null;
+	return isFiniteNumber(value) ? value : null;
+}
+
 function isInt(value: unknown): value is number {
 	return typeof value === "number" && Number.isInteger(value);
 }
@@ -249,13 +283,83 @@ function validateClip({
 		}
 	}
 
-	if (clip.masks.length > 0) {
-		issues.warn({
-			path: `${path}.masks`,
-			message:
-				`${clip.masks.length} mask(s) present. Masks are explicitly post-v1 for native export ` +
-				"(plan §2.3 rule 4); a v1 mapper should refuse rather than silently drop them.",
-		});
+	for (const [mi, mask] of clip.masks.entries()) {
+		const maskPath = `${path}.masks[${mi}]`;
+		if (typeof mask.maskId !== "string" || mask.maskId.length === 0) {
+			issues.error({
+				path: `${maskPath}.maskId`,
+				message: "expected a non-empty mask id",
+			});
+		}
+		if (!EDL_V1_SUPPORTED_MASK_TYPES.includes(mask.type)) {
+			issues.error({
+				path: `${maskPath}.type`,
+				message:
+					`mask type "${mask.type}" is not mapped natively. Supported: ` +
+					`${EDL_V1_SUPPORTED_MASK_TYPES.join(", ")}. Export refuses rather than dropping it.`,
+			});
+			continue;
+		}
+
+		const params = mask.params ?? {};
+		const isShape = mask.type !== "split" && mask.type !== "linear";
+
+		for (const key of ["centerX", "centerY"] as const) {
+			const value = maskNumber({ params, key });
+			if (value === null || Math.abs(value) > 10) {
+				issues.error({
+					path: `${maskPath}.params.${key}`,
+					message: `expected a finite normalised offset in -10..10, got ${JSON.stringify(params[key])}`,
+				});
+			}
+		}
+
+		const rotation = maskNumber({ params, key: "rotation" });
+		if (rotation === null || Math.abs(rotation) > 3600) {
+			issues.error({
+				path: `${maskPath}.params.rotation`,
+				message: `expected finite degrees, got ${JSON.stringify(params.rotation)}`,
+			});
+		}
+
+		const feather = maskNumber({ params, key: "feather" });
+		if (feather === null || feather < 0 || feather > MAX_MASK_FEATHER) {
+			issues.error({
+				path: `${maskPath}.params.feather`,
+				message: `expected 0..${MAX_MASK_FEATHER}px, got ${JSON.stringify(params.feather)}`,
+			});
+		}
+
+		if (params.inverted !== undefined && typeof params.inverted !== "boolean") {
+			issues.error({
+				path: `${maskPath}.params.inverted`,
+				message: "expected a boolean",
+			});
+		}
+
+		// Strokes are a preview-only decoration today; exporting one would
+		// require a second native pass, so refuse it explicitly instead of
+		// silently omitting it from the MP4.
+		const strokeWidth = maskNumber({ params, key: "strokeWidth" });
+		if (strokeWidth !== null && strokeWidth > 0) {
+			issues.error({
+				path: `${maskPath}.params.strokeWidth`,
+				message: "mask strokes are preview-only; native export does not draw them",
+			});
+		}
+
+		if (isShape) {
+			const keys = mask.type === "circle" ? (["width"] as const) : (["width", "height"] as const);
+			for (const key of keys) {
+				const value = maskNumber({ params, key });
+				if (value === null || value <= 0 || value > 10) {
+					issues.error({
+						path: `${maskPath}.params.${key}`,
+						message: `expected a positive normalised size in 0..10, got ${JSON.stringify(params[key])}`,
+					});
+				}
+			}
+		}
 	}
 
 	for (const [ci, channel] of clip.animations.entries()) {

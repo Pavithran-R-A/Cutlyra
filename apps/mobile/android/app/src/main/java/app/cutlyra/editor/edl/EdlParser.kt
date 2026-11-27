@@ -181,10 +181,17 @@ object EdlParser {
             },
             effects = (o.optJSONArray("effects") ?: JSONArray()).map(::parseEffect),
             hasMasks = masks != null && masks.length() > 0,
+            masks = (masks ?: JSONArray()).map(::parseMask),
             animations = (animations ?: JSONArray()).map(::parseAnimationChannel),
             params = jsonObjectToMap(o.optJSONObject("params") ?: JSONObject()),
         )
     }
+
+    private fun parseMask(o: JSONObject): EdlMask = EdlMask(
+        maskId = o.getString("maskId"),
+        type = o.getString("type"),
+        params = jsonObjectToMap(o.optJSONObject("params") ?: JSONObject()),
+    )
 
     /** Public so `KeyframeEvaluatorTest` can feed the cross-language parity
      *  fixture through the exact decoder the exporter uses. */

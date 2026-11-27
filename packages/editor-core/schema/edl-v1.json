@@ -440,7 +440,7 @@
 			}
 		},
 		"mask": {
-			"description": "Carried so preview and export read the same graph. Masks are post-v1 for native export; a v1 mapper should refuse rather than drop them.",
+			"description": "Carried so preview and export read the same graph. Native export maps rectangle, circle, ellipse and split/linear masks and refuses other shapes or preview-only strokes rather than dropping them.",
 			"type": "object",
 			"required": [
 				"maskId",

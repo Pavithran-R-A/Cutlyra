@@ -14,12 +14,11 @@ package app.cutlyra.editor.edl
  *
  * Deliberately NOT a 1:1 Kotlin data-class port of every TS field — v1's
  * exit criteria for M9 is filters/transform/opacity/crossfade+wipe-slide
- * transitions/text+sticker overlays/speed (plan §2.3 rule 4), so fields the
- * mapper does not yet consume (masks) are parsed only far enough to detect
- * their presence (`EdlClip.hasMasks`) so `EdlToComposition` can refuse an
- * export that needs them rather than silently dropping them — same posture
- * `validateEdl()` takes on the TS side. Keyframe animations ARE consumed
- * since round 47 (`EdlClip.animations`, `KeyframeEvaluator`).
+ * transitions/text+sticker overlays/speed (plan §2.3 rule 4). Masks are now
+ * consumed in full (`EdlClip.masks`, `export/MaskMath.kt`, `EdlMaskEffect`)
+ * for rectangle/circle/ellipse/linear; unsupported shapes and preview-only
+ * strokes are refused loudly rather than dropped. Keyframe animations ARE
+ * consumed since round 47 (`EdlClip.animations`, `KeyframeEvaluator`).
  */
 
 data class EdlRational(val numerator: Long, val denominator: Long) {
@@ -142,6 +141,17 @@ data class EdlTransform(
     val rotateDegrees: Double,
 )
 
+/**
+ * A clip mask, carried in the engine's own parameter units (normalised
+ * position/size fractions, degrees, feather in element pixels). The preview
+ * and the native exporter both read these values; see `EdlMaskEffect`.
+ */
+data class EdlMask(
+    val maskId: String,
+    val type: String,
+    val params: Map<String, Any?>,
+)
+
 data class EdlClip(
     val clipId: String,
     val kind: String,
@@ -166,6 +176,9 @@ data class EdlClip(
     val audioFade: EdlAudioFade? = null,
     val effects: List<EdlEffect>,
     val hasMasks: Boolean,
+    /** Parsed mask data; `hasMasks` is the cheap presence flag kept for
+     *  callers that only need to know whether one exists. */
+    val masks: List<EdlMask> = emptyList(),
     /** Keyframe channels, `EdlAnimationChannel` per (propertyPath,
      *  componentKey) — parsed in full since round 47, when native export
      *  started evaluating transform/opacity keyframes per frame

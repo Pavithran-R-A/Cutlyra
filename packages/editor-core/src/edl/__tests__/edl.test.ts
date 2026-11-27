@@ -398,12 +398,20 @@ describe("validateEdl", () => {
 		expect(result.errors[0].path).toBe("meta.edlVersion");
 	});
 
-	test("warns, rather than fails, on post-v1 features", () => {
+	test("accepts the mapped mask shapes and warns on post-v1 effects", () => {
 		const edl = buildFixtureEdl();
 		edl.tracks[0].clips[0].masks.push({
 			maskId: "m1",
 			type: "ellipse",
-			params: {},
+			params: {
+				centerX: 0,
+				centerY: 0,
+				width: 0.5,
+				height: 0.5,
+				rotation: 0,
+				feather: 12,
+				inverted: false,
+			},
 		});
 		edl.tracks[0].clips[0].effects.push({
 			effectId: "fx-x",
@@ -413,8 +421,67 @@ describe("validateEdl", () => {
 		});
 		const result = validateEdl({ edl });
 		expect(result.ok).toBe(true);
-		expect(result.warnings.some((w) => w.message.includes("mask"))).toBe(true);
 		expect(result.warnings.some((w) => w.message.includes("body-slim"))).toBe(true);
+	});
+});
+
+describe("EDL v1 mask validation", () => {
+	function mask(type: string, params: Record<string, unknown>) {
+		return { maskId: "m1", type, params };
+	}
+
+	const boxParams = {
+		centerX: 0.1,
+		centerY: -0.05,
+		width: 0.6,
+		height: 0.4,
+		rotation: 30,
+		feather: 20,
+		inverted: true,
+		strokeWidth: 0,
+	};
+
+	test("rectangle, circle, ellipse and linear all validate", () => {
+		for (const [type, params] of [
+			["rectangle", boxParams],
+			["circle", { ...boxParams, height: undefined }],
+			["ellipse", boxParams],
+			["split", { centerX: 0, centerY: 0, rotation: 45, feather: 20, inverted: false }],
+			["linear", { centerX: 0, centerY: 0, rotation: 45, feather: 20, inverted: false }],
+		] as const) {
+			const edl = buildFixtureEdl();
+			edl.tracks[0].clips[0].masks.push(mask(type, { ...params }));
+			const result = validateEdl({ edl });
+			expect(`${type}: ${result.errors.map((e) => e.message).join("; ")}`).toBe(`${type}: `);
+		}
+	});
+
+	test("an unsupported shape is an error, not a warning", () => {
+		const edl = buildFixtureEdl();
+		edl.tracks[0].clips[0].masks.push(mask("heart", boxParams));
+		const result = validateEdl({ edl });
+		expect(result.ok).toBe(false);
+		expect(result.errors.some((e) => e.path.endsWith(".type"))).toBe(true);
+	});
+
+	test("rejects out-of-range geometry and feather", () => {
+		const edl = buildFixtureEdl();
+		edl.tracks[0].clips[0].masks.push(
+			mask("rectangle", { ...boxParams, width: 0, feather: 1001, rotation: 99999 }),
+		);
+		const result = validateEdl({ edl });
+		expect(result.ok).toBe(false);
+		expect(result.errors.some((e) => e.path.endsWith(".params.width"))).toBe(true);
+		expect(result.errors.some((e) => e.path.endsWith(".params.feather"))).toBe(true);
+		expect(result.errors.some((e) => e.path.endsWith(".params.rotation"))).toBe(true);
+	});
+
+	test("rejects a preview-only stroke", () => {
+		const edl = buildFixtureEdl();
+		edl.tracks[0].clips[0].masks.push(mask("ellipse", { ...boxParams, strokeWidth: 8 }));
+		const result = validateEdl({ edl });
+		expect(result.ok).toBe(false);
+		expect(result.errors.some((e) => e.path.endsWith(".params.strokeWidth"))).toBe(true);
 	});
 });
 
