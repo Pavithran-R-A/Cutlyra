@@ -154,3 +154,63 @@ only wired:
   takes `allowMultiple: true` and append/overlay actions exist; what remains is
   stable insertion order, duplicate handling, template slot assignment and a
   real picker test), then C–G from `docs/REMAINING_MISSION_V2.md`.
+
+## Mission V2 — Phase B (multi-select import)
+
+Baseline `d233621` (PR #111). The import pipeline already picked multiple
+items, copied each to custody, proxied and placed them; this phase closed the
+non-determinism and the templated-project gaps around it.
+
+- **Insertion order** — `importMediaFromNative` commits each asset only after its
+  own proxy resolves, sequentially in picker order, so a photo whose proxy
+  finishes first can no longer overtake the video picked before it. The
+  contract is documented on the function and pinned by a test with an
+  interleaved video/photo/video batch whose FIRST proxy is the slowest.
+- **Duplicate handling** — new exported `dedupePickedHandles` collapses repeated
+  `handle.uri` values inside one picker batch before any custody, proxy or
+  progress work, so a double-tapped selection imports and reports once.
+  Separate imports stay separate on purpose: the native picker copies each pick
+  to a fresh custody file, so those are genuinely independent media.
+- **Template slot assignment** — `applyTemplateToNewProject` now passes
+  `prepareMedia` only the slots `media` does not already fill, so completing a
+  partly-filled template never asks for or duplicates an assigned slot.
+  `applyTemplateFromDevice` gained `media` and `source` seams and delegates
+  assignment mapping to `templateAssignmentForAsset`, where the slot's kind
+  stays authoritative over a disagreeing probe.
+- **Cancellation / progress / custody** — unchanged by design and now covered:
+  an empty pick result leaves the project untouched, a per-item failure reports
+  an error without dropping later items or writing a partial asset row, and the
+  relative custody path recorded on each asset still resolves after undo/redo.
+- **Native pick path** — the pick-result ClipData read and the per-item
+  custody-copy + probe loop moved out of `NativeBridgePlugin` into
+  `MediaPickBatch`, which the plugin now calls. This is what the API-35
+  instrumented test drives: a real multi-item ClipData built from the bundled
+  `test_clip` video and a generated JPEG (video, photo, video), asserting order,
+  kinds, original names, non-empty custody files and per-item progress, plus
+  cancellation and a mid-batch unreadable item. The batch reader takes the
+  result code and Intent rather than an `ActivityResult` because the R8 test
+  variant strips that holder's constructor — CI caught exactly that.
+- **Tests** — `native-import.test.ts` (Phase B suite: order, duplicate URI,
+  cancellation, mid-batch failure, custody across undo/redo);
+  `apply.test.ts` (picker asked only for unfilled slots);
+  `template-import.test.ts` (slot order, prefilled slots skipped, kind
+  authority, still duration omitted); `MediaPickBatchInstrumentedTest` (3
+  cases). Root Bun suite 1086 pass / 0 fail.
+- **Checks actually run** — full workspace Bun suite; `editor-core` and
+  `mobile-ui` tsc; eslint (130 errors, baseline 131);
+  `:app:testDebugUnitTest`, `:app:assembleDebug`,
+  `:app:assembleDebugAndroidTest`; `scripts/invariants.sh` green locally.
+- **CI** — all seven checks green, including both instrumentation jobs
+  (107/107 tests, 0 skipped).
+- **Merged**: PR #112, squash `fef6b1a10c87a3acc0fc852e4d767b4a9e6c4f30` on `main`.
+- **Not verified here** — the system picker ACTIVITY is stubbed: an
+  instrumentation test cannot tap a system UI, so the test feeds the real
+  multi-item ClipData into the real callback body and stops at Capacitor's
+  `PluginCall` promise. No physical-device run was made, and the local
+  unaccelerated AVD ANRs at instrumentation startup, so execution evidence for
+  the instrumented test is the CI API-35 and R8 jobs. Append vs overlay
+  placement was not changed in this phase; it remains covered by the engine's
+  `timeline/placement/resolve` tests rather than a new mobile-level test.
+- **Next**: Phase C from `docs/REMAINING_MISSION_V2.md` (transitions beyond the
+  shipped four, speed ramps, frame stepping, snapping, ripple/gap removal,
+  multi-selection, blend modes, keyframe improvements).

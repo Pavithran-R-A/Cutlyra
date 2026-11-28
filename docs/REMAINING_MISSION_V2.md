@@ -15,10 +15,15 @@ Add SRT/VTT round-trip tests. Implement the real Transcript panel: editable word
 timing, split/merge, timeline seeking, styling, undo/redo, persistence and exported
 caption pixels.
 
-## B. Multi-select import
-Implement or verify mixed video/photo selection, stable insertion order, append/overlay
-choice, template slot assignment, duplicate handling, cancellation, progress and
-persistent custody. Test the actual Android picker.
+## B. Multi-select import — DONE (PR #112, `fef6b1a`)
+Mixed video/photo selection, stable picker-order insertion, append vs overlay
+placement, template slot assignment into partly-filled templates, within-batch
+duplicate collapse, cancellation, per-item progress and persistent custody are
+merged and tested. The pick-result ClipData read + custody/probe loop now live in
+`MediaPickBatch` and are driven by a real multi-item ClipData in
+`MediaPickBatchInstrumentedTest` (API-35 and R8 CI jobs). **Limitation:** the
+system picker activity itself and Capacitor's `PluginCall` promise are stubbed
+(CI cannot tap a system UI); no physical-device picker run was made.
 
 ## C. Remaining editing features
 Complete wipe, dip-to-black/white and blur transitions. Add speed ramps, frame stepping,

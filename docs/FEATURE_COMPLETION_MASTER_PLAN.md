@@ -69,7 +69,7 @@ Source-truth check performed:
 | Chroma key | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-27) | key colour + preview eyedropper, similarity, edge softness, spill reduction; `chroma-key.wgsl` (preview) and `EdlChromaKeyEffect` (export) share one Rec.709 Cb/Cr model; `ExportChromaKeyInstrumentedTest` 3/3 incl. a wrong-colour control |
 | New transition types | IMPLEMENTED + DECODED-MP4 VERIFIED (2026-11-27) | `fade`/`slide`/`push`/`zoom` from one shared definition layer (`timeline/transition-definitions.ts`) used by preview, EDL validation, persistence and Media3 export, with per-kind layer order, `direction`, duration and audio policy; wipe, dip-to-black/white and blur dropped because neither renderer can draw them identically (docs/EDL.md §8). `ExportMotionTransitionInstrumentedTest` 4/4 on decoded frames, cross-fade gates unchanged, preview harness 32/32 |
 | 4K export verification | BLOCKED | device/encoder |
-| Multi-select import | BLOCKED | device Photo Picker |
+| Multi-select import | IMPLEMENTED + INSTRUMENTED (2026-11-28) | `MediaPickBatch` reads multi-item ClipData and runs custody/probe per item; picker-order insertion, within-batch duplicate collapse, append/overlay placement, template slot assignment, cancellation and custody tests; `MediaPickBatchInstrumentedTest` 3/3 on API-35 + R8 CI | system picker activity and `PluginCall` promise stubbed in tests |
 | Physical-device parity | BLOCKED | owner device session |
 
 ## Phase 2 — Templates (implemented 2026-11-21)
