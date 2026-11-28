@@ -589,3 +589,218 @@ describe("importMediaFromNative", () => {
 		expect(editor.media.getAssets()).toHaveLength(0);
 	});
 });
+
+// --- Phase B: batch ordering, duplicates, cancellation, custody -------------
+
+function imageHandle(id: string): NativeMediaHandle {
+	return {
+		id,
+		uri: `/sandbox/Media/${id}.jpg`,
+		kind: "image",
+		fileName: `${id}.jpg`,
+		sizeBytes: 2048,
+		durationMicros: 0,
+		width: 1080,
+		height: 1350,
+		hasAudio: false,
+		codec: "",
+		frameRate: null,
+	};
+}
+
+function proxyDone(handle: NativeMediaHandle, delayMs = 0): () => AsyncGenerator<NativeProxyProgress> {
+	return async function* () {
+		if (delayMs > 0) {
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+		}
+		yield {
+			assetId: handle.id,
+			stage: "done",
+			fraction: 1,
+			proxyUri: `/sandbox/Proxies/${handle.id}.${handle.kind === "image" ? "jpg" : "mp4"}`,
+			proxyWidth: 320,
+			proxyHeight: 180,
+		};
+	};
+}
+
+describe("Phase B — native import batch semantics", () => {
+	beforeEach(() => {
+		EditorCore.reset();
+		setNotifier(() => undefined);
+		const editor = EditorCore.getInstance();
+		editor.project.setActiveProject({ project: buildFixtureProject() });
+		editor.scenes.initializeScenes({
+			scenes: [buildFixtureScene()],
+			currentSceneId: "scene-1",
+		});
+	});
+
+	afterEach(() => {
+		resetNotifier();
+		EditorCore.reset();
+	});
+
+	test("mixed video/photo batch keeps picker order even when proxies finish out of order", async () => {
+		const editor = EditorCore.getInstance();
+		const firstVideo = makeHandle("v-first");
+		const photo = imageHandle("p-middle");
+		const secondVideo = makeHandle("v-last");
+		const source = fakeSource({
+			async pickMedia() {
+				return [firstVideo, photo, secondVideo];
+			},
+			generateProxy: (({ handle }: { handle: NativeMediaHandle }) => {
+				// The first video's proxy is the SLOWEST; a concurrent
+				// implementation would let the photo and last video overtake it.
+				return proxyDone(handle, handle.id === "v-first" ? 25 : 0)();
+			}) as NativeMediaSource["generateProxy"],
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["video", "image"],
+			allowMultiple: true,
+		});
+
+		expect(result.failed).toHaveLength(0);
+		expect(result.imported.map((asset) => asset.name)).toEqual([
+			"v-first.mp4",
+			"p-middle.jpg",
+			"v-last.mp4",
+		]);
+		expect(editor.media.getAssets().map((asset) => asset.name)).toEqual([
+			"v-first.mp4",
+			"p-middle.jpg",
+			"v-last.mp4",
+		]);
+	});
+
+	test("a repeated pick of the same URI imports once and proxies once", async () => {
+		const editor = EditorCore.getInstance();
+		const handle = makeHandle("dup");
+		let proxyCalls = 0;
+		const progress: number[] = [];
+		const source = fakeSource({
+			async pickMedia() {
+				// Same document handed back twice (double tap / two buckets).
+				return [handle, { ...handle }];
+			},
+			generateProxy: (({ handle: h }: { handle: NativeMediaHandle }) => {
+				proxyCalls += 1;
+				return proxyDone(h)();
+			}) as NativeMediaSource["generateProxy"],
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["video"],
+			allowMultiple: true,
+			onProgress: (event) => progress.push(event.total),
+		});
+
+		expect(result.imported).toHaveLength(1);
+		expect(proxyCalls).toBe(1);
+		expect(editor.media.getAssets()).toHaveLength(1);
+		// Progress describes the de-duplicated batch, not the raw pick list.
+		expect(new Set(progress)).toEqual(new Set([1]));
+	});
+
+	test("a cancelled picker leaves the project untouched", async () => {
+		const editor = EditorCore.getInstance();
+		const before = structuredClone(editor.media.getAssets());
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source: fakeSource(),
+			kinds: ["video", "image"],
+			allowMultiple: true,
+		});
+		expect(result.imported).toHaveLength(0);
+		expect(result.failed).toHaveLength(0);
+		expect(editor.media.getAssets()).toEqual(before);
+	});
+
+	test("a mid-batch failure keeps the successful imports and leaves no orphan asset", async () => {
+		const editor = EditorCore.getInstance();
+		const good = makeHandle("good");
+		const bad = makeHandle("bad");
+		const source = fakeSource({
+			async pickMedia() {
+				return [good, bad];
+			},
+			generateProxy: (({ handle }: { handle: NativeMediaHandle }) => {
+				if (handle.id === "bad") {
+					return (async function* () {
+						yield {
+							assetId: "bad",
+							stage: "error" as const,
+							fraction: 1,
+							error: "unsupported codec",
+						};
+					})();
+				}
+				return proxyDone(handle)();
+			}) as NativeMediaSource["generateProxy"],
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["video"],
+			allowMultiple: true,
+		});
+
+		expect(result.imported.map((asset) => asset.name)).toEqual(["good.mp4"]);
+		expect(result.failed.map((failure) => failure.handle.id)).toEqual(["bad"]);
+		expect(editor.media.getAssets()).toHaveLength(1);
+		expect(editor.media.getAssets()[0]?.name).toBe("good.mp4");
+	});
+
+	test("custody identities survive undo and redo with the same asset id", async () => {
+		const editor = EditorCore.getInstance();
+		const handle = makeHandle("custody");
+		const source = fakeSource({
+			async pickMedia() {
+				return [handle];
+			},
+			generateProxy: (({ handle: h }: { handle: NativeMediaHandle }) =>
+				proxyDone(h)()) as NativeMediaSource["generateProxy"],
+			// The real bridge converts a raw path into a Capacitor file URL; the
+			// relativizer keys on that marker, so reproduce its shape here.
+			toPlaybackUri: (uri: string) => `https://localhost/_capacitor_file_${uri}`,
+			async getMediaRoot() {
+				return "/sandbox";
+			},
+		});
+
+		const result = await importMediaFromNative({
+			editor,
+			projectId: "p1",
+			source,
+			kinds: ["video"],
+			allowMultiple: false,
+		});
+		const asset = result.imported[0];
+		expect(asset?.sourceNativeRelativePath).toBe("Media/custody.mp4");
+		expect(asset?.nativeRelativePath).toBe("Proxies/custody.mp4");
+		const id = asset?.id;
+
+		editor.command.undo();
+		expect(editor.media.getAssets()).toHaveLength(0);
+
+		editor.command.redo();
+		const restored = editor.media.getAssets()[0];
+		expect(restored?.id).toBe(id);
+		// Reopening a project resolves these container-relative paths; losing
+		// them here would leave the clip pointing at a stale absolute sandbox
+		// path after an app update.
+		expect(restored?.sourceNativeRelativePath).toBe("Media/custody.mp4");
+		expect(restored?.nativeRelativePath).toBe("Proxies/custody.mp4");
+	});
+});

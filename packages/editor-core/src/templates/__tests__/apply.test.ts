@@ -195,4 +195,59 @@ describe("applyTemplateToNewProject", () => {
 		});
 		expect(JSON.stringify(template)).toBe(before);
 	});
+
+	it("asks the picker only for slots that are not already filled", async () => {
+		const template = getTemplate({ id: "ig-reel-pop" });
+		expect(template).not.toBeNull();
+		if (!template || template.mediaSlots.length < 2) return;
+		const h = bootHarness();
+		const prefilled = template.mediaSlots[0];
+		if (!prefilled) return;
+		const asked: string[][] = [];
+
+		const result = await applyTemplateToNewProject({
+			editor: h.editor,
+			template,
+			media: {
+				[prefilled.id]: {
+					mediaId: "already-there",
+					name: "Already there",
+					type: prefilled.kind,
+					sourceDuration: 9,
+				},
+			},
+			prepareMedia: async ({ slots }) => {
+				asked.push(slots.map((slot) => slot.id));
+				h.editor.media.setAssets({
+					assets: slots.map((slot) =>
+						asset({ id: `picked-${slot.id}`, type: slot.kind }),
+					),
+				});
+				const assignments: Record<string, {
+					mediaId: string;
+					name: string;
+					type: "video" | "image";
+					sourceDuration: number;
+				}> = {};
+				for (const slot of slots) {
+					assignments[slot.id] = {
+						mediaId: `picked-${slot.id}`,
+						name: `Picked ${slot.label}`,
+						type: slot.kind,
+						sourceDuration: 6,
+					};
+				}
+				return assignments;
+			},
+		});
+
+		// The prefilled slot is never offered to the picker; every other slot is,
+		// in template order.
+		expect(asked).toHaveLength(1);
+		expect(asked[0]).toEqual(
+			template.mediaSlots.slice(1).map((slot) => slot.id),
+		);
+		expect(result.elementRefs[prefilled.id]).toBeDefined();
+		expect(result.summary.unfilledSlots).toHaveLength(0);
+	});
 });
