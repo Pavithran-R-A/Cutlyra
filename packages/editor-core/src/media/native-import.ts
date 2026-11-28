@@ -351,12 +351,45 @@ export interface ImportMediaFromNativeResult {
 }
 
 /**
+ * Drop repeated picks of the SAME source inside one batch, keeping the first
+ * occurrence's position. A picker can hand back the same document twice (a
+ * double tap, or a provider that lists an item under two recent buckets), and
+ * each duplicate would otherwise be copied into custody and registered as a
+ * second asset for one file the user selected once. Cross-batch imports are
+ * deliberately NOT deduplicated: the native picker copies each pick to a new
+ * UUID custody file, so two separate imports of the same gallery item are two
+ * genuine, independently-removable files, not a duplicate row.
+ *
+ * Pure so the rule is testable without a picker.
+ */
+export function dedupePickedHandles({
+	handles,
+}: {
+	handles: readonly NativeMediaHandle[];
+}): NativeMediaHandle[] {
+	const seen = new Set<string>();
+	const unique: NativeMediaHandle[] = [];
+	for (const handle of handles) {
+		if (seen.has(handle.uri)) continue;
+		seen.add(handle.uri);
+		unique.push(handle);
+	}
+	return unique;
+}
+
+/**
  * The end-to-end M4 import flow: pick → (per asset) generate proxy →
  * construct + commit a `MediaAsset`. Plan M4 item 7's import-failure UX
  * (unsupported codec, proxy-generation failure) is handled per-asset — one
  * bad clip in a multi-select doesn't abort the rest, matching
  * `MediaPickerCoordinator.importOne`'s same one-bad-item-doesn't-lose-the-
  * batch policy on the native side.
+ *
+ * INSERTION ORDER IS THE PICKER'S ORDER. Assets are committed one at a time in
+ * `handles` order, each waiting for its own proxy before the next starts, so a
+ * fast photo cannot overtake a slow video and the caller's append loop lands
+ * clips in the order the user picked them. Duplicate picks of one URI are
+ * collapsed first (`dedupePickedHandles`).
  */
 export async function importMediaFromNative({
 	editor,
@@ -369,7 +402,7 @@ export async function importMediaFromNative({
 	commitAsset = true,
 }: ImportMediaFromNativeParams): Promise<ImportMediaFromNativeResult> {
 	let pickFailures = 0;
-	const handles = await source.pickMedia({
+	const picked = await source.pickMedia({
 		kinds,
 		allowMultiple,
 		onProgress: (pick) => {
@@ -393,6 +426,10 @@ export async function importMediaFromNative({
 			});
 		},
 	});
+	// Collapse repeated picks of one document BEFORE any custody/proxy work,
+	// so the batch's progress total and imported asset count describe what the
+	// user actually selected.
+	const handles = dedupePickedHandles({ handles: picked });
 	if (handles.length === 0 && pickFailures > 0) {
 		// Not a cancel: everything the user chose failed to load.
 		return { imported: [], failed: [] };

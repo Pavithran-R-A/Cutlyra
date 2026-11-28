@@ -56,6 +56,12 @@ export async function applyTemplateToNewProject({
 	 * media has to be imported HERE, not before: `createNewProject` calls
 	 * `editor.media.clearAllAssets()`, so assets picked against the previous
 	 * project would be silently dropped. Resolves to the assignments to use.
+	 *
+	 * `slots` contains only the slots `media` did NOT already fill, so a caller
+	 * completing a partly-filled template never asks for (or imports) a slot
+	 * the user already assigned. The merged result still goes through the same
+	 * `planTemplate`, whose per-slot rules (kind mismatch, too-short video,
+	 * unfilled slot reported) apply unchanged.
 	 */
 	prepareMedia?: (args: {
 		projectId: string;
@@ -65,8 +71,9 @@ export async function applyTemplateToNewProject({
 	const projectId = await editor.project.createNewProject({
 		name: projectName ?? template.name,
 	});
+	const missingSlots = template.mediaSlots.filter((slot) => !media[slot.id]);
 	const resolvedMedia = prepareMedia
-		? { ...media, ...(await prepareMedia({ projectId, slots: template.mediaSlots })) }
+		? { ...media, ...(await prepareMedia({ projectId, slots: missingSlots })) }
 		: media;
 	const plan = planTemplate({ template, media: resolvedMedia, text });
 

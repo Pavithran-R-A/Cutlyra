@@ -34,6 +34,7 @@ import app.cutlyra.editor.export.PrerenderedOverlay
 import app.cutlyra.editor.export.ticksToUs
 import app.cutlyra.editor.media.MediaImporter
 import app.cutlyra.editor.media.SubtitleFileCodec
+import app.cutlyra.editor.media.MediaPickBatch
 import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
 import app.cutlyra.editor.media.FreezeFrameCapture
@@ -480,16 +481,7 @@ class NativeBridgePlugin : Plugin() {
 			call.reject("User cancelled media selection", "USER_CANCELLED")
 			return
 		}
-		val data = result.data
-		val uris = mutableListOf<Uri>()
-		val clipData = data?.clipData
-		if (clipData != null) {
-			for (i in 0 until clipData.itemCount) {
-				uris.add(clipData.getItemAt(i).uri)
-			}
-		} else {
-			data?.data?.let { uris.add(it) }
-		}
+		val uris = MediaPickBatch.urisFrom(result)
 		if (uris.isEmpty()) {
 			call.reject("No media selected", "USER_CANCELLED")
 			return
@@ -515,27 +507,12 @@ class NativeBridgePlugin : Plugin() {
 	 * matters). */
 	private fun importAndProbeAsync(call: PluginCall, uris: List<Uri>) {
 		Thread {
-			val handles = JSArray()
 			// Per-item isolation + pickProgress events, matching iOS: one
-			// failing item must neither lose the batch (the old behavior
-			// here) nor vanish silently (the old iOS behavior) — and the
-			// copy of a cloud-backed picker item is real wall-clock work
-			// the UI needs to show (2026-08-19).
-			for ((index, uri) in uris.withIndex()) {
-				emitPickProgress(index, uris.size, "loading", 0.0, null)
-				try {
-					val imported = MediaImporter.importInto(context, uri)
-					try {
-						val probed = MediaProbe.probe(imported.file, imported.mimeType)
-						handles.put(mediaHandleToJson(imported, probed))
-						emitPickProgress(index, uris.size, "loaded", 1.0, null)
-					} catch (e: Exception) {
-						MediaImporter.delete(imported.file)
-						throw e
-					}
-				} catch (e: Exception) {
-					emitPickProgress(index, uris.size, "error", 1.0, e.message ?: "media import failed")
-				}
+			// failing item must neither lose the batch nor vanish silently —
+			// and the copy of a cloud-backed picker item is real wall-clock
+			// work the UI needs to show (2026-08-19). See `MediaPickBatch`.
+			val handles = MediaPickBatch.importUris(context, uris) { index, total, stage, fraction, error ->
+				emitPickProgress(index, total, stage, fraction, error)
 			}
 			val result = JSObject()
 			result.put("handles", handles)
@@ -551,34 +528,6 @@ class NativeBridgePlugin : Plugin() {
 		payload.put("fraction", fraction)
 		if (error != null) payload.put("error", error)
 		notifyListeners("pickProgress", payload)
-	}
-
-	private fun mediaHandleToJson(imported: MediaImporter.ImportedFile, probed: MediaProbe.ProbedMedia): JSObject {
-		val json = JSObject()
-		json.put("id", UUID.randomUUID().toString())
-		// A native app-sandbox file path, never a blob: URL — the exact
-		// contract `MediaHandle.uri` documents (packages/native-bridge/src/
-		// types.ts).
-		json.put("uri", Uri.fromFile(imported.file).toString())
-		json.put("kind", probed.kind)
-		json.put("fileName", imported.fileName)
-		json.put("sizeBytes", imported.sizeBytes)
-		json.put("durationMicros", probed.durationMicros)
-		json.put("width", probed.width)
-		json.put("height", probed.height)
-		json.put("rotationDegrees", probed.rotationDegrees)
-		json.put("hasAudio", probed.hasAudio)
-		json.put("codec", probed.codec)
-		val frameRate = probed.frameRate
-		if (frameRate != null) {
-			val frameRateJson = JSObject()
-			frameRateJson.put("numerator", frameRate.numerator)
-			frameRateJson.put("denominator", frameRate.denominator)
-			json.put("frameRate", frameRateJson)
-		} else {
-			json.put("frameRate", JSONObject.NULL)
-		}
-		return json
 	}
 
 	// -- generateProxy ------------------------------------------------------

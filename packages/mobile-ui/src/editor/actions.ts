@@ -7,7 +7,13 @@
  * which is how the whole engine's React bridge is designed to be consumed
  * (see `@cutlyra/editor-core/react`'s own header comment).
  */
-import type { EditorCore, MediaAsset, MediaType, TCanvasSize } from "@cutlyra/editor-core";
+import type {
+	EditorCore,
+	MediaAsset,
+	MediaType,
+	NativeMediaSource,
+	TCanvasSize,
+} from "@cutlyra/editor-core";
 import { referencedCustodyPaths } from "@cutlyra/editor-core";
 import type { CaptionWord, ElementRef, RetimeConfig, TimelineElement } from "@cutlyra/editor-core/timeline";
 import type { ParamValues } from "@cutlyra/editor-core/params";
@@ -1401,9 +1407,40 @@ export function insertStickerElement({
 
 // -------------------------------- Templates ---------------------------------
 
+/** Template media slots that still need a pick, in template order. Pure, so the
+ *  "already filled slots are not asked for again" rule is testable without an
+ *  editor. */
+export function unfilledTemplateSlots({
+	template,
+	media,
+}: {
+	template: Template;
+	media: TemplateMediaAssignments;
+}): Template["mediaSlots"] {
+	return template.mediaSlots.filter((slot) => !media[slot.id]);
+}
+
+/** The assignment one picked asset becomes for one slot. The SLOT'S kind is
+ *  authoritative: the picker is already filtered to that kind, and a template
+ *  must never silently retype a video slot because a probe disagreed. */
+export function templateAssignmentForAsset({
+	asset,
+	slot,
+}: {
+	asset: Pick<MediaAsset, "id" | "name" | "type" | "duration">;
+	slot: Template["mediaSlots"][number];
+}): TemplateMediaAssignments[string] {
+	return {
+		mediaId: asset.id,
+		name: asset.name,
+		type: slot.kind,
+		sourceDuration: asset.duration || undefined,
+	};
+}
+
 /**
- * Apply a template: create the project, walk its media slots through the real
- * native import pipeline (picker → custody → proxy → asset), then let
+ * Apply a template: create the project, walk its UNFILLED media slots through
+ * the real native import pipeline (picker → custody → proxy → asset), then let
  * editor-core insert the plan.
  *
  * The slot order IS the picker order, one pick per slot: a montage asks for
@@ -1411,26 +1448,41 @@ export function insertStickerElement({
  * leaves that slot empty and is REPORTED in the summary instead of aborting
  * the template or inventing a clip — the text and graphics the user already
  * edited are still inserted, so nothing typed is thrown away.
+ *
+ * `media` assigns slots that are already filled (a reopened template the user
+ * is completing, or one the caller resolved earlier). Those slots are not
+ * picked again, so finishing a partly-filled template never duplicates a clip
+ * or asks the user for media they already chose.
  */
 export async function applyTemplateFromDevice({
 	editor,
 	template,
 	text,
+	media,
+	source,
 	onProgress,
 }: {
 	editor: EditorCore;
 	template: Template;
 	text?: TemplateTextOverrides;
+	/** Slots already assigned; skipped by the picker loop. */
+	media?: TemplateMediaAssignments;
+	/** Test seam / alternate shell; defaults to the real native bridge. */
+	source?: NativeMediaSource;
 	onProgress?: NativeImportProgressHandler;
 }): Promise<TemplateApplySummary> {
-	const bridge = await getNativeBridge();
+	const bridge = source ?? (await getNativeBridge());
 	const { summary } = await applyTemplateToNewProject({
 		editor,
 		template,
 		text,
+		media,
 		prepareMedia: async ({ projectId, slots }) => {
-			const assignments: TemplateMediaAssignments = {};
-			for (const slot of slots) {
+			const assignments: TemplateMediaAssignments = { ...media };
+			// `slots` already excludes everything `media` filled; the helper keeps
+			// that rule in one place if a caller ever passes a wider list.
+			for (const slot of unfilledTemplateSlots({ template, media: assignments })) {
+				if (!slots.some((candidate) => candidate.id === slot.id)) continue;
 				const { imported } = await importMediaFromNative({
 					editor,
 					projectId,
@@ -1441,12 +1493,7 @@ export async function applyTemplateFromDevice({
 				});
 				const asset = imported[0];
 				if (!asset) continue;
-				assignments[slot.id] = {
-					mediaId: asset.id,
-					name: asset.name,
-					type: asset.type === "image" ? "image" : "video",
-					sourceDuration: asset.duration || undefined,
-				};
+				assignments[slot.id] = templateAssignmentForAsset({ asset, slot });
 			}
 			return assignments;
 		},

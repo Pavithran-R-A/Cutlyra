@@ -65,6 +65,7 @@ export * from "./edl";
 export type { MediaAsset, MediaType } from "./media/types";
 export {
 	importMediaFromNative,
+	dedupePickedHandles,
 	buildMediaAssetFromNativeImport,
 	type NativeMediaSource,
 	type NativeMediaHandle,
