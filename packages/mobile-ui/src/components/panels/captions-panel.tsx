@@ -22,6 +22,7 @@ import { setCaptionText } from "../../editor/actions";
 import { getNativeBridge } from "@cutlyra/native-bridge";
 import { ToggleRow } from "../editor/param-row";
 import { captionText } from "../../editor/caption-text";
+import { TranscriptEditor } from "./transcript-editor";
 
 interface CaptionsPanelProps {
 	/** The selected caption element, when one is selected — drives the
@@ -51,9 +52,14 @@ type GenerateState = "idle" | "generating" | "done" | "error";
  *
  * On Android, Generate uses the native bridge to transcribe the project's
  * real audio-bearing timeline clips through the bundled English tiny.en
- * whisper.cpp runtime. Per-word caption editing UI remains out of v0.1; the
- * text-area editor rewrites caption text while preserving the timed caption
- * element envelope.
+ * whisper.cpp runtime. Below the style controls, `TranscriptEditor` edits the
+ * cues themselves — seek, text, cue timing, per-word corrections, split at the
+ * playhead and merge with the next cue — all through engine commands, so
+ * undo/redo, persistence and the native caption export stay in sync.
+ *
+ * Subtitle files enter through the native SAF picker (`pickSubtitleFile`,
+ * 2 MB / encoding validated natively) and leave through `saveSubtitleFile`'s
+ * system save dialog; the paste textarea remains as the web-shell path.
  */
 export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: CaptionsPanelProps) {
 	const [stylePreset, setStylePreset] = useState(DEFAULT_CAPTION_STYLE_PRESET_ID);
@@ -73,9 +79,8 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 	const [srtText, setSrtText] = useState<string>("");
 	const [exportFormat, setExportFormat] = useState<"srt" | "vtt">("srt");
 	const [exportStatus, setExportStatus] = useState<string | null>(null);
-	// Subtitle import (SRT/VTT). Kept as a textarea draft rather than a file
-	// picker: the paste path works identically in the Android WebView and the
-	// dev harness with no new native bridge surface and no storage permission.
+	// Subtitle import (SRT/VTT). Android uses the native SAF picker; this
+	// textarea is the paste path, and the only file path the web shell has.
 	const [importText, setImportText] = useState<string>("");
 	const [importStatus, setImportStatus] = useState<string | null>(null);
 	const [importError, setImportError] = useState<string | null>(null);
@@ -164,6 +169,13 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 
 	const handleExportToFile = async () => {
 		const captions = gatherCaptions();
+		// Check the CAPTIONS, not the serialized text: a VTT document always
+		// starts with a `WEBVTT` header, so an empty timeline would otherwise
+		// pass the text check and save a header-only file as if it held cues.
+		if (captions.length === 0) {
+			setExportStatus("No captions to export");
+			return;
+		}
 		const text =
 			exportFormat === "vtt" ? buildVttFromCaptions(captions) : buildSrtFromCaptions(captions);
 		if (!text.trim()) {
@@ -291,6 +303,11 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 				label="Drop shadow"
 				active={shadowEnabled}
 				onToggle={() => setCaptionShadowEnabled({ editor, enabled: !shadowEnabled })}
+			/>
+			<TranscriptEditor
+				editor={editor}
+				selectedRef={selectedCaption?.ref ?? null}
+				onSelect={(ref) => onInserted(ref)}
 			/>
 			<button type="button" className="cc-panel-actions__btn" onClick={handleExportSrt}>
 				<span>

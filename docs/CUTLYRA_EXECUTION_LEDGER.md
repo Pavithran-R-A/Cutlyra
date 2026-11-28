@@ -107,3 +107,40 @@ opens the editor — passes on a fresh install with the current payload.
 - No AI attribution in commits/PRs/release notes per `AGENTS.md`.
 - Cross-project sweeping now reads every saved project's media rows; that is
   the fix for custody being app-global while a sweep targets one project.
+
+## Mission V2 — Phase A (subtitle completion)
+
+Baseline `b8b6868`. Subtitle handling is now qualified end to end rather than
+only wired:
+
+- **SAF import hardening** — subtitle decoding/validation moved to a plain-JVM
+  `SubtitleFileCodec`: strict UTF-8 (with or without BOM) or UTF-16 with a BOM,
+  malformed sequences refused instead of silently replaced with U+FFFD, 2 MB
+  cap, `.srt/.vtt/.txt` extension check, and a `-->` content check so a picked
+  non-subtitle never imports zero cues. Format is detected from content, not
+  the extension. `SubtitleFileCodecTest` 10/10 on the JVM.
+- **Empty VTT export** — the panel now checks the CAPTIONS before serializing;
+  a header-only `WEBVTT` document can no longer be saved as if it held cues,
+  and the native save path refuses cue-less text.
+- **Transcript editor** — new `TranscriptEditor` in the Captions sheet: cue
+  list in timeline order, tap-to-seek + select, editable cue text, cue start/end
+  timing, per-word text editing, split at the playhead and merge with next.
+  Every mutation is an engine command (`UpdateElementsCommand`,
+  `UpdateCaptionWordCommand`, `SplitCaptionCommand`, `MergeCaptionsCommand`),
+  so undo/redo, persistence and the native caption export stay in one path.
+- **New commands** — `SplitCaptionCommand` divides a cue's WORDS (not just its
+  duration) and rebases the right half; `MergeCaptionsCommand` concatenates
+  words at the right offset and spans the gap. Both refuse cuts/merges that
+  would lose words, and both restore the exact prior scene on undo.
+- **Tests** — `caption-edit-commands.test.ts` 7/7; expanded `srt.test.ts` with
+  VTT output, SRT and VTT round trips, BOM/CRLF tolerance and the header-only
+  VTT case. Root Bun suite 1076 pass / 0 fail.
+- **Checks actually run** — `editor-core`/`mobile-ui`/`native-bridge`/`apps/mobile`
+  tsc clean; `apps/mobile` build + `cap sync android` clean;
+  `:app:testDebugUnitTest --tests SubtitleFileCodecTest` and
+  `:app:assembleDebug` green; `scripts/invariants.sh` green, lint 130 errors
+  (baseline 131).
+- **Not verified here** — the system SAF picker UI was not driven on a device
+  in this pass (the codec rules are unit-tested; the picker flow needs the
+  emulator/instrumented harness), and the new captions buttons were typechecked
+  and bundled but not visually inspected. Stated as a limitation, not a pass.

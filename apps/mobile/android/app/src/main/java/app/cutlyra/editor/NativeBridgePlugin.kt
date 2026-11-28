@@ -1,7 +1,5 @@
 package app.cutlyra.editor
 
-import java.nio.charset.Charset
-
 import android.Manifest
 import android.app.Activity
 import android.app.ActivityManager
@@ -35,6 +33,7 @@ import app.cutlyra.editor.export.Media3Exporter
 import app.cutlyra.editor.export.PrerenderedOverlay
 import app.cutlyra.editor.export.ticksToUs
 import app.cutlyra.editor.media.MediaImporter
+import app.cutlyra.editor.media.SubtitleFileCodec
 import app.cutlyra.editor.media.MediaPickerIntents
 import app.cutlyra.editor.media.MediaProbe
 import app.cutlyra.editor.media.FreezeFrameCapture
@@ -1128,7 +1127,18 @@ class NativeBridgePlugin : Plugin() {
 			call.reject("saveSubtitleFile requires {text}", "IO_ERROR")
 			return
 		}
-		val suggestedName = call.getString("suggestedName") ?: "captions.srt"
+		// A WebVTT document with only its header is still non-blank text, so a
+		// blank check alone would write an apparently valid, cue-less file.
+		if (text.isBlank() || !text.contains("-->")) {
+			call.reject("Nothing to save — there are no caption cues to export", "IO_ERROR")
+			return
+		}
+		val requestedName = call.getString("suggestedName") ?: "captions.srt"
+		// The save dialog needs an extension to pick the MIME type; a caller that
+		// omitted one still gets a real subtitle file rather than extension-less text.
+		val suggestedName = if (requestedName.endsWith(".srt", ignoreCase = true) ||
+			requestedName.endsWith(".vtt", ignoreCase = true)
+		) requestedName else "$requestedName.srt"
 		if (pendingSubtitlePick != null) {
 			call.reject("A subtitle picker is already open", "IO_ERROR")
 			return
@@ -1143,6 +1153,41 @@ class NativeBridgePlugin : Plugin() {
 		// Stash the text on the call's data so the result callback can write it.
 		call.data?.put("subtitleText", text)
 		startActivityForResult(call, intent, "handleSubtitlePickResult")
+	}
+
+	/** Reads a picked subtitle document with a hard size cap. The whole document
+	 *  is decoded as text, so the cap is what keeps a multi-gigabyte "subtitle"
+	 *  from being loaded into memory. */
+	private fun readBoundedSubtitleBytes(uri: android.net.Uri): ByteArray {
+		val maxBytes = SubtitleFileCodec.MAX_BYTES
+		val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+			val buf = java.io.ByteArrayOutputStream()
+			val chunk = ByteArray(8192)
+			var total = 0
+			while (true) {
+				val n = input.read(chunk)
+				if (n < 0) break
+				if (total + n > maxBytes) {
+					throw Exception("Subtitle files are limited to 2 MB")
+				}
+				buf.write(chunk, 0, n)
+				total += n
+			}
+			buf.toByteArray()
+		} ?: throw Exception("The selected document could not be opened")
+		if (bytes.isEmpty()) throw Exception("The selected file is empty")
+		return bytes
+	}
+
+	private fun subtitleDisplayName(uri: android.net.Uri): String? = try {
+		context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+			if (c.moveToFirst()) {
+				val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+				if (idx >= 0 && !c.isNull(idx)) c.getString(idx) else null
+			} else null
+		}
+	} catch (_: Exception) {
+		null
 	}
 
 	@ActivityCallback
@@ -1182,43 +1227,16 @@ class NativeBridgePlugin : Plugin() {
 					ret.put("uri", uri.toString())
 					call.resolve(ret)
 				} else {
-					// Read with a sensible size limit (2 MB) and encoding handling.
-					val MAX_BYTES = 2 * 1024 * 1024
-					val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
-						val buf = java.io.ByteArrayOutputStream()
-						val chunk = ByteArray(8192)
-						var total = 0
-						while (true) {
-							val n = input.read(chunk)
-							if (n < 0) break
-							if (total + n > MAX_BYTES) {
-								throw Exception("Subtitle file exceeds the 2 MB size limit")
-							}
-							buf.write(chunk, 0, n)
-							total += n
-						}
-						buf.toByteArray()
-					} ?: throw Exception("openInputStream returned null")
-					// Encoding: strip BOM, decode UTF-8 (with replacement), fall
-					// back to platform default if decoding fails.
-					val text = if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
-						String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
-					} else {
-						try { String(bytes, Charsets.UTF_8) } catch (_: Exception) { String(bytes, Charset.defaultCharset()) }
-					}
-					val displayName = try {
-						context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-							if (c.moveToFirst()) {
-								val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-								if (idx >= 0 && !c.isNull(idx)) c.getString(idx) else null
-							} else null
-						}
-					} catch (_: Exception) { null }
-					val format = if (displayName?.endsWith(".vtt", ignoreCase = true) == true) "vtt" else "srt"
+					val displayName = subtitleDisplayName(uri)
+					SubtitleFileCodec.validateExtension(displayName)
+					val text = SubtitleFileCodec.decode(readBoundedSubtitleBytes(uri))
+					SubtitleFileCodec.validateContent(text)
 					val ret = JSObject()
 					ret.put("text", text)
 					ret.put("displayName", displayName)
-					ret.put("format", format)
+					// Content wins over extension: providers routinely hand back a
+					// .txt (or no name) holding a WebVTT document.
+					ret.put("format", SubtitleFileCodec.detectFormat(text))
 					call.resolve(ret)
 				}
 			} catch (e: Exception) {

@@ -38,11 +38,17 @@
  */
 import type { EditorCore, MediaAsset, MediaTime } from "@cutlyra/editor-core";
 import {
+	mediaTimeFromSeconds,
 	mediaTimeToSeconds,
 	resolveNativeMediaRawPath,
 	ZERO_MEDIA_TIME,
 } from "@cutlyra/editor-core";
-import type { CaptionElement, CreateCaptionElement, VideoElement } from "@cutlyra/editor-core/timeline";
+import type {
+	CaptionElement,
+	CreateCaptionElement,
+	ElementRef,
+	VideoElement,
+} from "@cutlyra/editor-core/timeline";
 import type { ParamValues } from "@cutlyra/editor-core/params";
 import {
 	buildCaptionElementsFromTranscript,
@@ -53,7 +59,11 @@ import {
 import {
 	insertGeneratedCaptions,
 	ApplyCaptionStyleCommand,
+	MergeCaptionsCommand,
+	SplitCaptionCommand,
+	UpdateCaptionWordCommand,
 	UpdateElementsCommand,
+	findNextCaption,
 } from "@cutlyra/editor-core/commands";
 import { DEFAULT_TEXT_BORDER_WIDTH, DEFAULT_TEXT_SHADOW } from "@cutlyra/editor-core/text/typography";
 import { windowSegmentsToClip } from "./caption-window";
@@ -596,4 +606,109 @@ function inheritSharedCaptionParams({
 		...element,
 		params: { ...element.params, ...inherited },
 	}));
+}
+
+/** Rewrite ONE word of a cue (typo fixes on a single karaoke word), leaving
+ *  every other word's timing untouched. Undoable like every other edit. */
+export function setCaptionWordText({
+	editor,
+	ref,
+	wordIndex,
+	text,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	wordIndex: number;
+	text: string;
+}): void {
+	editor.command.execute({
+		command: new UpdateCaptionWordCommand({
+			trackId: ref.trackId,
+			elementId: ref.elementId,
+			wordIndex,
+			text,
+		}),
+	});
+}
+
+/** Move or resize a cue from the transcript editor's timing fields. Values are
+ *  seconds; an end at or before the start is refused rather than persisted as
+ *  a zero-length cue the renderer would silently drop. */
+export function setCaptionTiming({
+	editor,
+	ref,
+	startSeconds,
+	endSeconds,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+	startSeconds: number;
+	endSeconds: number;
+}): void {
+	const caption = getAllCaptions({ editor }).find(
+		(entry) => entry.element.id === ref.elementId && entry.trackId === ref.trackId,
+	);
+	if (!caption) return;
+	if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds)) return;
+	const start = Math.max(0, startSeconds);
+	const end = Math.max(0, endSeconds);
+	if (end <= start) return;
+	editor.command.execute({
+		command: new UpdateElementsCommand({
+			updates: [
+				{
+					trackId: ref.trackId,
+					elementId: ref.elementId,
+					patch: {
+						startTime: mediaTimeFromSeconds({ seconds: start }),
+						duration: mediaTimeFromSeconds({ seconds: end - start }),
+					},
+				},
+			],
+		}),
+	});
+}
+
+/** Split the selected cue at the current playhead. A no-op when the playhead
+ *  is outside the cue or the cut would strand a half without a whole word —
+ *  the transcript editor disables the button in those cases and the command
+ *  refuses the same cuts on its own. */
+export function splitCaptionAtPlayhead({
+	editor,
+	ref,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+}): string | null {
+	const command = new SplitCaptionCommand({
+		trackId: ref.trackId,
+		elementId: ref.elementId,
+		splitTime: editor.playback.getCurrentTime(),
+	});
+	editor.command.execute({ command });
+	return command.getRightElementId();
+}
+
+/** Merge the selected cue with the next cue on its track. Returns the merged
+ *  element id, or null when there is no following cue. */
+export function mergeCaptionWithNext({
+	editor,
+	ref,
+}: {
+	editor: EditorCore;
+	ref: ElementRef;
+}): string | null {
+	const cues = getAllCaptions({ editor })
+		.filter((entry) => entry.trackId === ref.trackId)
+		.map((entry) => entry.element);
+	const next = findNextCaption({ elements: cues, elementId: ref.elementId });
+	if (!next) return null;
+	editor.command.execute({
+		command: new MergeCaptionsCommand({
+			trackId: ref.trackId,
+			leftElementId: ref.elementId,
+			rightElementId: next.id,
+		}),
+	});
+	return ref.elementId;
 }
