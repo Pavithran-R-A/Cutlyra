@@ -41,6 +41,7 @@ import type {
 } from "./types";
 import {
 	deriveTransitionAnimations,
+	deriveTransitionExtras,
 	normalizeTransitionDirection,
 	normalizeTransitionKind,
 	type TransitionCanvasSize,
@@ -249,20 +250,38 @@ export function applyTransitionsToSceneTracks({
 
 	const placementById = new Map(placements.map((p) => [p.elementId, p]));
 	const derived = deriveTransitionAnimations({ windows, elements: visible, canvasSize });
+	// Wipe / dip / blur need a derived effect instance plus its animated
+	// parameter channels; `deriveTransitionAnimations` only carries transform
+	// and opacity ramps. Both maps are merged into the render-only element.
+	const extras = deriveTransitionExtras({ windows, elements: visible });
 
 	const mainElements = tracks.main.elements.map((element) => {
 		const placement = placementById.get(element.id);
-		const animations = derived.get(element.id) ?? element.animations;
+		const extra = extras.get(element.id);
+		const baseAnimations = derived.get(element.id) ?? element.animations;
+		const animations = extra?.animations
+			? { ...baseAnimations, ...extra.animations }
+			: baseAnimations;
+		const effects = extra?.effects
+			? [...(element.effects ?? []), ...extra.effects]
+			: element.effects;
 		if (!placement) {
-			return animations === element.animations ? element : { ...element, animations };
+			return animations === element.animations && effects === element.effects
+				? element
+				: { ...element, animations, effects };
 		}
-		if (placement.insertStartTicks === element.startTime && animations === element.animations) {
+		if (
+			placement.insertStartTicks === element.startTime &&
+			animations === element.animations &&
+			effects === element.effects
+		) {
 			return element;
 		}
 		return {
 			...element,
 			startTime: placement.insertStartTicks,
 			animations,
+			effects,
 		};
 	}) as VideoTrack["elements"];
 

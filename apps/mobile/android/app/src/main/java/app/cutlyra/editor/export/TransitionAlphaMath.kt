@@ -93,31 +93,103 @@ object TransitionAlphaMath {
      * producer normalises every kind it emits, so this only guards
      * hand-authored/legacy EDLs.
      *
-     * Deliberately NOT here: "wipe" needs an animated mask/wipe fragment pass
-     * and "dip" needs a full-frame colour layer in both renderers. Shipping
-     * either as a look-alike would make the preview and the file disagree.
+     * WIPE paints the incoming head ABOVE the base and reveals it through an
+     * animated edge (`EdlWipeEffect`); DIP_* cross-fade while both layers are
+     * mixed toward a solid colour (`EdlDipEffect`); BLUR cross-fades while the
+     * incoming head resolves from a blur (`EdlBlurEffect`). Each mirrors the
+     * preview's derived effect pass.
      */
-    enum class TransitionKind { CROSSFADE, SLIDE, PUSH, ZOOM, UNSUPPORTED_HARD_CUT }
+    enum class TransitionKind {
+        CROSSFADE,
+        SLIDE,
+        PUSH,
+        ZOOM,
+        WIPE,
+        DIP_BLACK,
+        DIP_WHITE,
+        BLUR,
+        UNSUPPORTED_HARD_CUT,
+    }
 
     fun classify(rawKind: String): TransitionKind = when (rawKind.lowercase()) {
         "fade", "crossfade", "cross-fade", "cross_fade", "dissolve" -> TransitionKind.CROSSFADE
         "slide" -> TransitionKind.SLIDE
         "push" -> TransitionKind.PUSH
         "zoom" -> TransitionKind.ZOOM
+        "wipe" -> TransitionKind.WIPE
+        "dip", "dip-black", "dip_black" -> TransitionKind.DIP_BLACK
+        "dip-white", "dip_white" -> TransitionKind.DIP_WHITE
+        "blur" -> TransitionKind.BLUR
         else -> TransitionKind.UNSUPPORTED_HARD_CUT
     }
 
-    /** Base-alpha ramp (crossfade / zoom); the others reveal by motion alone. */
+    /** Base-alpha ramp (crossfade / zoom / dip / blur); wipe and motion do not. */
     fun usesAlpha(rawKind: String): Boolean =
         when (classify(rawKind)) {
-            TransitionKind.CROSSFADE, TransitionKind.ZOOM -> true
+            TransitionKind.CROSSFADE,
+            TransitionKind.ZOOM,
+            TransitionKind.DIP_BLACK,
+            TransitionKind.DIP_WHITE,
+            TransitionKind.BLUR,
+            -> true
             else -> false
         }
 
-    /** Slide/push paint the incoming head OVER the base, like the preview. */
+    /** Slide/push/wipe paint the incoming head OVER the base, like the preview. */
     fun paintsHeadAboveBase(rawKind: String): Boolean =
         when (classify(rawKind)) {
-            TransitionKind.SLIDE, TransitionKind.PUSH -> true
+            TransitionKind.SLIDE, TransitionKind.PUSH, TransitionKind.WIPE -> true
             else -> false
         }
+
+    /** Dip colour, or null when the kind is not a dip. */
+    fun dipColour(rawKind: String): FloatArray? =
+        when (classify(rawKind)) {
+            TransitionKind.DIP_BLACK -> floatArrayOf(0f, 0f, 0f)
+            TransitionKind.DIP_WHITE -> floatArrayOf(1f, 1f, 1f)
+            else -> null
+        }
+
+    /** 0 at `startUs`, 1 at `endUs`, clamped outside. */
+    fun progress(startUs: Long, endUs: Long, presentationTimeUs: Long): Float {
+        if (endUs <= startUs) return if (presentationTimeUs >= endUs) 1f else 0f
+        val elapsed = (presentationTimeUs - startUs).toDouble() / (endUs - startUs).toDouble()
+        return elapsed.coerceIn(0.0, 1.0).toFloat()
+    }
+
+    /**
+     * Outgoing side of a dip: colour ramps 0 -> 1 across the first HALF of the
+     * window and holds at 1 (the clip ends with the window anyway).
+     */
+    fun outgoingDipAmount(
+        startUs: Long,
+        endUs: Long,
+        presentationTimeUs: Long,
+    ): Float = progress(startUs, startUs + (endUs - startUs) / 2, presentationTimeUs)
+
+    /**
+     * Incoming side of a dip: fully dipped until the midpoint, then 1 -> 0.
+     * Identical shape to the preview's derived `amount` channel.
+     */
+    fun incomingDipAmount(
+        startUs: Long,
+        endUs: Long,
+        presentationTimeUs: Long,
+    ): Float = 1f - progress(startUs + (endUs - startUs) / 2, endUs, presentationTimeUs)
+
+    /**
+     * Blur transition peak sigma, in pixels, at `frameHeight`; matches the
+     * preview's `intensityToSigma` (`intensity / 5 * height / 1080`) for the
+     * shared `TRANSITION_BLUR_INTENSITY` of 60 — i.e. 12 px at 1080p.
+     */
+    fun blurSigmaPixels(frameHeight: Int, intensity: Float = 60f): Float =
+        (intensity / 5f) * (frameHeight.toFloat() / 1080f)
+
+    /** Incoming blur: peak sigma at the window start, 0 at its end. */
+    fun incomingBlurSigma(
+        frameHeight: Int,
+        startUs: Long,
+        endUs: Long,
+        presentationTimeUs: Long,
+    ): Float = blurSigmaPixels(frameHeight) * (1f - progress(startUs, endUs, presentationTimeUs))
 }

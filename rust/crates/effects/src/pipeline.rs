@@ -13,6 +13,10 @@ const COLOR_ADJUST_SHADER_ID: &str = "color-adjust";
 const COLOR_ADJUST_SHADER_SOURCE: &str = include_str!("shaders/color_adjust.wgsl");
 const CHROMA_KEY_SHADER_ID: &str = "chroma-key";
 const CHROMA_KEY_SHADER_SOURCE: &str = include_str!("shaders/chroma_key.wgsl");
+const TRANSITION_WIPE_SHADER_ID: &str = "transition-wipe";
+const TRANSITION_WIPE_SHADER_SOURCE: &str = include_str!("shaders/transition_wipe.wgsl");
+const TRANSITION_DIP_SHADER_ID: &str = "transition-dip";
+const TRANSITION_DIP_SHADER_SOURCE: &str = include_str!("shaders/transition_dip.wgsl");
 
 pub struct ApplyEffectsOptions<'a> {
     pub source: &'a wgpu::Texture,
@@ -225,10 +229,66 @@ impl EffectPipeline {
                     multiview_mask: None,
                     cache: None,
                 });
+        // Derived transition passes (wipe/dip) share the exact pipeline shape
+        // of chroma-key, so one helper covers both instead of another pair of
+        // 50-line descriptor copies.
+        let make_transition_pipeline = |label: &str, source: &str| {
+            let module = context
+                .device()
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some(label),
+                    source: wgpu::ShaderSource::Wgsl(source.into()),
+                });
+            context
+                .device()
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vertex_shader_module,
+                        entry_point: Some("vertex_main"),
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<[f32; 2]>() as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &[wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x2,
+                                offset: 0,
+                                shader_location: 0,
+                            }],
+                        }],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &module,
+                        entry_point: Some("fragment_main"),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: context.texture_format(),
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview_mask: None,
+                    cache: None,
+                })
+        };
+        let transition_wipe_pipeline = make_transition_pipeline(
+            "effects-transition-wipe-pipeline",
+            TRANSITION_WIPE_SHADER_SOURCE,
+        );
+        let transition_dip_pipeline = make_transition_pipeline(
+            "effects-transition-dip-pipeline",
+            TRANSITION_DIP_SHADER_SOURCE,
+        );
         let pipelines = HashMap::from([
             (GAUSSIAN_BLUR_SHADER_ID.to_string(), gaussian_blur_pipeline),
             (COLOR_ADJUST_SHADER_ID.to_string(), color_adjust_pipeline),
             (CHROMA_KEY_SHADER_ID.to_string(), chroma_key_pipeline),
+            (TRANSITION_WIPE_SHADER_ID.to_string(), transition_wipe_pipeline),
+            (TRANSITION_DIP_SHADER_ID.to_string(), transition_dip_pipeline),
         ]);
 
         Self {
@@ -431,6 +491,49 @@ fn pack_effect_uniforms(
         });
     }
 
+    if shader == TRANSITION_WIPE_SHADER_ID {
+        const KEYS: [&str; 3] = ["u_progress", "u_direction", "u_softness"];
+        for uniform in pass.uniforms.keys() {
+            if !KEYS.contains(&uniform.as_str()) {
+                return Err(EffectsError::UnsupportedUniform {
+                    shader: shader.to_string(),
+                    uniform: uniform.clone(),
+                });
+            }
+        }
+        let direction = read_vec2_uniform(pass, "u_direction")?;
+        return Ok(EffectUniformBuffer {
+            resolution: [width as f32, height as f32],
+            direction,
+            scalars: [
+                read_number_uniform(pass, "u_progress")?,
+                read_number_uniform(pass, "u_softness")?,
+                0.0,
+                0.0,
+            ],
+            scalars2: [0.0, 0.0, 0.0, 0.0],
+        });
+    }
+
+    if shader == TRANSITION_DIP_SHADER_ID {
+        const KEYS: [&str; 2] = ["u_amount", "u_colour"];
+        for uniform in pass.uniforms.keys() {
+            if !KEYS.contains(&uniform.as_str()) {
+                return Err(EffectsError::UnsupportedUniform {
+                    shader: shader.to_string(),
+                    uniform: uniform.clone(),
+                });
+            }
+        }
+        let colour = read_vec3_uniform(pass, "u_colour")?;
+        return Ok(EffectUniformBuffer {
+            resolution: [width as f32, height as f32],
+            direction: [0.0, 0.0],
+            scalars: [read_number_uniform(pass, "u_amount")?, 0.0, 0.0, 0.0],
+            scalars2: [colour[0], colour[1], colour[2], 0.0],
+        });
+    }
+
     let sigma = read_number_uniform(pass, "u_sigma")?;
     let step = read_number_uniform(pass, "u_step")?;
     let direction = read_vec2_uniform(pass, "u_direction")?;
@@ -548,5 +651,15 @@ mod shader_validation_tests {
     #[test]
     fn chroma_key_shader_is_valid() {
         assert_valid_wgsl("chroma_key.wgsl", CHROMA_KEY_SHADER_SOURCE);
+    }
+
+    #[test]
+    fn transition_wipe_shader_is_valid() {
+        assert_valid_wgsl("transition_wipe.wgsl", TRANSITION_WIPE_SHADER_SOURCE);
+    }
+
+    #[test]
+    fn transition_dip_shader_is_valid() {
+        assert_valid_wgsl("transition_dip.wgsl", TRANSITION_DIP_SHADER_SOURCE);
     }
 }

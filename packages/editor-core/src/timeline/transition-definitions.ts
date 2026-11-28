@@ -31,10 +31,20 @@
  * instead of an accident of the compositor.
  */
 import type { ElementAnimations, ScalarAnimationKey, ScalarChannel } from "@/animation/types";
+import type { Effect } from "@/effects/types";
 import { roundMediaTime } from "@/wasm";
 import type { TimelineElement } from "./types";
 
-export const SUPPORTED_TRANSITION_KINDS = ["fade", "slide", "push", "zoom"] as const;
+export const SUPPORTED_TRANSITION_KINDS = [
+	"fade",
+	"slide",
+	"push",
+	"zoom",
+	"wipe",
+	"dip-black",
+	"dip-white",
+	"blur",
+] as const;
 export type TransitionKind = (typeof SUPPORTED_TRANSITION_KINDS)[number];
 
 export const TRANSITION_DIRECTIONS = ["left", "right", "up", "down"] as const;
@@ -45,11 +55,22 @@ export type TransitionLayerOrder = "incoming-above" | "incoming-below";
 
 export type TransitionAudioPolicy = "cut";
 
+/**
+ * Which derived visual pass (if any) the kind needs in BOTH renderers.
+ * `"none"` kinds are pure opacity/transform ramps; `"wipe"` and `"dip"` are
+ * per-layer colour/alpha passes with a progress parameter; `"blur"` reuses
+ * the existing blur effect on the incoming clip.
+ */
+export type TransitionVisual = "none" | "wipe" | "dip" | "blur";
+
 export interface TransitionDefinition {
 	kind: TransitionKind;
 	label: string;
 	supportsDirection: boolean;
 	defaultDirection: TransitionDirection;
+	visual: TransitionVisual;
+	/** Dip kinds only: the colour the frame passes through at the midpoint. */
+	dipColour?: readonly [number, number, number];
 	/**
 	 * `incoming-below`: the head is painted UNDER the base and the base's
 	 * opacity dips (alpha blend). `incoming-above`: the head is painted OVER
@@ -69,6 +90,7 @@ export const TRANSITION_DEFINITIONS: Readonly<
 		label: "Fade",
 		supportsDirection: false,
 		defaultDirection: "left",
+		visual: "none",
 		layerOrder: "incoming-below",
 		audio: "cut",
 	},
@@ -77,6 +99,7 @@ export const TRANSITION_DEFINITIONS: Readonly<
 		label: "Slide",
 		supportsDirection: true,
 		defaultDirection: "left",
+		visual: "none",
 		layerOrder: "incoming-above",
 		audio: "cut",
 	},
@@ -85,6 +108,7 @@ export const TRANSITION_DEFINITIONS: Readonly<
 		label: "Push",
 		supportsDirection: true,
 		defaultDirection: "left",
+		visual: "none",
 		layerOrder: "incoming-above",
 		audio: "cut",
 	},
@@ -93,19 +117,101 @@ export const TRANSITION_DEFINITIONS: Readonly<
 		label: "Zoom",
 		supportsDirection: false,
 		defaultDirection: "left",
+		visual: "none",
+		layerOrder: "incoming-below",
+		audio: "cut",
+	},
+	wipe: {
+		kind: "wipe",
+		label: "Wipe",
+		supportsDirection: true,
+		defaultDirection: "left",
+		visual: "wipe",
+		// The wipe reveals the incoming clip through an animated edge, so it
+		// must be painted over the opaque base — same stacking as slide/push.
+		layerOrder: "incoming-above",
+		audio: "cut",
+	},
+	"dip-black": {
+		kind: "dip-black",
+		label: "Dip to Black",
+		supportsDirection: false,
+		defaultDirection: "left",
+		visual: "dip",
+		dipColour: [0, 0, 0],
+		layerOrder: "incoming-below",
+		audio: "cut",
+	},
+	"dip-white": {
+		kind: "dip-white",
+		label: "Dip to White",
+		supportsDirection: false,
+		defaultDirection: "left",
+		visual: "dip",
+		dipColour: [1, 1, 1],
+		layerOrder: "incoming-below",
+		audio: "cut",
+	},
+	blur: {
+		kind: "blur",
+		label: "Blur",
+		supportsDirection: false,
+		defaultDirection: "left",
+		visual: "blur",
 		layerOrder: "incoming-below",
 		audio: "cut",
 	},
 };
 
+/** Effect type strings the preview derives for a transition (both ends). */
+export const TRANSITION_WIPE_EFFECT_TYPE = "transition-wipe";
+export const TRANSITION_DIP_EFFECT_TYPE = "transition-dip";
+
+/**
+ * Normalised wipe edge softness (fraction of the frame along the wipe axis).
+ * Shared by the preview shader and `EdlWipeEffect` so the soft edge has the
+ * same width on both renderers.
+ */
+export const TRANSITION_WIPE_SOFTNESS = 0.01;
+
+/** Blur transition: peak blur strength in the preview's `blur` param units. */
+export const TRANSITION_BLUR_INTENSITY = 60;
+
+/** Stable id for a derived transition effect on one element. */
+export function transitionEffectId({
+	elementId,
+	kind,
+}: {
+	elementId: string;
+	kind: TransitionKind;
+}): string {
+	return `${elementId}:transition:${kind}`;
+}
+
+/** Direction unit vector in the shaders' sampling-coordinate space. */
+export function transitionDirectionVector({
+	direction,
+}: {
+	direction: TransitionDirection;
+}): [number, number] {
+	switch (direction) {
+		case "left":
+			return [-1, 0];
+		case "right":
+			return [1, 0];
+		case "up":
+			return [0, -1];
+		case "down":
+			return [0, 1];
+	}
+}
+
 /** How much larger the incoming clip starts in a `zoom` transition. */
 export const ZOOM_START_SCALE = 1.25;
 
 /**
- * Kinds that used to be authored by the engine but have no renderer here.
- * `"wipe"` needs an animated mask/wipe shader and `"dip"` needs a full-frame
- * colour layer in BOTH renderers; they are deliberately absent rather than
- * silently rendered as something else.
+ * Historical spellings kept for documents written before the canonical
+ * `TransitionKind` tokens existed.
  */
 const LEGACY_ALIASES: Readonly<Record<string, TransitionKind>> = {
 	crossfade: "fade",
@@ -233,8 +339,15 @@ function incomingRamps({
 	canvas: TransitionCanvasSize;
 	base: BaseVisuals;
 }): Ramp[] {
-	if (kind === "fade") {
+	if (kind === "fade" || kind === "dip-black" || kind === "dip-white" || kind === "blur") {
+		// Alpha kinds: the incoming clip fades in while the dip/blur pass
+		// supplies the colour or softness ramp.
 		return [{ path: "opacity", from: 0, to: 1 }];
+	}
+	if (kind === "wipe") {
+		// The wipe's own shader reveals the incoming clip; an opacity ramp on
+		// top would double-darken the seam.
+		return [];
 	}
 	if (kind === "zoom") {
 		return [
@@ -493,4 +606,209 @@ function incomingDirection(window: TransitionWindowLike): TransitionDirection {
 		kind: normalizeTransitionKind(window.kind),
 		raw: window.direction,
 	});
+}
+
+/**
+ * Per-element additions a `wipe` / `dip-*` / `blur` window needs beyond the
+ * plain animation ramps `deriveTransitionAnimations` produces:
+ *
+ *  - `effects`: a derived effect instance on the element (NEVER persisted —
+ *    `applyTransitionsToSceneTracks` adds it to the render-only element),
+ *  - `animations`: the effect's animated parameter channels, in the same
+ *    effect-param path space user keyframes use (`effects.<id>.params.<key>`).
+ *
+ * The Android exporter derives the same passes natively from the EDL window
+ * (kind + direction + timing), so nothing extra has to travel in the EDL.
+ */
+export interface DerivedTransitionExtras {
+	effects: Effect[];
+	animations?: ElementAnimations;
+}
+
+function effectChannel({
+	effectId,
+	paramKey,
+	keys,
+}: {
+	effectId: string;
+	paramKey: string;
+	keys: Array<{ time: number; value: number }>;
+}): ScalarChannel {
+	return {
+		keys: keys.map((entry, index) =>
+			key({
+				id: `${effectId}:${paramKey}:${index}`,
+				time: entry.time,
+				value: entry.value,
+			}),
+		),
+		extrapolation: { before: "hold", after: "hold" },
+	};
+}
+
+function effectParamPath({
+	effectId,
+	paramKey,
+}: {
+	effectId: string;
+	paramKey: string;
+}): string {
+	return `effects.${effectId}.params.${paramKey}`;
+}
+
+function addEffect({
+	map,
+	elementId,
+	effect,
+	channels,
+}: {
+	map: Map<string, DerivedTransitionExtras>;
+	elementId: string;
+	effect: Effect;
+	channels: ElementAnimations;
+}): void {
+	const existing = map.get(elementId) ?? { effects: [] };
+	if (existing.effects.some((candidate) => candidate.id === effect.id)) return;
+	existing.effects = [...existing.effects, effect];
+	existing.animations = { ...existing.animations, ...channels };
+	map.set(elementId, existing);
+}
+
+export function deriveTransitionExtras({
+	windows,
+	elements,
+}: {
+	windows: readonly TransitionWindowLike[];
+	elements: readonly TimelineElement[];
+}): Map<string, DerivedTransitionExtras> {
+	const out = new Map<string, DerivedTransitionExtras>();
+	const byId = new Map(elements.map((element) => [element.id, element]));
+
+	for (const window of windows) {
+		if (!(window.durationTicks > 0)) continue;
+		const kind = normalizeTransitionKind(window.kind);
+		const definition = TRANSITION_DEFINITIONS[kind];
+		const incoming = byId.get(window.incomingElementId);
+		const outgoing = byId.get(window.outgoingElementId);
+		if (!incoming || !outgoing) continue;
+
+		const duration = window.durationTicks;
+		const midpoint = duration / 2;
+
+		if (definition.visual === "wipe") {
+			const effectId = transitionEffectId({ elementId: incoming.id, kind });
+			const [directionX, directionY] = transitionDirectionVector({
+				direction: incomingDirection(window),
+			});
+			addEffect({
+				map: out,
+				elementId: incoming.id,
+				effect: {
+					id: effectId,
+					type: TRANSITION_WIPE_EFFECT_TYPE,
+					enabled: true,
+					params: {
+						progress: 0,
+						directionX,
+						directionY,
+						softness: TRANSITION_WIPE_SOFTNESS,
+					},
+				},
+				channels: {
+					[effectParamPath({ effectId, paramKey: "progress" })]: effectChannel({
+						effectId,
+						paramKey: "progress",
+						keys: [
+							{ time: 0, value: 0 },
+							{ time: duration, value: 1 },
+						],
+					}),
+				},
+			});
+			continue;
+		}
+
+		if (definition.visual === "dip") {
+			const [red, green, blue] = definition.dipColour ?? [0, 0, 0];
+			const white = red === 1 && green === 1 && blue === 1 ? 1 : 0;
+			// Outgoing: colour ramps INTO the dip colour across the first half.
+			const outgoingId = transitionEffectId({ elementId: outgoing.id, kind });
+			const outgoingStart = Math.max(0, outgoing.duration - duration);
+			addEffect({
+				map: out,
+				elementId: outgoing.id,
+				effect: {
+					id: outgoingId,
+					type: TRANSITION_DIP_EFFECT_TYPE,
+					enabled: true,
+					params: { amount: 0, white },
+				},
+				channels: {
+					[effectParamPath({ effectId: outgoingId, paramKey: "amount" })]:
+						effectChannel({
+							effectId: outgoingId,
+							paramKey: "amount",
+							keys: [
+								{ time: outgoingStart, value: 0 },
+								{ time: outgoingStart + midpoint, value: 1 },
+							],
+						}),
+				},
+			});
+			// Incoming: fully dipped until the midpoint, then resolves to normal.
+			const incomingId = transitionEffectId({ elementId: incoming.id, kind });
+			addEffect({
+				map: out,
+				elementId: incoming.id,
+				effect: {
+					id: incomingId,
+					type: TRANSITION_DIP_EFFECT_TYPE,
+					enabled: true,
+					params: { amount: 1, white },
+				},
+				channels: {
+					[effectParamPath({ effectId: incomingId, paramKey: "amount" })]:
+						effectChannel({
+							effectId: incomingId,
+							paramKey: "amount",
+							keys: [
+								{ time: 0, value: 1 },
+								{ time: midpoint, value: 1 },
+								{ time: duration, value: 0 },
+							],
+						}),
+				},
+			});
+			continue;
+		}
+
+		if (definition.visual === "blur") {
+			// The incoming clip resolves from the project's blur effect. It is
+			// cross-faded in (opacity ramp from `incomingRamps`), so the base
+			// stays sharp and only the arriving clip softens in.
+			const effectId = transitionEffectId({ elementId: incoming.id, kind });
+			addEffect({
+				map: out,
+				elementId: incoming.id,
+				effect: {
+					id: effectId,
+					type: "blur",
+					enabled: true,
+					params: { intensity: TRANSITION_BLUR_INTENSITY },
+				},
+				channels: {
+					[effectParamPath({ effectId, paramKey: "intensity" })]: effectChannel({
+						effectId,
+						paramKey: "intensity",
+						keys: [
+							{ time: 0, value: TRANSITION_BLUR_INTENSITY },
+							{ time: duration, value: 0 },
+						],
+					}),
+				},
+			});
+		}
+	}
+
+	return out;
 }

@@ -178,9 +178,13 @@ class ExportMotionTransitionInstrumentedTest {
             else -> emptyList()
         }
 
-    private fun buildEdl(kind: String, direction: String = "left"): Edl {
+    private fun buildEdl(
+        kind: String,
+        direction: String = "left",
+        blueSource: File = blueClip,
+    ): Edl {
         val assetA = asset("asset-a", redClip, "red")
-        val assetB = asset("asset-b", blueClip, "blue")
+        val assetB = asset("asset-b", blueSource, "blue")
         // push: the outgoing clip leaves the frame as the head arrives. The
         // transition sits at the END of the clip, so its channels are anchored
         // at the clip-local window start (what the TS producer emits).
@@ -336,6 +340,32 @@ class ExportMotionTransitionInstrumentedTest {
         return sum / n
     }
 
+    /** Fraction of frame ROWS (mid column) that are blue-dominant. */
+    private fun blueRowCoverage(frame: Bitmap): Double {
+        val x = frame.width / 2
+        var blue = 0
+        for (y in 0 until frame.height) {
+            val (r, _, b) = patch(frame, x, y)
+            if (b - r > 80.0) blue++
+        }
+        return blue.toDouble() / frame.height
+    }
+
+    /** Largest neighbour luma jump along the middle row (edge sharpness). */
+    private fun maxEdgeContrast(frame: Bitmap): Double {
+        val y = frame.height / 2
+        var max = 0.0
+        var previous = patch(frame, 0, y)
+        for (x in 1 until frame.width) {
+            val current = patch(frame, x, y)
+            fun luma(c: Triple<Double, Double, Double>) =
+                0.2126 * c.first + 0.7152 * c.second + 0.0722 * c.third
+            max = maxOf(max, abs(luma(current) - luma(previous)))
+            previous = current
+        }
+        return max
+    }
+
     /** Fraction of frame columns (mid row) that are blue-dominant. */
     private fun blueCoverage(frame: Bitmap): Double {
         val y = frame.height / 2
@@ -434,6 +464,130 @@ class ExportMotionTransitionInstrumentedTest {
     @Test
     fun push_renders_the_same_motion_with_the_outgoing_layer_leaving() {
         assertTravel("push", "left", enterFromRight = true, output = File(context.cacheDir, "push_left_${System.nanoTime()}.mp4"))
+    }
+
+    // -- wipe / dip / blur ----------------------------------------------------
+
+    @Test
+    fun wipe_left_reveals_the_incoming_clip_from_the_right() {
+        assertTravel(
+            "wipe",
+            "left",
+            enterFromRight = true,
+            output = File(context.cacheDir, "wipe_left_${System.nanoTime()}.mp4"),
+        )
+    }
+
+    @Test
+    fun wipe_up_reveals_the_incoming_clip_from_the_bottom() {
+        val output = File(context.cacheDir, "wipe_up_${System.nanoTime()}.mp4")
+        exportOrFail(buildEdl("wipe", "up"), output, "wipe/up")
+        assertTrue(
+            "wipe export must be compressed to ~1.5s, was ${durationSec(output)}s",
+            abs(durationSec(output) - 1.5) < 0.3,
+        )
+        val before = patch(frameAt(output, 0.35), 160, 120)
+        val after = patch(frameAt(output, 1.15), 160, 120)
+        assertTrue("wipe/up: pre-window frame must be red, got $before", before.first - before.third > 80)
+        assertTrue("wipe/up: post-window frame must be blue, got $after", after.third - after.first > 80)
+
+        var previous = 0.0
+        for (t in listOf(0.6, 0.75, 0.92)) {
+            val frame = frameAt(output, t)
+            val p = ((t - windowStartSec) / (windowEndSec - windowStartSec)).coerceIn(0.0, 1.0)
+            val coverage = blueRowCoverage(frame)
+            val anchored = patch(frame, 160, frame.height - 12)
+            val top = patch(frame, 160, 12)
+            assertTrue(
+                "wipe/up at ${t}s must cover ~${Math.round(p * 100)}% of rows, was ${Math.round(coverage * 100)}%",
+                abs(coverage - p) <= 0.20,
+            )
+            assertTrue(
+                "wipe/up at ${t}s must reveal from the BOTTOM: bottom=$anchored top=$top",
+                anchored.third - anchored.first > 80.0 && top.first - top.third > 80.0,
+            )
+            assertTrue("wipe/up must advance across the window: $coverage after $previous", coverage > previous)
+            previous = coverage
+        }
+    }
+
+    @Test
+    fun dip_black_passes_through_black_at_the_midpoint() {
+        val output = File(context.cacheDir, "dip_black_${System.nanoTime()}.mp4")
+        exportOrFail(buildEdl("dip-black"), output, "dip-black")
+        assertTrue(
+            "dip-black export must be compressed to ~1.5s, was ${durationSec(output)}s",
+            abs(durationSec(output) - 1.5) < 0.3,
+        )
+        val before = patch(frameAt(output, 0.35), 160, 120)
+        val after = patch(frameAt(output, 1.15), 160, 120)
+        assertTrue("dip-black: pre-window must be red, got $before", before.first - before.third > 80)
+        assertTrue("dip-black: post-window must be blue, got $after", after.third - after.first > 80)
+
+        val mid = frameAt(output, 0.5)
+        assertTrue(
+            "dip-black must be black at the midpoint, luma=${meanLuma(mid)}",
+            meanLuma(mid) < 25.0,
+        )
+        val rising = meanLuma(frameAt(output, 0.9))
+        val early = meanLuma(frameAt(output, 0.6))
+        assertTrue(
+            "dip-black must brighten after the midpoint: 0.6s=$early 0.9s=$rising",
+            rising > early + 10.0,
+        )
+    }
+
+    @Test
+    fun dip_white_passes_through_white_at_the_midpoint() {
+        val output = File(context.cacheDir, "dip_white_${System.nanoTime()}.mp4")
+        exportOrFail(buildEdl("dip-white"), output, "dip-white")
+        val mid = frameAt(output, 0.5)
+        assertTrue(
+            "dip-white must be white at the midpoint, luma=${meanLuma(mid)}",
+            meanLuma(mid) > 225.0,
+        )
+        val before = patch(frameAt(output, 0.35), 160, 120)
+        val after = patch(frameAt(output, 1.15), 160, 120)
+        assertTrue("dip-white: pre-window must be red, got $before", before.first - before.third > 80)
+        assertTrue("dip-white: post-window must be blue, got $after", after.third - after.first > 80)
+    }
+
+    /**
+     * Blur is a DIFFERENTIAL gate: a flat fixture cannot show softness, so the
+     * incoming clip carries a white block on blue and the same fixture is
+     * exported twice. Inside the window the blur export must have visibly less
+     * edge contrast than the plain fade; after the window both are sharp.
+     */
+    @Test
+    fun blur_softens_the_incoming_clip_inside_the_window() {
+        val blockBlue = File(context.cacheDir, "blur_blue_${System.nanoTime()}.mp4")
+        ColorBlockVideoFactory.create(
+            blockBlue,
+            background = blue,
+            block = Triple(245, 245, 245),
+            width = 320,
+            height = 240,
+        )
+        try {
+            val blurOutput = File(context.cacheDir, "blur_${System.nanoTime()}.mp4")
+            val fadeOutput = File(context.cacheDir, "blur_fade_ref_${System.nanoTime()}.mp4")
+            exportOrFail(buildEdl("blur", blueSource = blockBlue), blurOutput, "blur")
+            exportOrFail(buildEdl("fade", blueSource = blockBlue), fadeOutput, "fade-reference")
+
+            val blurred = maxEdgeContrast(frameAt(blurOutput, 0.6))
+            val sharpReference = maxEdgeContrast(frameAt(fadeOutput, 0.6))
+            assertTrue(
+                "blur must soften the incoming clip mid-window: blur=$blurred fade=$sharpReference",
+                blurred < sharpReference * 0.8,
+            )
+            val resolved = maxEdgeContrast(frameAt(blurOutput, 1.15))
+            assertTrue(
+                "after the window the clip must be sharp again: $resolved (mid-window $blurred)",
+                resolved > blurred * 1.3,
+            )
+        } finally {
+            blockBlue.delete()
+        }
     }
 
     @Test

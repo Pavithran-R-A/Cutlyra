@@ -34,7 +34,12 @@ interface EffectsPanelProps {
 export function EffectsPanel({ editor, elementRef, element, onClose }: EffectsPanelProps) {
 	const catalog = effectsRegistry
 		.getAll()
-		.filter((def) => def.type !== ADJUST_EFFECT_TYPE && def.type !== FILTER_EFFECT_TYPE);
+		.filter(
+			(def) =>
+				!def.internal &&
+				def.type !== ADJUST_EFFECT_TYPE &&
+				def.type !== FILTER_EFFECT_TYPE,
+		);
 	const activeEffect = element.effects?.find((e) => catalog.some((def) => def.type === e.type));
 	const activeDefinition = activeEffect ? effectsRegistry.get(activeEffect.type) : null;
 

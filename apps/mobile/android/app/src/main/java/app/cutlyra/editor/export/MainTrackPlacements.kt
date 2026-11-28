@@ -70,6 +70,8 @@ data class MainTrackPlacements(
         val durationTicks: Long,
         /** Authored kind token; decides head stacking + whether alpha ramps. */
         val kind: String = "cross_fade",
+        /** Authored direction, used by the wipe head effect (null otherwise). */
+        val direction: String? = null,
         /** Channels the head plays, anchored at 0 = this window's start. */
         val incomingAnimations: List<EdlAnimationChannel> = emptyList(),
     )
@@ -182,6 +184,7 @@ data class MainTrackPlacements(
                             startTicks = renderedEnd - windowDuration,
                             durationTicks = windowDuration,
                             kind = transitionAfter.kind,
+                            direction = transitionAfter.direction,
                             incomingAnimations = transitionAfter.incomingAnimations,
                         ),
                     )
