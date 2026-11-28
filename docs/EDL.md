@@ -253,19 +253,44 @@ a non-main-track clip and any unsupported `kind` or `direction`.
 
 Kinds are declared once in `packages/editor-core/src/timeline/transition-definitions.ts`
 (`TRANSITION_DEFINITIONS`): `fade` (cross-fade, unchanged since v1 and still
-emitted as `cross_fade` for byte-identical golden fixtures), `slide`, `push`
-and `zoom`. Each definition declares which animation channels it uses, its
-layer order (`incoming-above` for slide/push, `incoming-below` for fade/zoom),
-whether it has a `direction`, and its audio policy.
+emitted as `cross_fade` for byte-identical golden fixtures), `slide`, `push`,
+`zoom`, `wipe`, `dip-black`, `dip-white` and `blur`. Each definition declares
+which animation channels it uses, its layer order (`incoming-above` for
+slide/push/wipe, `incoming-below` for fade/zoom/dip/blur), whether it has a
+`direction`, its audio policy, and (Phase C1) the derived visual pass it needs
+(`visual: "none" | "wipe" | "dip" | "blur"`).
 
-Dropped, deliberately, because neither renderer can implement them without
-diverging: **wipe** (needs an animated mask pass in the preview compositor and
-the Media3 GL path), **dip to black/white** (needs a full-frame colour layer on
-both sides plus a non-additive divide), and **blur** (needs an animated GL blur
-radius). No enum value, EDL kind or UI control exists for them.
+**Wipe / dip / blur (Phase C1).** These are implemented in both renderers from
+the same definition, and are NOT look-alikes:
+
+- **wipe** — the incoming head is painted above the base with an animated
+  half-plane discard. Preview: the derived `transition-wipe` effect pass
+  (`rust/crates/effects/src/shaders/transition_wipe.wgsl`); export:
+  `EdlWipeEffect`. Both take the same authoring-direction vector and
+  normalised edge softness, so the revealed fraction equals the window
+  progress and the reveal starts on the opposite side of `direction`.
+- **dip-black / dip-white** — both neighbours are mixed toward a solid colour
+  while the base's alpha ramps out. Preview: the derived `transition-dip`
+  pass, with the outgoing clip's `amount` keyframed 0 → 1 across the first
+  half and the incoming clip's 1 → 0 across the second; export: `EdlDipEffect`
+  evaluates the same piecewise ramps on the composition clock. At the
+  midpoint the frame is the dip colour on both paths.
+- **blur** — a cross-fade whose incoming layer resolves from soft to sharp.
+  Preview animates the existing `blur` effect's intensity from 60 to 0 across
+  the window; export uses `EdlBlurEffect` with `TransitionAlphaMath`'s shared
+  sigma mapping (12 px at 1080p at the window start, 0 at its end).
+
+These derived effects are internal: `EffectDefinition.internal` keeps them out
+of both effect pickers, and the preview instances are render-only (added by
+`applyTransitionsToSceneTracks`, never persisted). Evidence:
+`transition-definitions.test.ts` (derived effects/channels), the preview
+harness (`transition-wipe-*`, `transition-dip-*`, `transition-blur-*` cases on
+the real WebGL2 compositor), `TransitionAlphaMathTest`, and the decoded-MP4
+cases in `ExportMotionTransitionInstrumentedTest`.
 
 `direction` (`left` | `right` | `up` | `down`) is emitted only by directional
 kinds, so existing descriptors and the golden fixture stay byte-identical.
+Wipe is directional; dip and blur are not.
 
 **Head anchoring.** A transition window's incoming channels are anchored at
 `0` = the WINDOW START, but the base sequence's copy of that clip starts at the

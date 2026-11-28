@@ -235,6 +235,9 @@ object EdlToComposition {
             } else {
                 0f
             }
+        // Dip transitions recolour the OUTGOING base clip during the first
+        // half of the window; the incoming head gets the mirror ramp below.
+        val windowsByAfterClipId = placements.windows.associateBy { it.afterClipId }
         var baseSeqBuilder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
         for (placed in placements.placedClips) {
             // An animated GIF expands into one image item per displayed frame;
@@ -256,6 +259,20 @@ object EdlToComposition {
                 // sequence (see "audio sequences" below).
                 removeAudio = true,
                 backgroundBlurIntensity = backgroundBlurIntensity,
+                transitionEffects = windowsByAfterClipId[placed.clip.clipId]
+                    ?.let { window ->
+                        TransitionAlphaMath.dipColour(window.kind)?.let { colour ->
+                            listOf(
+                                EdlDipEffect(
+                                    colour = colour,
+                                    windowStartUs = us(window.startTicks),
+                                    windowEndUs = us(window.startTicks + window.durationTicks),
+                                    incoming = false,
+                                ),
+                            )
+                        }
+                    }
+                    ?: emptyList(),
             )) {
                 baseSeqBuilder = baseSeqBuilder.addItem(item)
             }
@@ -326,6 +343,45 @@ object EdlToComposition {
                 // The head is a full-frame main-track item, so it gets the
                 // same blurred backdrop as the base sequence.
                 backgroundBlurIntensity = backgroundBlurIntensity,
+                // Those kinds whose reveal is not a plain animation ramp get
+                // their derived pass on the head: wipe discards the unrevealed
+                // side (head painted above the base), dip recolours it, blur
+                // softens it while the base cross-fades out.
+                transitionEffects = buildList {
+                    when (TransitionAlphaMath.classify(window.kind)) {
+                        TransitionAlphaMath.TransitionKind.WIPE ->
+                            add(
+                                EdlWipeEffect(
+                                    direction = window.direction ?: "left",
+                                    windowStartUs = windowStartUs,
+                                    windowEndUs = windowEndUs,
+                                ),
+                            )
+                        TransitionAlphaMath.TransitionKind.DIP_BLACK,
+                        TransitionAlphaMath.TransitionKind.DIP_WHITE,
+                        -> {
+                            val colour = requireNotNull(
+                                TransitionAlphaMath.dipColour(window.kind),
+                            )
+                            add(
+                                EdlDipEffect(
+                                    colour = colour,
+                                    windowStartUs = windowStartUs,
+                                    windowEndUs = windowEndUs,
+                                    incoming = true,
+                                ),
+                            )
+                        }
+                        TransitionAlphaMath.TransitionKind.BLUR ->
+                            add(
+                                EdlBlurEffect(
+                                    windowStartUs = windowStartUs,
+                                    windowEndUs = windowEndUs,
+                                ),
+                            )
+                        else -> Unit
+                    }
+                },
             )
             // Known media3 1.11.0 artifact (Stage 5 defect #20 investigation,
             // characterized by ExportCrossfadeLuminanceInstrumentedTest): with
@@ -743,6 +799,8 @@ object EdlToComposition {
         applyOpacity: Boolean = true,
         /** Unitless 0..500 project background blur; 0 = no blur backdrop. */
         backgroundBlurIntensity: Float = 0f,
+        /** Derived transition passes applied to every item of this clip. */
+        transitionEffects: List<Effect> = emptyList(),
     ): List<EditedMediaItem> {
         val gif = asset.gif
         val isImageClip = clip.kind == "image" || asset.kind == EdlAssetKind.IMAGE
@@ -788,6 +846,7 @@ object EdlToComposition {
                     removeAudio = removeAudio,
                     applyOpacity = applyOpacity,
                     backgroundBlurIntensity = backgroundBlurIntensity,
+                    transitionEffects = transitionEffects,
                 )
                 elapsedTicks += span.timelineTicks
                 item
@@ -809,6 +868,7 @@ object EdlToComposition {
                 removeAudio = removeAudio,
                 applyOpacity = applyOpacity,
                 backgroundBlurIntensity = backgroundBlurIntensity,
+                transitionEffects = transitionEffects,
             ),
         )
     }
@@ -837,6 +897,8 @@ object EdlToComposition {
          *  background-blur composite (blurred fill backdrop + sharp fit
          *  foreground). Overlay sequences pass 0. */
         backgroundBlurIntensity: Float = 0f,
+        /** Derived transition passes (wipe/dip/blur) for this item. */
+        transitionEffects: List<Effect> = emptyList(),
     ): EditedMediaItem {
         val unsupportedKeyframes = KeyframeEvaluator.unsupportedAnimationPaths(clip)
         if (unsupportedKeyframes.isNotEmpty()) {
@@ -973,6 +1035,10 @@ object EdlToComposition {
                 }
             }
         }
+
+        // Derived transition passes run on the FINAL frame, after the user's
+        // own effects (a wipe/dip/blur applies to the graded picture).
+        videoEffects.addAll(transitionEffects)
 
         // Normalize every visual item to the export resolution HERE, per
         // item, not only through the composition-level Presentation: media3

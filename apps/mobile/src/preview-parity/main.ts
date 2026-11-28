@@ -1152,6 +1152,174 @@ async function run(): Promise<void> {
 		}
 	}
 
+	// --- Phase C1 wipe / dip / blur through the real preview compositor ----
+	//
+	// These exercise the NEW derived passes end to end: the same uniforms the
+	// derived effect definitions produce are handed to the same wasm compositor
+	// the editor uses, so a missing/!working shader fails here rather than only
+	// in the exported file. Progress values match the decoded-export gates.
+	{
+		const duration = 60_000;
+		const base = createSolidFixture("#d81e1e");
+		const incoming = createSolidFixture("#1e28d8");
+		const wipePass = (progress: number, dx: number, dy: number): EffectPass[][] => [
+			[
+				{
+					shader: "transition-wipe",
+					uniforms: {
+						u_progress: progress,
+						u_direction: [dx, dy],
+						u_softness: 0.01,
+					},
+				},
+			],
+		];
+		const dipPass = (amount: number, white: boolean): EffectPass[][] => [
+			[
+				{
+					shader: "transition-dip",
+					uniforms: {
+						u_amount: amount,
+						u_colour: white ? [1, 1, 1] : [0, 0, 0],
+					},
+				},
+			],
+		];
+		const luma = (rgb: number[]) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+
+		for (const [direction, dx, dy, anchoredAt] of [
+			["left", -1, 0, 1],
+			["right", 1, 0, 0],
+			["up", 0, -1, 1],
+		] as ReadonlyArray<[string, number, number, number]>) {
+			const details: string[] = [];
+			let ok = true;
+			for (const p of [0.2, 0.5, 0.9]) {
+				const root = new RootNode({ duration });
+				root.children.push(
+					imageNode({ fixture: base }),
+					imageNode({ fixture: incoming, effectPasses: wipePass(p, dx, dy) }),
+				);
+				const pixels = await renderNode(root);
+				let blue = 0;
+				const horizontal = dy === 0;
+				const steps = horizontal ? CANVAS_WIDTH : CANVAS_HEIGHT;
+				for (let i = 0; i < steps; i += 1) {
+					const sample =
+						dy === 0
+							? dominantAt(pixels, i / CANVAS_WIDTH, 0.5)
+							: dominantAt(pixels, 0.5, i / CANVAS_HEIGHT);
+					if (sample.channel === "blue") blue += 1;
+				}
+				const coverage = blue / steps;
+				const anchor = horizontal
+					? dominantAt(pixels, anchoredAt, 0.5).channel
+					: dominantAt(pixels, 0.5, anchoredAt === 0 ? 0 : 1).channel;
+				if (Math.abs(coverage - p) > 0.12 || anchor !== "blue") ok = false;
+				details.push(`p=${p} coverage=${coverage.toFixed(2)} anchor=${anchor}`);
+			}
+			const result = {
+				name: `transition-wipe-${direction}-preview-reveal`,
+				ok,
+				detail: details.join(" | "),
+			};
+			results.push(result);
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
+
+		for (const white of [false, true]) {
+			const details: string[] = [];
+			let ok = true;
+			let midpoint = -1;
+			for (const p of [0.2, 0.5, 0.8]) {
+				// Outgoing amount ramps 0->1 over the first half, incoming 1->0
+				// over the second, incoming opacity 0->1 across the window: the
+				// same three ramps the exporter derives natively.
+				const outgoingAmount = Math.min(1, p * 2);
+				const incomingAmount = p <= 0.5 ? 1 : 1 - (p - 0.5) * 2;
+				const root = new RootNode({ duration });
+				root.children.push(
+					imageNode({ fixture: base, effectPasses: dipPass(outgoingAmount, white) }),
+					imageNode({
+						fixture: incoming,
+						opacity: p,
+						effectPasses: dipPass(incomingAmount, white),
+					}),
+				);
+				const pixels = await renderNode(root);
+				const { rgb } = dominantAt(pixels, 0.5, 0.5);
+				const measured = luma(rgb);
+				if (p === 0.2) {
+					// Moving TOWARD the dip colour: darker for black, brighter for white.
+					if (white ? measured < 100 : measured > 100) ok = false;
+				} else if (p === 0.5) {
+					midpoint = measured;
+					if (white ? measured < 225 : measured > 25) ok = false;
+				} else {
+					// Past the midpoint the incoming clip resolves back from the
+					// dip colour, so luma moves AWAY from it.
+					if (midpoint < 0) ok = false;
+					else if (white ? measured > midpoint - 10 : measured < midpoint + 10) ok = false;
+				}
+				details.push(`p=${p} luma=${measured.toFixed(0)}`);
+			}
+			const result = {
+				name: `transition-dip-${white ? "white" : "black"}-preview`,
+				ok,
+				detail: details.join(" | "),
+			};
+			results.push(result);
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
+
+		{
+			// The blur transition animates the EXISTING gaussian-blur shader:
+			// peak intensity 60 at the window start -> 0 at its end. The fixture
+			// is a hard-edged quadrant so softness is measurable as reduced
+			// neighbour contrast along a boundary row.
+			const quadrant = createQuadrantFixture(CANVAS_WIDTH, CANVAS_HEIGHT);
+			const blurPasses = (intensity: number): EffectPass[][] => {
+				const sigma = intensity / 5;
+				if (sigma < 0.001) return [];
+				return [
+					[
+						{
+							shader: "gaussian-blur",
+							uniforms: { u_sigma: sigma, u_step: 1, u_direction: [1, 0] },
+						},
+						{
+							shader: "gaussian-blur",
+							uniforms: { u_sigma: sigma, u_step: 1, u_direction: [0, 1] },
+						},
+					],
+				];
+			};
+			const contrastAt = (pixels: ImageData) => {
+				let max = 0;
+				for (let x = 1; x < CANVAS_WIDTH; x += 1) {
+					const a = dominantAt(pixels, (x - 1) / CANVAS_WIDTH, 0.5).rgb;
+					const b = dominantAt(pixels, x / CANVAS_WIDTH, 0.5).rgb;
+					max = Math.max(max, Math.abs(luma(a) - luma(b)));
+				}
+				return max;
+			};
+			const sharp = await renderNode(imageNode({ fixture: quadrant }));
+			const blurred = await renderNode(
+				imageNode({ fixture: quadrant, effectPasses: blurPasses(200) }),
+			);
+			const sharpContrast = contrastAt(sharp);
+			const blurredContrast = contrastAt(blurred);
+			const ok = blurredContrast < sharpContrast * 0.85;
+			const result = {
+				name: "transition-blur-preview-softness",
+				ok,
+				detail: `sharp=${sharpContrast.toFixed(0)} blurred=${blurredContrast.toFixed(0)}`,
+			};
+			results.push(result);
+			log(`${result.ok ? "PASS" : "FAIL"} ${result.name}: ${result.detail}`);
+		}
+	}
+
 	// --- output ------------------------------------------------------------
 	const failures = results.filter((result) => !result.ok);
 	const summary = {

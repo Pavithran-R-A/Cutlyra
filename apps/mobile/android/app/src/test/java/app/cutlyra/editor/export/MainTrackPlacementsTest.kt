@@ -133,14 +133,14 @@ class MainTrackPlacementsTest {
     }
 
     @Test
-    fun non_crossfade_kinds_degrade_to_a_hard_cut() {
+    fun unknown_kinds_degrade_to_a_hard_cut() {
         val result = MainTrackPlacements.build(
             listOf(clipA, clipB),
             listOf(
                 EdlTransition(
-                    transitionId = "tr-wipe",
+                    transitionId = "tr-spiral",
                     afterClipId = "clip-a",
-                    kind = "wipe",
+                    kind = "spiral",
                     durationTicks = t(0.2),
                 ),
             ),

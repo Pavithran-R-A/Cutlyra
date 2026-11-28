@@ -4,10 +4,13 @@ import type { MediaTime } from "@/wasm";
 import type { TimelineElement } from "./types";
 import {
 	deriveTransitionAnimations,
+	deriveTransitionExtras,
 	normalizeTransitionDirection,
 	normalizeTransitionKind,
 	SUPPORTED_TRANSITION_KINDS,
+	TRANSITION_BLUR_INTENSITY,
 	TRANSITION_DEFINITIONS,
+	transitionEffectId,
 	type TransitionWindowLike,
 } from "./transition-definitions";
 
@@ -97,7 +100,7 @@ describe("normalizeTransitionKind", () => {
 	});
 
 	it("falls back to fade for unsupported or missing kinds (never a dead kind)", () => {
-		expect(normalizeTransitionKind("wipe")).toBe("fade");
+		expect(normalizeTransitionKind("spiral")).toBe("fade");
 		expect(normalizeTransitionKind(undefined)).toBe("fade");
 		expect(normalizeTransitionKind(42)).toBe("fade");
 	});
@@ -130,6 +133,113 @@ describe("transition definitions", () => {
 		expect(TRANSITION_DEFINITIONS.push.layerOrder).toBe("incoming-above");
 		expect(TRANSITION_DEFINITIONS.fade.layerOrder).toBe("incoming-below");
 		expect(TRANSITION_DEFINITIONS.zoom.layerOrder).toBe("incoming-below");
+	});
+
+	it("declares the visual pass each kind needs in both renderers", () => {
+		expect(TRANSITION_DEFINITIONS.wipe.visual).toBe("wipe");
+		expect(TRANSITION_DEFINITIONS.wipe.layerOrder).toBe("incoming-above");
+		expect(TRANSITION_DEFINITIONS["dip-black"].visual).toBe("dip");
+		expect(TRANSITION_DEFINITIONS["dip-black"].dipColour).toEqual([0, 0, 0]);
+		expect(TRANSITION_DEFINITIONS["dip-white"].dipColour).toEqual([1, 1, 1]);
+		expect(TRANSITION_DEFINITIONS.blur.visual).toBe("blur");
+		expect(TRANSITION_DEFINITIONS.fade.visual).toBe("none");
+	});
+});
+
+describe("deriveTransitionExtras", () => {
+	function channelOf({
+		extras,
+		id,
+		path,
+	}: {
+		extras: ReturnType<typeof deriveTransitionExtras>;
+		id: string;
+		path: string;
+	}): Array<{ time: number; value: number }> {
+		const channel = extras.get(id)?.animations?.[path];
+		if (!channel || !("keys" in channel)) throw new Error(`no channel ${id}.${path}`);
+		return (channel.keys as Array<{ time: number; value: number }>).map((key) => ({
+			time: key.time,
+			value: key.value,
+		}));
+	}
+
+	it("wipe puts a directional wipe effect and a 0..1 progress channel on the incoming clip", () => {
+		const extras = deriveTransitionExtras({
+			windows: [window({ kind: "wipe", direction: "up" })],
+			elements: [element({ id: "out" }), element({ id: "in" })],
+		});
+		const id = transitionEffectId({ elementId: "in", kind: "wipe" });
+		const effect = extras.get("in")?.effects[0];
+		expect(effect?.type).toBe("transition-wipe");
+		expect(effect?.params.directionX).toBe(0);
+		expect(effect?.params.directionY).toBe(-1);
+		expect(
+			channelOf({ extras, id: "in", path: `effects.${id}.params.progress` }),
+		).toEqual([
+			{ time: 0, value: 0 },
+			{ time: t(0.6), value: 1 },
+		]);
+		expect(extras.get("out")).toBeUndefined();
+	});
+
+	it("dip-black recolours both ends with mirror ramps around the midpoint", () => {
+		const extras = deriveTransitionExtras({
+			windows: [window({ kind: "dip-black" })],
+			elements: [
+				element({ id: "out", durationSec: 3 }),
+				element({ id: "in", durationSec: 2 }),
+			],
+		});
+		const outId = transitionEffectId({ elementId: "out", kind: "dip-black" });
+		const inId = transitionEffectId({ elementId: "in", kind: "dip-black" });
+		expect(extras.get("out")?.effects[0]?.params.white).toBe(0);
+		expect(extras.get("in")?.effects[0]?.params.amount).toBe(1);
+		// Outgoing ramps over its own tail, reaching black exactly at the midpoint.
+		expect(channelOf({ extras, id: "out", path: `effects.${outId}.params.amount` })).toEqual([
+			{ time: t(3) - t(0.6), value: 0 },
+			{ time: t(3) - t(0.3), value: 1 },
+		]);
+		expect(channelOf({ extras, id: "in", path: `effects.${inId}.params.amount` })).toEqual([
+			{ time: 0, value: 1 },
+			{ time: t(0.3), value: 1 },
+			{ time: t(0.6), value: 0 },
+		]);
+	});
+
+	it("dip-white selects the white dip colour", () => {
+		const extras = deriveTransitionExtras({
+			windows: [window({ kind: "dip-white" })],
+			elements: [element({ id: "out" }), element({ id: "in" })],
+		});
+		expect(extras.get("in")?.effects[0]?.params.white).toBe(1);
+	});
+
+	it("blur animates the incoming blur down to zero and leaves the outgoing clip alone", () => {
+		const extras = deriveTransitionExtras({
+			windows: [window({ kind: "blur" })],
+			elements: [element({ id: "out" }), element({ id: "in" })],
+		});
+		const id = transitionEffectId({ elementId: "in", kind: "blur" });
+		const effect = extras.get("in")?.effects[0];
+		expect(effect?.type).toBe("blur");
+		expect(effect?.params.intensity).toBe(TRANSITION_BLUR_INTENSITY);
+		expect(channelOf({ extras, id: "in", path: `effects.${id}.params.intensity` })).toEqual([
+			{ time: 0, value: TRANSITION_BLUR_INTENSITY },
+			{ time: t(0.6), value: 0 },
+		]);
+		expect(extras.get("out")).toBeUndefined();
+	});
+
+	it("adds nothing for pure-animation kinds or zero-length windows", () => {
+		const zero = window({ kind: "wipe" });
+		zero.durationTicks = t(0);
+		expect(
+			deriveTransitionExtras({
+				windows: [window({ kind: "fade" }), zero],
+				elements: [element({ id: "out" }), element({ id: "in" })],
+			}).size,
+		).toBe(0);
 	});
 });
 

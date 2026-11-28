@@ -10,7 +10,7 @@ import { buildEffectElement } from "@/timeline/element-utils";
 import type { EffectDefinition } from "@/effects/types";
 
 export function EffectsView() {
-	const effects = effectsRegistry.getAll();
+	const effects = effectsRegistry.getAll().filter((definition) => !definition.internal);
 
 	return (
 		<PanelView title="Effects">

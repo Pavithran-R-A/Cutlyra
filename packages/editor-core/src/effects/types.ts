@@ -36,6 +36,10 @@ export interface EffectDefinition {
 	type: string;
 	name: string;
 	keywords: string[];
+	/** True for passes the engine derives itself (transition wipe/dip): they
+	 *  must resolve through the registry but never appear in an effect picker
+	 *  or be added by the user. */
+	internal?: boolean;
 	params: ParamDefinition[];
 	renderer: EffectRendererConfig;
 }
