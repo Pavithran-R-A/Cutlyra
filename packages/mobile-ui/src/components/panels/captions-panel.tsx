@@ -5,7 +5,7 @@ import { SheetHeader } from "../sheet-header";
 import { ChipRow } from "../chip-row";
 import type { EditorCore } from "@cutlyra/editor-core";
 import type { ElementRef } from "@cutlyra/editor-core/timeline";
-import { CAPTION_STYLE_PRESETS, DEFAULT_CAPTION_STYLE_PRESET_ID, buildSrtFromCaptions } from "@cutlyra/editor-core/captions";
+import { CAPTION_STYLE_PRESETS, DEFAULT_CAPTION_STYLE_PRESET_ID, buildSrtFromCaptions, buildVttFromCaptions } from "@cutlyra/editor-core/captions";
 import type { CaptionElement } from "@cutlyra/editor-core/timeline";
 import {
 	generateCaptions,
@@ -19,6 +19,7 @@ import {
 	setCaptionShadowEnabled,
 } from "../../editor/captions-actions";
 import { setCaptionText } from "../../editor/actions";
+import { getNativeBridge } from "@cutlyra/native-bridge";
 import { ToggleRow } from "../editor/param-row";
 import { captionText } from "../../editor/caption-text";
 
@@ -70,6 +71,8 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 	const shadowEnabled = getCaptionShadowEnabled({ editor });
 	const [srtStatus, setSrtStatus] = useState<"idle" | "copied" | "error">("idle");
 	const [srtText, setSrtText] = useState<string>("");
+	const [exportFormat, setExportFormat] = useState<"srt" | "vtt">("srt");
+	const [exportStatus, setExportStatus] = useState<string | null>(null);
 	// Subtitle import (SRT/VTT). Kept as a textarea draft rather than a file
 	// picker: the paste path works identically in the Android WebView and the
 	// dev harness with no new native bridge surface and no storage permission.
@@ -127,6 +130,57 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 			}
 		} catch (error) {
 			setImportError(error instanceof Error ? error.message : String(error));
+		}
+	};
+
+	const handleImportFromFile = async () => {
+		setImportError(null);
+		setImportStatus(null);
+		try {
+			const bridge = await getNativeBridge();
+			const picked = await bridge.pickSubtitleFile();
+			if (!picked) {
+				setImportStatus("Cancelled");
+				return;
+			}
+			const result = importCaptionsFromText({
+				editor,
+				text: picked.text,
+				stylePresetId: stylePreset,
+			});
+			const count = result.elementIds.length;
+			const skipped =
+				result.skippedCueCount > 0 ? ` · ${result.skippedCueCount} skipped` : "";
+			setImportStatus(
+				`Imported ${count} ${count === 1 ? "cue" : "cues"} from ${picked.displayName ?? picked.format.toUpperCase()}${skipped}`,
+			);
+			if (result.elementIds[0]) {
+				onInserted({ trackId: result.trackId, elementId: result.elementIds[0] });
+			}
+		} catch (error) {
+			setImportError(error instanceof Error ? error.message : String(error));
+		}
+	};
+
+	const handleExportToFile = async () => {
+		const captions = gatherCaptions();
+		const text =
+			exportFormat === "vtt" ? buildVttFromCaptions(captions) : buildSrtFromCaptions(captions);
+		if (!text.trim()) {
+			setExportStatus("No captions to export");
+			return;
+		}
+		const suggestedName = `captions.${exportFormat}`;
+		try {
+			const bridge = await getNativeBridge();
+			const saved = await bridge.saveSubtitleFile({ text, suggestedName });
+			if (!saved) {
+				setExportStatus("Cancelled");
+				return;
+			}
+			setExportStatus(`Saved ${suggestedName}`);
+		} catch (error) {
+			setExportStatus(error instanceof Error ? error.message : String(error));
 		}
 	};
 
@@ -254,6 +308,32 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 			)}
 			<div className="cc-param-row">
 				<div className="cc-param-row__head">
+					<span className="cc-param-row__label">Export format</span>
+				</div>
+				<div style={{ display: "flex", gap: "var(--cc-space-2)" }}>
+					<button
+						type="button"
+						className="cc-panel-actions__btn"
+						onClick={() => setExportFormat("srt")}
+						style={{ opacity: exportFormat === "srt" ? 1 : 0.6 }}
+					>
+						<span>SRT</span>
+					</button>
+					<button
+						type="button"
+						className="cc-panel-actions__btn"
+						onClick={() => setExportFormat("vtt")}
+						style={{ opacity: exportFormat === "vtt" ? 1 : 0.6 }}
+					>
+						<span>VTT</span>
+					</button>
+				</div>
+			</div>
+			<button type="button" className="cc-panel-actions__btn" onClick={handleExportToFile}>
+				<span>{exportStatus ?? `Save captions as ${exportFormat.toUpperCase()}`}</span>
+			</button>
+			<div className="cc-param-row">
+				<div className="cc-param-row__head">
 					<span className="cc-param-row__label">Import SRT / VTT</span>
 				</div>
 				<textarea
@@ -275,6 +355,13 @@ export function CaptionsPanel({ editor, onClose, onInserted, selectedCaption }: 
 					onClick={handleImport}
 				>
 					<span>{importStatus ?? "Add captions from subtitles"}</span>
+				</button>
+				<button
+					type="button"
+					className="cc-panel-actions__btn"
+					onClick={handleImportFromFile}
+				>
+					<span>Import subtitles from file…</span>
 				</button>
 				{importError && <p className="cc-panel-note">{importError}</p>}
 			</div>

@@ -629,6 +629,19 @@ export interface NativeBridge {
 	 */
 	pickArchiveSource(): Promise<{ uri: string } | null>;
 	/**
+	 * Launches a SAF `ACTION_OPEN_DOCUMENT` picker restricted to subtitle
+	 * files (.srt/.vtt). Reads the document with a 2 MB size limit and
+	 * UTF-8/encoding handling, returning its text + detected format, or null
+	 * when the user cancelled. Web: null (use paste instead).
+	 */
+	pickSubtitleFile(): Promise<{ text: string; displayName?: string; format: "srt" | "vtt" } | null>;
+	/**
+	 * Launches a SAF `ACTION_CREATE_DOCUMENT` picker for a new subtitle file
+	 * and writes `text` (UTF-8) to it. Returns the destination URI or null
+	 * when the user cancelled. Web: null.
+	 */
+	saveSubtitleFile(params: { text: string; suggestedName: string }): Promise<{ uri: string } | null>;
+	/**
 	 * Native archive assembly: reads the real media bytes from custody by the
 	 * recipe's relative paths, SHA-256-hashes each, streams them into a STORE
 	 * ZIP at `destinationUri`, and resolves with the authoritative manifest

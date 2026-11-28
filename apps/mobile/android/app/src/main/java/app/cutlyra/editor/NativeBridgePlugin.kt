@@ -1,5 +1,7 @@
 package app.cutlyra.editor
 
+import java.nio.charset.Charset
+
 import android.Manifest
 import android.app.Activity
 import android.app.ActivityManager
@@ -1096,6 +1098,133 @@ class NativeBridgePlugin : Plugin() {
 			// Unknown is safe: it just means we will not delete on failure.
 			ArchiveDestination.SIZE_UNKNOWN to null
 		}
+	}
+
+	// -- Subtitles (Phase 4) ------------------------------------------------
+
+	private var pendingSubtitlePick: PluginCall? = null
+	private var pendingSubtitlePickIsDestination = false
+
+	@PluginMethod
+	fun pickSubtitleFile(call: PluginCall) {
+		if (pendingSubtitlePick != null) {
+			call.reject("A subtitle picker is already open", "IO_ERROR")
+			return
+		}
+		val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+			addCategory(Intent.CATEGORY_OPENABLE)
+			type = "*/*"
+			putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/x-subrip", "text/vtt"))
+		}
+		pendingSubtitlePick = call
+		pendingSubtitlePickIsDestination = false
+		startActivityForResult(call, intent, "handleSubtitlePickResult")
+	}
+
+	@PluginMethod
+	fun saveSubtitleFile(call: PluginCall) {
+		val text = call.getString("text")
+		if (text == null) {
+			call.reject("saveSubtitleFile requires {text}", "IO_ERROR")
+			return
+		}
+		val suggestedName = call.getString("suggestedName") ?: "captions.srt"
+		if (pendingSubtitlePick != null) {
+			call.reject("A subtitle picker is already open", "IO_ERROR")
+			return
+		}
+		val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+			addCategory(Intent.CATEGORY_OPENABLE)
+			type = if (suggestedName.endsWith(".vtt", ignoreCase = true)) "text/vtt" else "text/plain"
+			putExtra(Intent.EXTRA_TITLE, suggestedName)
+		}
+		pendingSubtitlePick = call
+		pendingSubtitlePickIsDestination = true
+		// Stash the text on the call's data so the result callback can write it.
+		call.data?.put("subtitleText", text)
+		startActivityForResult(call, intent, "handleSubtitlePickResult")
+	}
+
+	@ActivityCallback
+	private fun handleSubtitlePickResult(call: PluginCall, result: ActivityResult) {
+		val isDestination = pendingSubtitlePickIsDestination
+		pendingSubtitlePick = null
+		pendingSubtitlePickIsDestination = false
+		if (result.resultCode != Activity.RESULT_OK) {
+			call.reject("User cancelled subtitle selection", "USER_CANCELLED")
+			return
+		}
+		val uri = result.data?.data
+		if (uri == null) {
+			call.reject("No subtitle location selected", "USER_CANCELLED")
+			return
+		}
+		try {
+			context.contentResolver.takePersistableUriPermission(
+				uri,
+				if (isDestination) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else Intent.FLAG_GRANT_READ_URI_PERMISSION,
+			)
+		} catch (_: SecurityException) {
+			// ephemeral grant is enough for the immediate call
+		}
+
+		Thread {
+			try {
+				if (isDestination) {
+					val text = call.getString("text")
+						?: call.data?.getString("subtitleText")
+						?: ""
+					context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
+						out.write(text.toByteArray(Charsets.UTF_8))
+						out.flush()
+					} ?: throw Exception("openOutputStream returned null")
+					val ret = JSObject()
+					ret.put("uri", uri.toString())
+					call.resolve(ret)
+				} else {
+					// Read with a sensible size limit (2 MB) and encoding handling.
+					val MAX_BYTES = 2 * 1024 * 1024
+					val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+						val buf = java.io.ByteArrayOutputStream()
+						val chunk = ByteArray(8192)
+						var total = 0
+						while (true) {
+							val n = input.read(chunk)
+							if (n < 0) break
+							if (total + n > MAX_BYTES) {
+								throw Exception("Subtitle file exceeds the 2 MB size limit")
+							}
+							buf.write(chunk, 0, n)
+							total += n
+						}
+						buf.toByteArray()
+					} ?: throw Exception("openInputStream returned null")
+					// Encoding: strip BOM, decode UTF-8 (with replacement), fall
+					// back to platform default if decoding fails.
+					val text = if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
+						String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+					} else {
+						try { String(bytes, Charsets.UTF_8) } catch (_: Exception) { String(bytes, Charset.defaultCharset()) }
+					}
+					val displayName = try {
+						context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+							if (c.moveToFirst()) {
+								val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+								if (idx >= 0 && !c.isNull(idx)) c.getString(idx) else null
+							} else null
+						}
+					} catch (_: Exception) { null }
+					val format = if (displayName?.endsWith(".vtt", ignoreCase = true) == true) "vtt" else "srt"
+					val ret = JSObject()
+					ret.put("text", text)
+					ret.put("displayName", displayName)
+					ret.put("format", format)
+					call.resolve(ret)
+				}
+			} catch (e: Exception) {
+				call.reject("Subtitle file operation failed: ${e.message}", "IO_ERROR", e)
+			}
+		}.start()
 	}
 
 	/**

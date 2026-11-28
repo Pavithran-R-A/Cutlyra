@@ -335,6 +335,15 @@ export function createWebFallbackBridge(): NativeBridge {
 					"SAF document opening requires a native shell. The web build restores archives via a file input (see the editor-core backup service).",
 			});
 		},
+
+		async pickSubtitleFile(): Promise<{ text: string; displayName?: string; format: "srt" | "vtt" } | null> {
+			// Web has no SAF; the captions panel keeps its paste path there.
+			return null;
+		},
+
+		async saveSubtitleFile(_params: { text: string; suggestedName: string }): Promise<{ uri: string } | null> {
+			return null;
+		},
 		async exportArchive(): Promise<never> {
 			throw new NativeBridgeError({
 				code: "UNSUPPORTED",

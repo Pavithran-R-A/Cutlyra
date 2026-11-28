@@ -347,6 +347,8 @@ interface NativeBridgePluginSpec {
 		suggestedName: string;
 	}): Promise<{ uri: string; sizeBytesAtPick?: number; displayName?: string }>;
 	pickArchiveSource(): Promise<{ uri: string }>;
+	pickSubtitleFile(): Promise<{ text: string; displayName?: string; format: string }>;
+	saveSubtitleFile(params: { text: string; suggestedName: string }): Promise<{ uri: string }>;
 	exportArchive(params: {
 		destinationUri: string;
 		sizeBytesAtPick: number;
@@ -1156,6 +1158,31 @@ export function createCapacitorBridge({
 			} catch (err) {
 				if (isCancel(err)) return null;
 				throw toNativeBridgeError({ err, method: "pickArchiveSource" });
+			}
+		},
+
+		async pickSubtitleFile(): Promise<{ text: string; displayName?: string; format: "srt" | "vtt" } | null> {
+			try {
+				const picked = await plugin.pickSubtitleFile();
+				if (!picked || !picked.text) return null;
+				return {
+					text: picked.text,
+					displayName: picked.displayName,
+					format: picked.format === "vtt" ? "vtt" : "srt",
+				};
+			} catch (err) {
+				if (isCancel(err)) return null;
+				throw toNativeBridgeError({ err, method: "pickSubtitleFile" });
+			}
+		},
+
+		async saveSubtitleFile(params: { text: string; suggestedName: string }): Promise<{ uri: string } | null> {
+			try {
+				const saved = await plugin.saveSubtitleFile(params);
+				return saved?.uri ? { uri: saved.uri } : null;
+			} catch (err) {
+				if (isCancel(err)) return null;
+				throw toNativeBridgeError({ err, method: "saveSubtitleFile" });
 			}
 		},
 
