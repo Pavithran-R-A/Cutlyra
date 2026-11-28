@@ -144,3 +144,13 @@ only wired:
   in this pass (the codec rules are unit-tested; the picker flow needs the
   emulator/instrumented harness), and the new captions buttons were typechecked
   and bundled but not visually inspected. Stated as a limitation, not a pass.
+- **Merged**: PR #111, squash `d233621` on `main`. All seven merged-main CI
+  checks green: Android instrumentation (API 35 emulator), Android
+  instrumentation (R8 test variant), Android debug APK, iOS unsigned, and
+  invariants on ubuntu/macos/windows. The API-35 instrumentation run is where
+  the prerendered-overlay caption export suite executed against the merged
+  payload.
+- **Next**: Phase B (multi-select import audit — `importMediaFromNative` already
+  takes `allowMultiple: true` and append/overlay actions exist; what remains is
+  stable insertion order, duplicate handling, template slot assignment and a
+  real picker test), then C–G from `docs/REMAINING_MISSION_V2.md`.
