@@ -27,7 +27,7 @@ import androidx.media3.effect.GlShaderProgram
 class EdlBlurEffect(
     private val windowStartUs: Long,
     private val windowEndUs: Long,
-    private val intensity: Float = 60f,
+    private val intensity: Float = 200f,
 ) : GlEffect {
 
     override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram =

@@ -1305,7 +1305,7 @@ async function run(): Promise<void> {
 			};
 			const sharp = await renderNode(imageNode({ fixture: quadrant }));
 			const blurred = await renderNode(
-				imageNode({ fixture: quadrant, effectPasses: blurPasses(60) }),
+				imageNode({ fixture: quadrant, effectPasses: blurPasses(200) }),
 			);
 			const sharpContrast = contrastAt(sharp);
 			const blurredContrast = contrastAt(blurred);

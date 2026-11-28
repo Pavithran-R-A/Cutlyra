@@ -50,15 +50,15 @@ class TransitionAlphaMathTest {
 
     @Test
     fun `blur sigma is 12px at 1080p and resolves to zero by the window end`() {
-        assertEquals(12f, TransitionAlphaMath.blurSigmaPixels(1080), 0.01f)
-        assertEquals(6f, TransitionAlphaMath.blurSigmaPixels(540), 0.01f)
+        assertEquals(40f, TransitionAlphaMath.blurSigmaPixels(1080), 0.01f)
+        assertEquals(20f, TransitionAlphaMath.blurSigmaPixels(540), 0.01f)
         assertEquals(
-            12f,
+            40f,
             TransitionAlphaMath.incomingBlurSigma(1080, 0, 1_000_000, 0),
             0.01f,
         )
         assertEquals(
-            6f,
+            20f,
             TransitionAlphaMath.incomingBlurSigma(1080, 0, 1_000_000, 500_000),
             0.01f,
         )

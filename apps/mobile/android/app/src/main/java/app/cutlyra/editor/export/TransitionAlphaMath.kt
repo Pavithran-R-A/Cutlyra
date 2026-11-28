@@ -180,9 +180,9 @@ object TransitionAlphaMath {
     /**
      * Blur transition peak sigma, in pixels, at `frameHeight`; matches the
      * preview's `intensityToSigma` (`intensity / 5 * height / 1080`) for the
-     * shared `TRANSITION_BLUR_INTENSITY` of 60 — i.e. 12 px at 1080p.
+     * shared `TRANSITION_BLUR_INTENSITY` of 200 — i.e. 40 px at 1080p.
      */
-    fun blurSigmaPixels(frameHeight: Int, intensity: Float = 60f): Float =
+    fun blurSigmaPixels(frameHeight: Int, intensity: Float = 200f): Float =
         (intensity / 5f) * (frameHeight.toFloat() / 1080f)
 
     /** Incoming blur: peak sigma at the window start, 0 at its end. */

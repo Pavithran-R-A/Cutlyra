@@ -524,9 +524,10 @@ class ExportMotionTransitionInstrumentedTest {
         assertTrue("dip-black: pre-window must be red, got $before", before.first - before.third > 80)
         assertTrue("dip-black: post-window must be blue, got $after", after.third - after.first > 80)
 
-        val mid = frameAt(output, 0.5)
+        // The window is 0.5..1.0, so the MIDPOINT is 0.75.
+        val mid = frameAt(output, 0.75)
         assertTrue(
-            "dip-black must be black at the midpoint, luma=${meanLuma(mid)}",
+            "dip-black must be black at the midpoint (0.75s), luma=${meanLuma(mid)}",
             meanLuma(mid) < 25.0,
         )
         val rising = meanLuma(frameAt(output, 0.9))
@@ -541,9 +542,9 @@ class ExportMotionTransitionInstrumentedTest {
     fun dip_white_passes_through_white_at_the_midpoint() {
         val output = File(context.cacheDir, "dip_white_${System.nanoTime()}.mp4")
         exportOrFail(buildEdl("dip-white"), output, "dip-white")
-        val mid = frameAt(output, 0.5)
+        val mid = frameAt(output, 0.75)
         assertTrue(
-            "dip-white must be white at the midpoint, luma=${meanLuma(mid)}",
+            "dip-white must be white at the midpoint (0.75s), luma=${meanLuma(mid)}",
             meanLuma(mid) > 225.0,
         )
         val before = patch(frameAt(output, 0.35), 160, 120)
@@ -574,8 +575,11 @@ class ExportMotionTransitionInstrumentedTest {
             exportOrFail(buildEdl("blur", blueSource = blockBlue), blurOutput, "blur")
             exportOrFail(buildEdl("fade", blueSource = blockBlue), fadeOutput, "fade-reference")
 
-            val blurred = maxEdgeContrast(frameAt(blurOutput, 0.6))
-            val sharpReference = maxEdgeContrast(frameAt(fadeOutput, 0.6))
+            // 0.7s is p=0.4: the head is 40% visible over the base and still
+            // carries ~60% of the peak blur — the most legible comparison
+            // point on a 320x240 canvas.
+            val blurred = maxEdgeContrast(frameAt(blurOutput, 0.7))
+            val sharpReference = maxEdgeContrast(frameAt(fadeOutput, 0.7))
             assertTrue(
                 "blur must soften the incoming clip mid-window: blur=$blurred fade=$sharpReference",
                 blurred < sharpReference * 0.8,

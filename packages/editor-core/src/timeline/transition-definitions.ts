@@ -174,8 +174,10 @@ export const TRANSITION_DIP_EFFECT_TYPE = "transition-dip";
  */
 export const TRANSITION_WIPE_SOFTNESS = 0.01;
 
-/** Blur transition: peak blur strength in the preview's `blur` param units. */
-export const TRANSITION_BLUR_INTENSITY = 60;
+/** Blur transition: peak blur strength in the preview's `blur` param units.
+ *  200 maps to 40 px sigma at 1080p (`intensity / 5 * height / 1080`), strong
+ *  enough to read at small export canvases too (8.9 px at 240p). */
+export const TRANSITION_BLUR_INTENSITY = 200;
 
 /** Stable id for a derived transition effect on one element. */
 export function transitionEffectId({
