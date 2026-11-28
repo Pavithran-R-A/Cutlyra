@@ -6,7 +6,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
-import androidx.activity.result.ActivityResult
 import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -30,7 +29,8 @@ import java.io.File
  *
  * What is stubbed: the system picker ACTIVITY (CI cannot tap through a system
  * UI) and Capacitor's `PluginCall` promise resolution. The plugin callback body
- * between the `ActivityResult` and that promise is this code, unchanged.
+ * between the picker result (code + Intent) and that promise is this code,
+ * unchanged.
  */
 @RunWith(AndroidJUnit4::class)
 class MediaPickBatchInstrumentedTest {
@@ -61,13 +61,13 @@ class MediaPickBatchInstrumentedTest {
         return out.toByteArray()
     }
 
-    private fun resultWith(uris: List<Uri>): ActivityResult {
-        val first = uris.firstOrNull() ?: return ActivityResult(Activity.RESULT_OK, Intent())
+    private fun resultIntent(uris: List<Uri>): Intent? {
+        val first = uris.firstOrNull() ?: return null
         val clip = ClipData.newUri(targetContext.contentResolver, "picked", first)
         for (uri in uris.drop(1)) {
             clip.addItem(ClipData.Item(uri))
         }
-        return ActivityResult(Activity.RESULT_OK, Intent().apply { clipData = clip })
+        return Intent().apply { clipData = clip }
     }
 
     @Test
@@ -75,9 +75,10 @@ class MediaPickBatchInstrumentedTest {
         val video = stageFile("pick-video.mp4", rawBytes())
         val photo = stageFile("pick-photo.jpg", jpegBytes())
         val secondVideo = stageFile("pick-video-2.mp4", rawBytes())
-        val result = resultWith(listOf(video, photo, secondVideo))
-
-        val uris = MediaPickBatch.urisFrom(result)
+        val uris = MediaPickBatch.urisFrom(
+            Activity.RESULT_OK,
+            resultIntent(listOf(video, photo, secondVideo)),
+        )
         assertEquals(listOf(video, photo, secondVideo), uris)
 
         val progress = mutableListOf<String>()
@@ -112,8 +113,7 @@ class MediaPickBatchInstrumentedTest {
 
     @Test
     fun cancelledPickerYieldsNoUris() {
-        val cancelled = ActivityResult(Activity.RESULT_CANCELED, null)
-        assertEquals(emptyList<Uri>(), MediaPickBatch.urisFrom(cancelled))
+        assertEquals(emptyList<Uri>(), MediaPickBatch.urisFrom(Activity.RESULT_CANCELED, null))
         assertEquals(0, MediaPickBatch.importUris(targetContext, emptyList()) { _, _, _, _, _ -> }.length())
     }
 
@@ -124,9 +124,10 @@ class MediaPickBatchInstrumentedTest {
         val missing = Uri.parse(
             "content://${targetContext.packageName}.fileprovider/camera_capture/missing.mp4",
         )
-        val result = resultWith(listOf(video, missing, photo))
-
-        val uris = MediaPickBatch.urisFrom(result)
+        val uris = MediaPickBatch.urisFrom(
+            Activity.RESULT_OK,
+            resultIntent(listOf(video, missing, photo)),
+        )
         assertEquals(3, uris.size)
         val progress = mutableListOf<Pair<Int, String>>()
         val handles = MediaPickBatch.importUris(targetContext, uris) { index, _, stage, _, _ ->

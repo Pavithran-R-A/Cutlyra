@@ -481,7 +481,7 @@ class NativeBridgePlugin : Plugin() {
 			call.reject("User cancelled media selection", "USER_CANCELLED")
 			return
 		}
-		val uris = MediaPickBatch.urisFrom(result)
+		val uris = MediaPickBatch.urisFrom(result.resultCode, result.data)
 		if (uris.isEmpty()) {
 			call.reject("No media selected", "USER_CANCELLED")
 			return

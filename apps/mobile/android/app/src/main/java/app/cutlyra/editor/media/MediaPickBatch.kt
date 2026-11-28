@@ -3,7 +3,6 @@ package app.cutlyra.editor.media
 import android.app.Activity
 import android.content.Context
 import android.net.Uri
-import androidx.activity.result.ActivityResult
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import org.json.JSONObject
@@ -20,6 +19,10 @@ import java.util.UUID
  *     result `data` instead, so both shapes are handled here. Cancellation is
  *     an empty list (the plugin maps that to `USER_CANCELLED`; the JS layer
  *     treats it as a no-op).
+ *     It takes the result code and Intent rather than an `ActivityResult`:
+ *     the R8 test variant strips that holder's public constructor (app code
+ *     never calls it, Capacitor does), which made a test that constructed one
+ *     fail only under minification.
  *
  *  2. `importUris` copies each pick into custody and probes it, one item at a
  *     time, preserving that order — a fast photo must not overtake a slow
@@ -29,9 +32,9 @@ import java.util.UUID
  */
 object MediaPickBatch {
     /** The picked document URIs, in the picker's order. */
-    fun urisFrom(result: ActivityResult): List<Uri> {
-        if (result.resultCode != Activity.RESULT_OK) return emptyList()
-        val data = result.data ?: return emptyList()
+    fun urisFrom(resultCode: Int, data: Intent?): List<Uri> {
+        if (resultCode != Activity.RESULT_OK) return emptyList()
+        if (data == null) return emptyList()
         val uris = mutableListOf<Uri>()
         val clipData = data.clipData
         if (clipData != null) {
